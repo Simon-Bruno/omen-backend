@@ -59,6 +59,44 @@ export class ProjectOwnershipError extends ForbiddenError {
   }
 }
 
+// Cloudflare KV specific errors
+export class CloudflareKVError extends Error {
+  constructor(
+    public statusCode: number,
+    public errorCode: string,
+    message: string,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'CloudflareKVError';
+  }
+}
+
+export class KVValueWriteFailedError extends CloudflareKVError {
+  constructor(experimentId: string, details?: unknown) {
+    super(500, 'KV_VALUE_WRITE_FAILED', `Failed to write experiment ${experimentId} to KV store`, details);
+  }
+}
+
+export class KVIndexWriteFailedError extends CloudflareKVError {
+  constructor(experimentId: string, details?: unknown) {
+    super(500, 'KV_INDEX_WRITE_FAILED', `Failed to update CONFIG_INDEX for experiment ${experimentId}`, details);
+  }
+}
+
+export class KVConnectionError extends CloudflareKVError {
+  constructor(details?: unknown) {
+    super(503, 'KV_CONNECTION_ERROR', 'Failed to connect to Cloudflare KV', details);
+  }
+}
+
+export class KVRateLimitError extends CloudflareKVError {
+  constructor(retryAfter?: number, details?: unknown) {
+    const errorDetails = details && typeof details === 'object' ? { retryAfter, ...details } : { retryAfter, details };
+    super(429, 'KV_RATE_LIMIT_ERROR', 'Cloudflare KV rate limit exceeded', errorDetails);
+  }
+}
+
 /**
  * Error handler for authentication and authorization errors
  */
