@@ -1,11 +1,25 @@
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import crypto from 'crypto';
+import { setInterval } from 'timers';
 import '@shared/fastify';
 import { authMiddleware } from '@interfaces/http/middleware/auth';
 import { requireAuth } from '@interfaces/http/middleware/authorization';
 import { shopify, shopifyConfig } from '@infra/external/shopify';
 import { encrypt, verifyHmac } from '@infra/encryption';
 import { auth0 } from '@infra/auth0';
+
+// Simple in-memory state store for OAuth replay protection
+const stateStore = new Map<string, { userId: string; timestamp: number }>();
+
+// Clean up expired states every 10 minutes (states expire after 1 hour)
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, data] of stateStore.entries()) {
+    if (now - data.timestamp > 60 * 60 * 1000) { // 1 hour
+      stateStore.delete(state);
+    }
+  }
+}, 10 * 60 * 1000); // 10 minutes
 
 export async function authRoutes(fastify: FastifyInstance) {
   /**
@@ -28,6 +42,18 @@ export async function authRoutes(fastify: FastifyInstance) {
           message: 'Missing required parameters: code, shop, hmac, state',
         });
       }
+
+      // Validate state parameter for replay protection
+      const stateData = stateStore.get(state);
+      if (!stateData || stateData.userId !== request.userId) {
+        return reply.status(400).send({
+          error: 'BAD_REQUEST',
+          message: 'Invalid or expired state parameter',
+        });
+      }
+
+      // Remove state after validation (one-time use)
+      stateStore.delete(state);
 
       // Validate shop domain format
       if (!shopify.validateShopDomain(shop)) {
@@ -144,8 +170,9 @@ export async function authRoutes(fastify: FastifyInstance) {
       // Normalize shop domain
       const normalizedShop = shopify.normalizeShopDomain(shop);
       
-      // Generate state parameter (you might want to store this in session/db for validation)
+      // Generate state parameter and store it for validation
       const state = crypto.randomBytes(16).toString('hex');
+      stateStore.set(state, { userId: request.userId!, timestamp: Date.now() });
       
       // Generate OAuth URL
       const oauthUrl = shopify.generateOAuthUrl(normalizedShop, state);
