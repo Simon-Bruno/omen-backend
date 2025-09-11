@@ -5,3 +5,5 @@
  */
 
 export * from './experiment-publisher';
+export * from './diagnostics';
+export * from './brand-analysis';

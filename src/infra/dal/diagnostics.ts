@@ -50,7 +50,7 @@ export class DiagnosticsDAL {
   /**
    * Update diagnostics run status and data
    */
-  static async updateStatus(data: UpdateDiagnosticsRunData): Promise<DiagnosticsRun> {
+  static async updateDiagnosticsRun(data: UpdateDiagnosticsRunData): Promise<DiagnosticsRun> {
     const updateData: any = {
       status: data.status,
     };
@@ -73,6 +73,13 @@ export class DiagnosticsDAL {
       where: { id: data.diagnosticsRunId },
       data: updateData,
     });
+  }
+
+  /**
+   * Update diagnostics run status and data (alias for backward compatibility)
+   */
+  static async updateStatus(data: UpdateDiagnosticsRunData): Promise<DiagnosticsRun> {
+    return this.updateDiagnosticsRun(data);
   }
 
   /**
@@ -127,6 +134,13 @@ export class DiagnosticsDAL {
       where: { projectId },
       orderBy: { startedAt: 'desc' },
     });
+  }
+
+  /**
+   * Get latest diagnostics run for a project (alias)
+   */
+  static async getLatestDiagnosticsRunByProject(projectId: string): Promise<DiagnosticsRun | null> {
+    return this.getLatestDiagnosticsRun(projectId);
   }
 
   /**

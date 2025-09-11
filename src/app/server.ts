@@ -3,6 +3,7 @@ import fastify from 'fastify';
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import { prisma } from '@infra/prisma';
 import { registerRoutes } from '@interfaces/http/index';
+import { serviceContainer } from '@infra/container';
 
 export async function createServer(): Promise<FastifyInstance> {
     const server: FastifyInstance = fastify({
@@ -25,6 +26,9 @@ export async function createServer(): Promise<FastifyInstance> {
         credentials: true,
     });
 
+    // Register services with Fastify
+    server.decorate('diagnosticsService', serviceContainer.getDiagnosticsService());
+
     // Register all API routes
     await registerRoutes(server);
 
@@ -41,6 +45,7 @@ export async function startServer(): Promise<void> {
 
         // Graceful shutdown
         const gracefulShutdown = async (): Promise<void> => {
+            await serviceContainer.cleanup();
             await prisma.$disconnect();
             await server.close();
         };

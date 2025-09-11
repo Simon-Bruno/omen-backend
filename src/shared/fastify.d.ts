@@ -6,6 +6,7 @@
  */
 
 import 'fastify';
+import type { DiagnosticsService } from '@infra/services/diagnostics';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -16,5 +17,9 @@ declare module 'fastify' {
     };
     userId?: string; // Our internal user ID
     projectId?: string; // User's project ID
+  }
+
+  interface FastifyInstance {
+    diagnosticsService: DiagnosticsService;
   }
 }
