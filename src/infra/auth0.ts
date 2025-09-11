@@ -114,6 +114,29 @@ export class Auth0Service {
   }
 
   /**
+   * Get user by ID with project details
+   */
+  async getUserById(userId: string): Promise<Auth0User | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { project: true },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      project: user.project ? {
+        id: user.project.id,
+        shopDomain: user.project.shopDomain,
+      } : undefined,
+    };
+  }
+
+  /**
    * Check if user owns a specific project
    */
   async userOwnsProject(userId: string, projectId: string): Promise<boolean> {
