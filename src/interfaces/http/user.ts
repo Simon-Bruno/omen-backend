@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify/types/instance.js';
-import '@shared/fastify';
+import '@shared/fastify.d';
 import { authMiddleware } from '@interfaces/http/middleware/auth';
 import { requireAuth } from '@interfaces/http/middleware/authorization';
 

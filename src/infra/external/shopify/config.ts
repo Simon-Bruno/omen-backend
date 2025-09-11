@@ -25,7 +25,7 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
-// Validate encryption key length (should be 32 characters for AES-256)
-if (shopifyConfig.encryptionKey.length !== 32) {
-  throw new Error('ENCRYPTION_KEY must be exactly 32 characters long for AES-256 encryption');
+// Validate encryption key length (should be 32 or 64 characters for AES-256)
+if (shopifyConfig.encryptionKey.length !== 32 && shopifyConfig.encryptionKey.length !== 64) {
+  throw new Error('ENCRYPTION_KEY must be exactly 32 or 64 characters long for AES-256 encryption');
 }

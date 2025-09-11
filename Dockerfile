@@ -12,6 +12,7 @@ RUN npm ci
 
 # Copy source code and config files
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY tsconfig.json ./
 COPY prisma/ ./prisma/
 

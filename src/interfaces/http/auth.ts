@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import crypto from 'crypto';
 import { setInterval } from 'timers';
-import '@shared/fastify';
+import '@shared/fastify.d';
 import { authMiddleware } from '@interfaces/http/middleware/auth';
 import { requireAuth } from '@interfaces/http/middleware/authorization';
 import { shopify, shopifyConfig } from '@infra/external/shopify';
