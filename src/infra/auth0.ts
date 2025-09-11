@@ -1,4 +1,4 @@
-import { prisma } from './prisma.js';
+import { prisma } from './prisma';
 
 export interface Auth0User {
   id: string;
@@ -57,10 +57,10 @@ export class Auth0Service {
 
   /**
    * Bind a project to a user (single project rule)
-   * This should be called when a user connects their first project
+   * This will create a new project or update the existing one
    */
   async bindProjectToUser(userId: string, shopDomain: string, accessTokenEnc: string): Promise<Auth0User> {
-    // Check if user already has a project
+    // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
       include: { project: true },
@@ -70,20 +70,23 @@ export class Auth0Service {
       throw new Error('User not found');
     }
 
-    if (existingUser.project) {
-      throw new Error('User already has a project bound. Single project per user rule enforced.');
-    }
-
-    // Create and bind the project
+    // If user already has a project, update it; otherwise create a new one
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
-        project: {
-          create: {
-            shopDomain,
-            accessTokenEnc,
-          },
-        },
+        project: existingUser.project
+          ? {
+              update: {
+                shopDomain,
+                accessTokenEnc,
+              },
+            }
+          : {
+              create: {
+                shopDomain,
+                accessTokenEnc,
+              },
+            },
       },
       include: { project: true },
     });
