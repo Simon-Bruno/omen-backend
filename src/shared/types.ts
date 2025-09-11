@@ -43,3 +43,112 @@ export interface ApiError {
   message: string;
   details?: unknown;
 }
+
+// DSL Types for Experiments
+export type ExperimentStatus = 'draft' | 'running' | 'paused' | 'finished';
+
+export type VariantId = 'A' | 'B' | 'C';
+
+export type RenderPosition = 'inner' | 'outer' | 'before' | 'after';
+
+export type ApplyMode = 'first' | 'all';
+
+export interface ExperimentMatch {
+  host?: string;
+  path: string;
+}
+
+export interface ExperimentTraffic {
+  A: number;
+  B: number;
+  C: number;
+}
+
+export interface ExperimentAssignment {
+  cookieName: string;
+  ttlDays: number;
+}
+
+export interface ExperimentRuntime {
+  minDays: number;
+  minSessionsPerVariant: number;
+  endAt?: string; // ISO date string
+}
+
+export interface ExperimentAnalytics {
+  posthog: {
+    enabled: boolean;
+    host: string;
+  };
+  eventProps: string[];
+}
+
+export interface ExperimentGuardrails {
+  watch: ('lcp' | 'js_errors' | 'cls')[];
+}
+
+export interface VariantRender {
+  position: RenderPosition;
+  html: string;
+  css?: string;
+  oncePerResponse?: boolean;
+}
+
+export interface Variant {
+  mode: 'render';
+  render: VariantRender;
+}
+
+export interface ExperimentTarget {
+  selector: string;
+  apply: ApplyMode;
+  variants: Record<VariantId, Variant>;
+}
+
+export interface ExperimentKPI {
+  primary: string;
+  secondary?: string[];
+}
+
+export interface ExperimentDSL {
+  experimentId: string;
+  projectId: string;
+  name: string;
+  status: ExperimentStatus;
+  match: ExperimentMatch;
+  traffic: ExperimentTraffic;
+  assignment: ExperimentAssignment;
+  targets: ExperimentTarget[];
+  kpi: ExperimentKPI;
+  runtime: ExperimentRuntime;
+  analytics: ExperimentAnalytics;
+  guardrails?: ExperimentGuardrails;
+}
+
+// Validation Error Types
+export type ValidationErrorCode = 
+  | 'INVALID_DSL_STRUCTURE'
+  | 'INVALID_TRAFFIC'
+  | 'INVALID_SELECTOR'
+  | 'UNSAFE_HTML'
+  | 'UNSCOPED_CSS'
+  | 'LIMIT_EXCEEDED'
+  | 'UNSAFE_OUTER_TARGET'
+  | 'INVALID_VARIANT_COUNT'
+  | 'INVALID_TARGET_COUNT'
+  | 'INVALID_HTML_SIZE'
+  | 'INVALID_CSS_SIZE'
+  | 'INVALID_DSL_SIZE'
+  | 'INVALID_ANALYTICS_HOST';
+
+export interface ValidationError {
+  code: ValidationErrorCode;
+  message: string;
+  field?: string;
+  details?: unknown;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: ValidationError[];
+}
