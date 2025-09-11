@@ -1,4 +1,5 @@
 import type { FastifyReply } from 'fastify/types/reply.js';
+import { JsonWebTokenError, TokenExpiredError as JWTTokenExpiredError, NotBeforeError } from 'jsonwebtoken';
 
 export class AuthError extends Error {
   constructor(
@@ -63,33 +64,46 @@ export class ProjectOwnershipError extends ForbiddenError {
  */
 export const handleAuthError = (error: unknown, reply: FastifyReply) => {
   if (error instanceof AuthError) {
-    return reply.status(error.statusCode).send({
+    const response: Record<string, unknown> = {
       error: error.errorCode,
       message: error.message,
-      ...(error.details && typeof error.details === 'object' && { details: error.details }),
+    };
+    
+    if (error.details && typeof error.details === 'object' && error.details !== null) {
+      response.details = error.details;
+    }
+    
+    return reply.status(error.statusCode).send(response);
+  }
+
+  // Handle JWT-specific errors using built-in classes
+  if (error instanceof JWTTokenExpiredError) {
+    return reply.status(401).send({
+      error: 'UNAUTHORIZED',
+      message: 'Token has expired. Please refresh your authentication.',
+      details: {
+        expiredAt: error.expiredAt,
+      },
     });
   }
 
-  // Handle JWT-specific errors
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'UnauthorizedError') {
-    const errorMessage = 'message' in error && typeof error.message === 'string' ? error.message : '';
-    if (errorMessage.includes('jwt expired')) {
-      return reply.status(401).send({
-        error: 'UNAUTHORIZED',
-        message: 'Token has expired. Please refresh your authentication.',
-      });
-    }
-    
-    if (errorMessage.includes('jwt malformed') || errorMessage.includes('invalid token')) {
-      return reply.status(401).send({
-        error: 'UNAUTHORIZED',
-        message: 'Invalid token. Please authenticate again.',
-      });
-    }
-
+  if (error instanceof NotBeforeError) {
     return reply.status(401).send({
       error: 'UNAUTHORIZED',
-      message: 'Authentication failed.',
+      message: 'Token is not yet valid.',
+      details: {
+        notBefore: error.date,
+      },
+    });
+  }
+
+  if (error instanceof JsonWebTokenError) {
+    return reply.status(401).send({
+      error: 'UNAUTHORIZED',
+      message: 'Invalid token. Please authenticate again.',
+      details: {
+        reason: error.message,
+      },
     });
   }
 
