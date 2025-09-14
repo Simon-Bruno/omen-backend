@@ -15,6 +15,13 @@ export interface ServiceConfig {
     defaultTimeout?: number;
     defaultWaitFor?: number;
   };
+  posthog: {
+    apiKey: string;
+    host: string;
+    projectId: string;
+    timeout?: number;
+    retryAttempts?: number;
+  };
 }
 
 export function getServiceConfig(): ServiceConfig {
@@ -33,6 +40,13 @@ export function getServiceConfig(): ServiceConfig {
       },
       defaultTimeout: parseInt(process.env.CRAWLER_TIMEOUT || '30000'),
       defaultWaitFor: parseInt(process.env.CRAWLER_WAIT_FOR || '2000'),
+    },
+    posthog: {
+      apiKey: process.env.POSTHOG_API_KEY || '',
+      host: process.env.POSTHOG_HOST || 'https://eu.posthog.com',
+      projectId: process.env.POSTHOG_PROJECT_ID || '',
+      timeout: parseInt(process.env.POSTHOG_TIMEOUT || '10000'),
+      retryAttempts: parseInt(process.env.POSTHOG_RETRY_ATTEMPTS || '3'),
     },
   };
 }

@@ -5,6 +5,7 @@ import { projectRoutes } from './projects';
 import { authRoutes } from './auth';
 import { experimentRoutes } from './experiments';
 import { diagnosticsRoutes } from './diagnostics';
+import { registerExperimentStatusRoutes } from './experiments-status';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     // Register all route modules
@@ -14,4 +15,5 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(authRoutes);
     await fastify.register(experimentRoutes);
     await fastify.register(diagnosticsRoutes);
+    await fastify.register(registerExperimentStatusRoutes);
 }

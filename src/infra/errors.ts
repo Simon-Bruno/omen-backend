@@ -97,6 +97,38 @@ export class KVRateLimitError extends CloudflareKVError {
   }
 }
 
+// PostHog specific errors
+export class PostHogError extends Error {
+  constructor(
+    public statusCode: number,
+    public errorCode: string,
+    message: string,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'PostHogError';
+  }
+}
+
+export class PostHogConnectionError extends PostHogError {
+  constructor(details?: unknown) {
+    super(503, 'POSTHOG_CONNECTION_ERROR', 'Failed to connect to PostHog', details);
+  }
+}
+
+export class PostHogQueryError extends PostHogError {
+  constructor(message: string, details?: unknown) {
+    super(400, 'POSTHOG_QUERY_ERROR', message, details);
+  }
+}
+
+export class PostHogRateLimitError extends PostHogError {
+  constructor(retryAfter?: number, details?: unknown) {
+    const errorDetails = details && typeof details === 'object' ? { retryAfter, ...details } : { retryAfter, details };
+    super(429, 'POSTHOG_RATE_LIMIT_ERROR', 'PostHog rate limit exceeded', errorDetails);
+  }
+}
+
 /**
  * Error handler for authentication and authorization errors
  */

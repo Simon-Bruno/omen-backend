@@ -45,7 +45,7 @@ export interface ApiError {
 }
 
 // DSL Types for Experiments
-export type ExperimentStatus = 'draft' | 'running' | 'paused' | 'finished';
+export type ExperimentStatusType = 'draft' | 'running' | 'paused' | 'finished';
 
 export type VariantId = 'A' | 'B' | 'C';
 
@@ -114,7 +114,7 @@ export interface ExperimentDSL {
   experimentId: string;
   projectId: string;
   name: string;
-  status: ExperimentStatus;
+  status: ExperimentStatusType;
   match: ExperimentMatch;
   traffic: ExperimentTraffic;
   assignment: ExperimentAssignment;
@@ -151,4 +151,36 @@ export interface ValidationError {
 export interface ValidationResult {
   isValid: boolean;
   errors: ValidationError[];
+}
+
+// PostHog Analytics Types
+export interface VariantMetrics {
+  variantId: string;
+  sessions: number;
+  primaryKPI: {
+    name: string;
+    count: number;
+    rate: number;
+  };
+  guardrails?: {
+    lcp?: 'normal' | 'elevated';
+    jsErrors?: 'normal' | 'elevated';
+    cls?: 'normal' | 'elevated';
+  };
+}
+
+export interface ExperimentStatus {
+  state: 'draft' | 'running' | 'paused' | 'finished';
+  traffic: Record<string, number>;
+  variants: VariantMetrics[];
+  leader?: string;
+  liftVsA?: number;
+  meta: {
+    timeframe: {
+      start: string;
+      end: string;
+    };
+    denominator: 'pageviews';
+    totalSessions: number;
+  };
 }
