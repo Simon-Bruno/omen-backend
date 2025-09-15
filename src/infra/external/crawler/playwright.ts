@@ -75,27 +75,55 @@ export class PlaywrightCrawlerService implements CrawlerService {
         quality: options.screenshot?.quality ?? 80,
       });
 
+      // Extract links and images
+      const links = await page.$$eval('a[href]', anchors => 
+        anchors.map(anchor => anchor.getAttribute('href')).filter(Boolean) as string[]
+      );
+      
+      const images = await page.$$eval('img[src]', imgs => 
+        imgs.map(img => img.getAttribute('src')).filter(Boolean) as string[]
+      );
+
       // Extract metadata
       const title = await page.title();
       const description = await page.$eval('meta[name="description"]', el => el.getAttribute('content')).catch(() => null);
 
       return {
         url,
-        html,
-        screenshot: screenshot.toString('base64'),
         title,
-        description: description || undefined,
+        content: await page.textContent('body') || '',
+        links,
+        images,
+        metadata: {
+          description: description || undefined,
+          screenshot: screenshot.toString('base64'),
+        },
+        timestamp: new Date(),
+        html,
       };
     } catch (error) {
       return {
         url,
+        title: '',
+        content: '',
+        links: [],
+        images: [],
+        metadata: {
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
+        },
+        timestamp: new Date(),
         html: '',
-        screenshot: '',
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
       };
     } finally {
       await page.close();
     }
+  }
+
+  async crawl(url: string, options: CrawlOptions = {}): Promise<CrawlResult[]> {
+    // For now, just crawl the single page
+    // TODO: Implement multi-page crawling with depth and page limits
+    const result = await this.crawlPage(url, options);
+    return [result];
   }
 
   async crawlMultiplePages(urls: string[], options: CrawlOptions = {}): Promise<CrawlResult[]> {
@@ -108,9 +136,13 @@ export class PlaywrightCrawlerService implements CrawlerService {
       } catch (error) {
         results.push({
           url,
+          title: '',
+          content: '',
+          links: [],
+          images: [],
+          metadata: {},
+          timestamp: new Date(),
           html: '',
-          screenshot: '',
-          error: error instanceof Error ? error.message : 'Unknown error occurred',
         });
       }
     }

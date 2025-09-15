@@ -12,7 +12,6 @@ export type {
   PostHogEvent,
   PostHogConfig,
 } from './types';
-export type { ExperimentStatus, VariantMetrics } from '../../shared/types';
 export {
   PostHogError,
   PostHogConnectionError,

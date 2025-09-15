@@ -18,6 +18,14 @@ export interface PostHogQueryResponse {
   next?: string;
 }
 
+// PostHog configuration
+export interface PostHogConfig {
+  apiKey: string;
+  host: string;
+  timeout?: number;
+  retries?: number;
+}
+
 // Re-export shared types for convenience
 export type { VariantMetrics, ExperimentStatus } from '../../../shared/types';
 

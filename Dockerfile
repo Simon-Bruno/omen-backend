@@ -20,7 +20,7 @@ COPY prisma/ ./prisma/
 RUN npm run db:generate
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3001
 
 # Start the application in development mode with hot reloading
 CMD ["npm", "run", "dev"]

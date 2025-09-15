@@ -1,5 +1,5 @@
 import { shopifyConfig } from './config';
-import { decrypt } from '../../encryption';
+import { decrypt, verifyHmac } from '../../encryption';
 import fetch from 'node-fetch';
 import { URLSearchParams } from 'url';
 
@@ -12,7 +12,7 @@ export interface ShopifyShop {
   name: string;
   email: string;
   domain: string;
-  myshopifyDomain: string;
+  myshopify_domain: string;
   planName: string;
   currency: string;
   timezone: string;
@@ -118,6 +118,63 @@ export class ShopifyService {
     
     // If it's a custom domain, we can't normalize it
     throw new Error('Invalid shop domain format. Expected format: shop-name or shop-name.myshopify.com');
+  }
+
+  /**
+   * Verify HMAC signature for OAuth callback
+   */
+  verifyHmacSignature(queryParams: Record<string, string>, hmac: string): boolean {
+    const queryWithoutHmac = { ...queryParams };
+    delete queryWithoutHmac.hmac;
+    
+    const queryStringWithoutHmac = Object.keys(queryWithoutHmac)
+      .sort()
+      .map(key => `${key}=${encodeURIComponent(queryWithoutHmac[key])}`)
+      .join('&');
+
+    return verifyHmac(queryStringWithoutHmac, shopifyConfig.apiSecret, hmac);
+  }
+
+  /**
+   * Validate OAuth callback parameters
+   */
+  validateCallbackParams(query: Record<string, string>): {
+    isValid: boolean;
+    error?: string;
+    params?: {
+      code: string;
+      shop: string;
+      hmac: string;
+      state: string;
+    };
+  } {
+    const { code, shop, hmac, state } = query;
+
+    if (!code || !shop || !hmac || !state) {
+      return {
+        isValid: false,
+        error: 'Missing required parameters: code, shop, hmac, state',
+      };
+    }
+
+    if (!this.validateShopDomain(shop)) {
+      return {
+        isValid: false,
+        error: 'Invalid shop domain format',
+      };
+    }
+
+    if (!this.verifyHmacSignature(query, hmac)) {
+      return {
+        isValid: false,
+        error: 'Invalid HMAC signature',
+      };
+    }
+
+    return {
+      isValid: true,
+      params: { code, shop, hmac, state },
+    };
   }
 }
 

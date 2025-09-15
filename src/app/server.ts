@@ -28,9 +28,7 @@ export async function createServer(): Promise<FastifyInstance> {
 
     // Register services with Fastify
     server.decorate('diagnosticsService', serviceContainer.getDiagnosticsService());
-
-    // Register all API routes
-    await registerRoutes(server);
+    await server.register(registerRoutes, { prefix: '/api' });
 
     return server;
 }

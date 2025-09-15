@@ -77,9 +77,17 @@ export const authMiddleware = async (request: FastifyRequest, reply: FastifyRepl
       email_verified: (payload.email_verified as boolean) || false,
     };
 
-    // Get or create user in our database
-    const { auth0 } = await import('@infra/auth0');
-    const user = await auth0.getOrCreateUser(payload.sub as string, payload.email as string);
+    // Get user from our database
+    const { userService } = await import('@infra/services/user');
+    const user = await userService.getUserByAuth0Id(payload.sub as string);
+    
+    if (!user) {
+      return reply.status(403).send({ 
+        error: 'FORBIDDEN', 
+        message: 'User not found. Please complete registration first.' 
+      });
+    }
+    
     request.userId = user.id;
 
     // Get user's project ID (single project per user)

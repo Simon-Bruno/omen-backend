@@ -48,7 +48,8 @@ export const requireProjectOwnership = async (request: FastifyRequest, reply: Fa
   }
 
   // Check if user owns this project
-  const ownsProject = await auth0.userOwnsProject(request.userId, projectId);
+  const { userService } = await import('@infra/services/user');
+  const ownsProject = await userService.userOwnsProject(request.userId, projectId);
 
   if (!ownsProject) {
     return reply.status(403).send({
@@ -76,7 +77,8 @@ export const optionalProjectOwnership = async (request: FastifyRequest, reply: F
   const projectId = (request.params as ProjectParams)?.projectId || (request.body as ProjectBody)?.projectId;
 
   if (projectId) {
-    const ownsProject = await auth0.userOwnsProject(request.userId, projectId);
+    const { userService } = await import('@infra/services/user');
+    const ownsProject = await userService.userOwnsProject(request.userId, projectId);
 
     if (!ownsProject) {
       return reply.status(403).send({

@@ -1,154 +1,99 @@
-import { prisma } from './prisma';
-
-export interface Auth0User {
-  id: string;
-  email: string;
-  project?: {
-    id: string;
-    shopDomain: string;
-  };
-}
+import { ManagementClient } from 'auth0';
 
 /**
- * Auth0 service for user management and project binding
- * Implements single project per user rule
+ * Auth0 Management API service
+ * Handles only Auth0 operations, not our database
  */
 export class Auth0Service {
-  /**
-   * Get or create user from Auth0 payload
-   * Creates user on first login
-   */
-  async getOrCreateUser(auth0Id: string, email: string): Promise<Auth0User> {
-    // Try to find existing user
-    let user = await prisma.user.findUnique({
-      where: { auth0Id },
-      include: { project: true },
-    });
+  private managementClient: ManagementClient;
 
-    if (!user) {
-      // Create new user on first login
-      user = await prisma.user.create({
-        data: {
-          auth0Id,
-          email,
-        },
-        include: { project: true },
-      });
-    } else {
-      // Update email if it has changed
-      if (user.email !== email) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: { email },
-          include: { project: true },
-        });
-      }
+  constructor() {
+    this.managementClient = new ManagementClient({
+      domain: process.env.AUTH0_DOMAIN!,
+      clientId: process.env.AUTH0_M2M_CLIENT_ID!,
+      clientSecret: process.env.AUTH0_M2M_CLIENT_SECRET!,
+    });
+  }
+
+  /**
+   * Create a new user in Auth0
+   */
+  async createUser(email: string, password?: string): Promise<{ id: string; email: string }> {
+    const userData: {
+      email: string;
+      email_verified: boolean;
+      connection: string;
+      password?: string;
+    } = {
+      email,
+      email_verified: false,
+      connection: 'Username-Password-Authentication',
+    };
+
+    if (password) {
+      userData.password = password;
     }
 
+    const auth0User = await this.managementClient.users.create(userData);
+    
     return {
-      id: user.id,
-      email: user.email,
-      project: user.project ? {
-        id: user.project.id,
-        shopDomain: user.project.shopDomain,
-      } : undefined,
+      id: auth0User.data.user_id!,
+      email: auth0User.data.email!,
     };
   }
 
   /**
-   * Bind a project to a user (single project rule)
-   * This will create a new project or update the existing one
+   * Get user from Auth0 by ID
    */
-  async bindProjectToUser(userId: string, shopDomain: string, accessTokenEnc: string): Promise<Auth0User> {
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { project: true },
-    });
-
-    if (!existingUser) {
-      throw new Error('User not found');
-    }
-
-    // If user already has a project, update it; otherwise create a new one
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        project: existingUser.project
-          ? {
-              update: {
-                shopDomain,
-                accessTokenEnc,
-              },
-            }
-          : {
-              create: {
-                shopDomain,
-                accessTokenEnc,
-              },
-            },
-      },
-      include: { project: true },
-    });
-
-    return {
-      id: user.id,
-      email: user.email,
-      project: {
-        id: user.project!.id,
-        shopDomain: user.project!.shopDomain,
-      },
-    };
-  }
-
-  /**
-   * Get user's project ID
-   */
-  async getUserProjectId(userId: string): Promise<string | null> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { project: { select: { id: true } } },
-    });
-
-    return user?.project?.id || null;
-  }
-
-  /**
-   * Get user by ID with project details
-   */
-  async getUserById(userId: string): Promise<Auth0User | null> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { project: true },
-    });
-
-    if (!user) {
+  async getAuth0UserById(auth0Id: string): Promise<{ id: string; email: string } | null> {
+    try {
+      const auth0User = await this.managementClient.users.get({ id: auth0Id });
+      
+      return {
+        id: auth0User.data.user_id!,
+        email: auth0User.data.email!,
+      };
+    } catch {
       return null;
     }
-
-    return {
-      id: user.id,
-      email: user.email,
-      project: user.project ? {
-        id: user.project.id,
-        shopDomain: user.project.shopDomain,
-      } : undefined,
-    };
   }
 
   /**
-   * Check if user owns a specific project
+   * Get user from Auth0 by email
    */
-  async userOwnsProject(userId: string, projectId: string): Promise<boolean> {
-    const user = await prisma.user.findUnique({
-      where: { 
-        id: userId,
-        project: { id: projectId },
-      },
-      select: { id: true },
-    });
+  async getAuth0UserByEmail(email: string): Promise<{ id: string; email: string } | null> {
+    try {
+      const users = await this.managementClient.users.getAll({
+        q: `email:"${email}"`,
+        search_engine: 'v3'
+      });
+      
+      if (users.data.length > 0) {
+        const user = users.data[0];
+        return {
+          id: user.user_id!,
+          email: user.email!,
+        };
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
+  }
 
-    return !!user;
+  /**
+   * Update user in Auth0
+   */
+  async updateAuth0User(auth0Id: string, updates: { email?: string; email_verified?: boolean }): Promise<void> {
+    await this.managementClient.users.update({ id: auth0Id }, updates);
+  }
+
+  /**
+   * Delete user from Auth0
+   */
+  async deleteAuth0User(auth0Id: string): Promise<void> {
+    await this.managementClient.users.delete({ id: auth0Id });
   }
 }
 
