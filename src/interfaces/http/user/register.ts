@@ -53,8 +53,11 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
             let auth0User;
             try {
                 auth0User = await auth0.createUser(email, password);
-            } catch (error) {
-                if (error.message.includes('User already exists')) {
+            } catch (error: unknown) {
+                if (
+                    error instanceof Error &&
+                    error.message.includes('User already exists')
+                ) {
                     // User exists in Auth0, try to get them by email
                     const existingAuth0User = await auth0.getAuth0UserByEmail(email);
                     if (existingAuth0User) {
@@ -129,7 +132,7 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
             const { code, shop, hmac, state } = validation.params!;
 
             // Handle OAuth callback
-            const { shopProfile, encryptedToken, email } = await shopifyOAuth.handleRegistrationCallback(
+            const { shopProfile, email } = await shopifyOAuth.handleRegistrationCallback(
                 code, shop, hmac, state
             );
             
@@ -146,11 +149,6 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
             }
 
             // Create project and bind to user
-            const result = await userService.bindProjectToUser(
-                user.id,
-                shopProfile.myshopify_domain,
-                encryptedToken
-            );
 
             // Redirect to frontend login page with success
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
