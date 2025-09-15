@@ -1,17 +1,23 @@
 // OpenAI Service - Single implementation for all LLM functionality
 import OpenAI from 'openai';
+import { JSDOM } from 'jsdom';
 import type {
   LLMService,
   BrandAnalysisRequest,
   BrandAnalysisResponse,
   LLMOptions,
-  LLMConfig
+  LLMConfig,
+  ExtractNavLinksRequest,
+  ExtractNavLinksResponse
 } from '@features/llm/types';
 import type {
   LLMProvider,
   ChatMessage,
   ChatCompletionResponse
 } from "@domain/agent/types";
+import { fstat } from 'fs';
+import fs from "fs";
+import { encode } from 'punycode';
 
 export class OpenAIService implements LLMService, LLMProvider {
   private client: OpenAI;
@@ -26,29 +32,122 @@ export class OpenAIService implements LLMService, LLMProvider {
 
   // LLM Service methods (business features)
   async analyzeBrand(request: BrandAnalysisRequest): Promise<BrandAnalysisResponse> {
-    const prompt = this.buildBrandAnalysisPrompt(request);
+    // Ensure screenshots are proper data URLs
+    const toDataUrl = (b64: string): string => {
+      if (!b64) return '';
+      if (b64.startsWith('data:')) return b64;
+      // Default to PNG
+      return `data:image/png;base64,${b64}`;
+    };
+    
+    const prompt = this.buildBrandAnalysisPrompt();
+    var results = [];
+    for (var i = 0; i < 1; i++) {
+      try {
+        const response = await this.client.responses.create({
+          model: this.config.model || 'gpt-4o',
+          input: [
+            {
+              role: 'user',
+              content: [
+                { type: "input_text", text: prompt },
+                { type: 'input_file', filename: `${request.pages.urls[i]}.pdf`, file_data: `data:application/pdf;base64,${Buffer.from(`{content: "${request.pages.html[i]}"}`, 'utf-8').toString('base64')}` },
+                { type: 'input_image', image_url: toDataUrl(request.pages.screenshot[i]), detail: "auto" }
+              ]
+            }
+          ],
+          temperature: this.config.temperature || 0.7,
+          max_output_tokens: this.config.maxTokens || 4000,
+        });
 
+        const content = response.output_text;
+        if (!content) {
+          throw new Error('No response content from OpenAI');
+        }
+        console.log(content);
+        results.push(JSON.parse(content));
+      } catch (error) {
+        throw new Error(`Failed to parse OpenAI response: ${error}`);
+      }
+    }
+    return results[0];
+  }
+
+  async extractNavLinks(request: ExtractNavLinksRequest): Promise<ExtractNavLinksResponse> {
+    // Extract only the <body> content
+    const systemText = `You return the most useful navigation URLs for getting brand information that are stripped from an e-commerce homepage.
+    The pages we are looking for are the home page, the main products page and the about page.
+Return strict JSON only, no markdown, matching this TypeScript type exactly:
+{
+  "home?": string,
+  "products?": string,
+  "about?": string
+}
+
+Rules:
+- Use only internal links on the same domain as baseUrl.
+- Normalize relative links to absolute using baseUrl.
+- Choose the single best URL per category when possible.
+
+Return ONLY valid JSON.`;
+
+    // Try file-based large input using Responses API
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.config.model || 'gpt-4o',
-        messages: [
+      const response = await this.client.responses.create({
+        model: this.config.model || 'gpt-4o-mini',
+        text: {
+          format: {
+            "type": "json_schema",
+            "name": "useful_urls",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "home": {
+                  "type": "string"
+                },
+                "products": {
+                  "type": "string"
+                },
+                "about": {
+                  "type": "string"
+                }
+              },
+              "required": ["home", "products", "about"],
+              "additionalProperties": false
+            }
+          }
+        },
+        input: [
+          {
+            role: 'system',
+            content: [
+              { type: 'input_text', text: systemText }
+            ]
+          },
           {
             role: 'user',
-            content: prompt
+            content: [
+              { type: 'input_text', text: `Here is the list with urls: ${request.foundUrls}` },
+            ]
           }
         ],
-        temperature: this.config.temperature || 0.7,
-        max_tokens: this.config.maxTokens || 4000,
+        temperature: this.config.temperature || 0.2,
+        max_output_tokens: this.config.maxTokens || 1000,
       });
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('No response content from OpenAI');
-      }
-
-      return JSON.parse(content);
-    } catch (error) {
-      throw new Error(`Failed to parse OpenAI response: ${error}`);
+      console.log(response);
+      var content = response.output_text;
+      console.log("Filtered links response:", content)
+      const parsed = JSON.parse(content || '{}');
+      if (!Array.isArray(parsed.other)) parsed.other = [];
+      return parsed as ExtractNavLinksResponse;
+    } catch (err) {
+      console.error(err);
+      return {
+        home: request.foundUrls[0],
+        products: undefined,
+        about: undefined
+      };
     }
   }
 
@@ -88,7 +187,7 @@ export class OpenAIService implements LLMService, LLMProvider {
     });
 
     const startTime = Date.now();
-    
+
     try {
       const response = await this.client.chat.completions.create({
         model,
@@ -200,29 +299,11 @@ export class OpenAIService implements LLMService, LLMProvider {
     }
   }
 
-  private buildBrandAnalysisPrompt(request: BrandAnalysisRequest): string {
+  private buildBrandAnalysisPrompt(): string {
     return `
 # Brand Analysis Request
-
-## Shop Domain
-${request.shopDomain}
-
-## HTML Content
-### Homepage
-${request.htmlContent.homePage}
-
-### Product Pages
-${request.htmlContent.productPages.map((page: string, index: number) => `### Product Page ${index + 1}\n${page}`).join('\n')}
-
-## Screenshots
-### Homepage Screenshot
-${request.screenshots.homePage}
-
-### Product Page Screenshots
-${request.screenshots.productPages.map((screenshot: string, index: number) => `### Product Page ${index + 1} Screenshot\n${screenshot}`).join('\n')}
-
-Please analyze this e-commerce store and provide a comprehensive brand analysis in the following JSON format:
-
+Please analyze the attached files and images for this e-commerce store and provide a comprehensive brand analysis in the following JSON format:
+Keep in mind that there might be notification popups about newsletters or cookies on the site, ignore these as much as possible except when looking at the global style of the site.
 {
   "colors": ["color1", "color2", "color3", "color4", "color5", "color6"],
   "fonts": ["font1", "font2"],

@@ -23,6 +23,18 @@ services:
     restart: unless-stopped
     command: sh -c "npx prisma migrate deploy && npm run dev"
 
+    develop:
+      watch:
+        # Trigger rebuild when deps change
+        - path: ./package.json
+          action: rebuild
+        - path: ./package-lock.json
+          action: rebuild
+        # Trigger rebuild when Dockerfile changes
+        - path: ./Dockerfile
+          action: rebuild
+
+          
   postgres:
     image: postgres:15-alpine
     environment:

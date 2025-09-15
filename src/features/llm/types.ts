@@ -2,6 +2,7 @@
 export interface LLMService {
   analyzeBrand(request: BrandAnalysisRequest): Promise<BrandAnalysisResponse>;
   generateText(prompt: string, options?: LLMOptions): Promise<string>;
+  extractNavLinks(request: ExtractNavLinksRequest): Promise<ExtractNavLinksResponse>;
 }
 
 export interface LLMResponse {
@@ -14,13 +15,10 @@ export interface LLMResponse {
 }
 
 export interface BrandAnalysisRequest {
-  htmlContent: {
-    homePage: string;
-    productPages: string[];
-  };
-  screenshots: {
-    homePage: string;
-    productPages: string[];
+  pages: {
+    html: string[];
+    screenshot: string[];
+    urls: string[];
   };
   shopDomain: string;
 }
@@ -63,3 +61,14 @@ export interface LLMConfig {
   temperature?: number;
   maxTokens?: number;
 }
+
+export interface ExtractNavLinksRequest {
+  foundUrls: string[];
+}
+
+export interface ExtractNavLinksResponse {
+  home?: string;
+  products?: string;
+  about?: string;
+}
+

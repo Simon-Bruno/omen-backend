@@ -115,7 +115,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
         html: '',
       };
     } finally {
-      await page.close();
+      //await page.close();
     }
   }
 
