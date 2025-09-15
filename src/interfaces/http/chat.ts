@@ -223,41 +223,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
         Querystring: { limit?: number };
         Reply: GetMessagesResponse;
     }>('/chat/sessions/:sessionId/messages', {
-        schema: {
-            params: {
-                type: 'object',
-                properties: {
-                    sessionId: { type: 'string' }
-                },
-                required: ['sessionId']
-            },
-            querystring: {
-                type: 'object',
-                properties: {
-                    limit: { type: 'number', minimum: 1, maximum: 100, default: 50 }
-                }
-            },
-            response: {
-                200: {
-                    type: 'object',
-                    properties: {
-                        messages: {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {
-                                    id: { type: 'string' },
-                                    sessionId: { type: 'string' },
-                                    role: { type: 'string', enum: ['USER', 'AGENT', 'TOOL', 'SYSTEM'] },
-                                    content: { type: 'object' },
-                                    createdAt: { type: 'string' },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
     }, async (request: FastifyRequest<{
         Params: { sessionId: string };
         Querystring: { limit?: number };
@@ -266,11 +231,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
             const { sessionId } = request.params;
             const { limit } = request.query;
             
-            console.log(`[HTTP] Getting messages for session: ${sessionId}, limit: ${limit}`);
+            // Convert limit to number if provided
+            const numericLimit = limit ? parseInt(limit.toString(), 10) : undefined;
+            
+            console.log(`[HTTP] Getting messages for session: ${sessionId}, limit: ${numericLimit}`);
             
             const agentService = serviceContainer.getAgentService();
 
-            const messages = await agentService.getSessionMessages(sessionId, limit);
+            const messages = await agentService.getSessionMessages(sessionId, numericLimit);
 
             console.log(`[HTTP] Raw messages from service: ${JSON.stringify(messages, null, 2)}`);
             console.log(`[HTTP] Messages count: ${messages.length}`);

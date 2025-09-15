@@ -9,7 +9,7 @@ export async function shopifyRoutes(fastify: FastifyInstance) {
   /**
    * Generate Shopify OAuth URL for store connection (for authenticated users)
    */
-  fastify.post('/auth/shopify/connect', { preHandler: [authMiddleware, requireAuth] }, async (request, reply) => {
+  fastify.post('/auth/shopify/connect', { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       const { shop } = request.body as { shop: string };
 
@@ -52,7 +52,7 @@ export async function shopifyRoutes(fastify: FastifyInstance) {
   /**
    * Shopify OAuth callback endpoint (for authenticated users)
    */
-  fastify.get('/auth/shopify/callback', { preHandler: [authMiddleware, requireAuth] }, async (request, reply) => {
+  fastify.get('/auth/shopify/callback', { preHandler: [authMiddleware] }, async (request, reply) => {
     try {
       // Validate OAuth callback parameters
       const validation = shopify.validateCallbackParams(request.query as Record<string, string>);

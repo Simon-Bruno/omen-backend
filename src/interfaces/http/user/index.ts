@@ -5,8 +5,8 @@ import { requireAuth } from '@interfaces/http/middleware/authorization';
 import { userService } from '@infra/services/user';
 
 export async function userRoutes(fastify: FastifyInstance) {
-    // Get current user info (protected)
-    fastify.get('/me', { preHandler: [authMiddleware, requireAuth] }, async (request, reply) => {
+    // Get current user info (protected - only requires authentication, not project binding)
+    fastify.get('/me', { preHandler: [authMiddleware] }, async (request, reply) => {
         try {
             // Get full user data including project details
             const user = await userService.getUserById(request.userId!);
