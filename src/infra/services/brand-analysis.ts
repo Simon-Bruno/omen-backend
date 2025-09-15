@@ -52,7 +52,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         candidates = this.buildCrawlUrls(shopDomain);
       }
 
-      const response = await this.llm.extractNavLinks({ foundUrls: candidates });
+      const response = {home: candidates[0], products: candidates[1], about: candidates[4]}; // await this.llm.extractNavLinks({ foundUrls: candidates });
 
       const filteredCandidates = (['home', 'products', 'about'] as const)
         .map(k => (response as any)[k])
@@ -69,10 +69,6 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         }
       });
 
-      // Separate home page and product pages
-      const homePageResult = crawlResults[0];
-      const productPageResults = crawlResults.slice(1);
-
       // Check for errors
       const errors = crawlResults.filter((result: CrawlResult) => result.error);
       if (errors.length > 0) {
@@ -82,9 +78,9 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
       // Prepare data for LLM analysis
       const analysisRequest: BrandAnalysisRequest = {
         pages: {
-          html: productPageResults.map((result: CrawlResult) => result.html), 
-          screenshot: productPageResults.map((result: CrawlResult) => result.screenshot), 
-          urls: productPageResults.map((result: CrawlResult) => result.url),
+          html: crawlResults.map((result: CrawlResult) => result.html), 
+          screenshot: crawlResults.map((result: CrawlResult) => result.screenshot), 
+          urls: crawlResults.map((result: CrawlResult) => result.url),
         },
         shopDomain
       };

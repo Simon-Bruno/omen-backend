@@ -15,7 +15,6 @@ export async function brandRoutes(fastify: FastifyInstance) {
         try {
             const { shopDomain } = request.query;
             
-            console.log("Brand route hit");
             if(!shopDomain) {
                 return reply.code(400).send({ error: 'Shop domain is required' });
             }

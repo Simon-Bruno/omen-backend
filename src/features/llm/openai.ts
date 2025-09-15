@@ -40,9 +40,21 @@ export class OpenAIService implements LLMService, LLMProvider {
       return `data:image/png;base64,${b64}`;
     };
     
-    const prompt = this.buildBrandAnalysisPrompt();
-    var results = [];
-    for (var i = 0; i < 1; i++) {
+    const splitHtml = request.pages.html.map(html => html.split("</nav>")[1].split("footer")[0]);
+
+    var regexFinds: string[] = [];
+    const regex = /(?:<(?:p|h5|h6)[^>]*>(.+)<\/(?:p|h5|h6|\/)>.*)+/g;
+    let m: RegExpExecArray | null;
+    splitHtml.forEach((element, index) => {
+      while ((m = regex.exec(element)) !== null) {
+        const result = m[1];
+        regexFinds.push(result);
+      }
+    });
+    
+    regexFinds = regexFinds.filter(item => item.length > 20 && !item.includes("cart") && !item.includes("EUR"));
+
+    const prompt = this.buildBrandAnalysisPrompt(regexFinds.join("\n"));
       try {
         const response = await this.client.responses.create({
           model: this.config.model || 'gpt-4o',
@@ -51,8 +63,9 @@ export class OpenAIService implements LLMService, LLMProvider {
               role: 'user',
               content: [
                 { type: "input_text", text: prompt },
-                { type: 'input_file', filename: `${request.pages.urls[i]}.pdf`, file_data: `data:application/pdf;base64,${Buffer.from(`{content: "${request.pages.html[i]}"}`, 'utf-8').toString('base64')}` },
-                { type: 'input_image', image_url: toDataUrl(request.pages.screenshot[i]), detail: "auto" }
+                { type: 'input_image', image_url: toDataUrl(request.pages.screenshot[0]), detail: "auto" },
+                { type: 'input_image', image_url: toDataUrl(request.pages.screenshot[1]), detail: "auto" },
+                { type: 'input_image', image_url: toDataUrl(request.pages.screenshot[2]), detail: "auto" }
               ]
             }
           ],
@@ -65,12 +78,11 @@ export class OpenAIService implements LLMService, LLMProvider {
           throw new Error('No response content from OpenAI');
         }
         console.log(content);
-        results.push(JSON.parse(content));
+        return JSON.parse(content);
       } catch (error) {
         throw new Error(`Failed to parse OpenAI response: ${error}`);
       }
-    }
-    return results[0];
+    
   }
 
   async extractNavLinks(request: ExtractNavLinksRequest): Promise<ExtractNavLinksResponse> {
@@ -299,10 +311,10 @@ Return ONLY valid JSON.`;
     }
   }
 
-  private buildBrandAnalysisPrompt(): string {
+  private buildBrandAnalysisPrompt(additionalInfo: string): string {
     return `
 # Brand Analysis Request
-Please analyze the attached files and images for this e-commerce store and provide a comprehensive brand analysis in the following JSON format:
+Please analyze the attached images and provided context for this e-commerce store and provide a comprehensive brand analysis in the following JSON format:
 Keep in mind that there might be notification popups about newsletters or cookies on the site, ignore these as much as possible except when looking at the global style of the site.
 {
   "colors": ["color1", "color2", "color3", "color4", "color5", "color6"],
@@ -339,6 +351,12 @@ Focus on:
 - Strengths to build upon
 
 Provide specific, actionable insights based on the provided content and screenshots.
+
+The provided pages, which are a Home page, Products page and About page, of which you can find screenshots attached.
+Use the provided images to get a good sense of the brand colors and brand looks.
+Below you will find the context regarding the quotes and motivation of this brand:
+
+${additionalInfo}
     `.trim();
   }
 }
