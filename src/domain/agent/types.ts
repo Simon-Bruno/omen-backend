@@ -23,9 +23,19 @@ export interface ToolCall {
   };
 }
 
+export interface ContentBlock {
+  type: 'text' | 'tool-call' | 'tool-result' | 'image';
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  image?: { url: string };
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+  content: string | ContentBlock[];
   name?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
@@ -42,7 +52,7 @@ export interface ChatCompletionResponse {
 }
 
 export interface LLMProvider {
-  generateChatCompletion(messages: ChatMessage[], options?: LLMOptions): Promise<ChatCompletionResponse>;
+  generateStreamText(messages: ChatMessage[], systemPrompt?: string, options?: LLMOptions): Promise<unknown>;
 }
 
 export interface AgentConfig {
@@ -52,13 +62,6 @@ export interface AgentConfig {
   enableWelcomeFlow?: boolean;
 }
 
-export type AgentState = 'welcome' | 'active' | 'experiment_creation' | 'experiment_management';
-
-export interface AgentStateData {
-  state: AgentState;
-  projectInfo?: ProjectInfo;
-  lastStateChange: Date;
-}
 
 export interface ProjectInfo {
   id: string;
@@ -75,12 +78,10 @@ export interface ProjectInfo {
 
 export interface AgentService {
   createSession(projectId: string): Promise<{ sessionId: string }>;
-  sendMessage(sessionId: string, message: string): Promise<AgentMessage>;
+  sendMessageStream(sessionId: string, message: string): Promise<{ stream: unknown; messageId: string }>;
   getSessionMessages(sessionId: string, limit?: number): Promise<AgentMessage[]>;
   closeSession(sessionId: string): Promise<void>;
   getActiveSession(projectId: string): Promise<{ sessionId: string } | null>;
-  getAgentState(sessionId: string): Promise<AgentStateData>;
-  setAgentState(sessionId: string, state: AgentState): Promise<void>;
-  getProjectInfo(projectId: string): Promise<ProjectInfo>;
 }
+
 

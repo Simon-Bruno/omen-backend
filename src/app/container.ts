@@ -2,7 +2,7 @@
 import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler';
 import { createBrandAnalysisService, type BrandAnalysisService } from '@domain/analytics/brand-analysis';
 import { createDiagnosticsService, type DiagnosticsService } from '@domain/analytics/diagnostics';
-import { createAgentService, type AgentService } from '@domain/agent';
+import { createAgentService, type AgentService, type LLMProvider, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
 import { createOpenAIService, createOpenAIProvider, type LLMService } from '@features/llm';
 import { getServiceConfig } from '@infra/config/services';
 
@@ -45,43 +45,23 @@ class ServiceContainer {
     return this.services.get('diagnostics');
   }
 
+  getLLMProvider(): LLMProvider {
+    if (!this.services.has('llmProvider')) {
+      const llmProvider = createOpenAIProvider(this.config.openai);
+      this.services.set('llmProvider', llmProvider);
+    }
+    return this.services.get('llmProvider');
+  }
+
+  getLLMConfig() {
+    return this.config.openai;
+  }
+
   getAgentService(): AgentService {
     if (!this.services.has('agent')) {
-      const llmProvider = createOpenAIProvider(this.config.openai);
+      const llmProvider = this.getLLMProvider();
       const agentService = createAgentService(llmProvider, {
-        systemPrompt: `You are a specialized e-commerce optimization assistant. Your role is to help users improve their online stores through data-driven analysis and experimentation.
-
-CORE RESPONSIBILITIES:
-- Analyze store performance and identify optimization opportunities
-- Help create and manage A/B tests and experiments
-- Provide insights based on real store data
-- Guide users through the optimization process
-
-AVAILABLE TOOLS:
-- get_project_info: Get detailed project and store information
-- list_experiments: List all experiments with their status
-- create_experiment: Create new A/B test experiments
-- generate_hypotheses: Generate testable hypotheses and experiment suggestions based on brand and page analysis
-- run_diagnostics: Analyze store performance and issues
-- get_experiment_results: Get results and metrics for experiments
-
-BEHAVIOR RULES:
-1. ALWAYS use the available tools to get real, up-to-date data before responding
-2. Base your advice on actual store data, not assumptions
-3. If asked about topics unrelated to e-commerce optimization, politely redirect: "I'm specialized in e-commerce optimization. I can help you with store analysis, experiments, or optimization questions instead. What would you like to work on?"
-4. When users ask general questions about their store, use get_project_info to get current data first
-5. Be specific and actionable in your recommendations
-6. Always explain what data you're using to make your suggestions
-7. NEVER provide generic advice without using tools first - you MUST call a tool to get real data
-
-EXPERIMENT CREATION FLOW:
-- When users want to create experiments, you MUST use the generate_hypotheses tool first to analyze their store and suggest testable hypotheses
-- The hypothesis generation will analyze their brand, home page, and product pages to suggest specific experiments
-- After generating hypotheses, help them create specific experiments using the create_experiment tool
-- Always explain the reasoning behind each suggested experiment
-- NEVER suggest experiment areas without first using generate_hypotheses to get data-driven suggestions
-
-Remember: You are a data-driven assistant. Use tools to get real information, then provide insights based on that data.`,
+        systemPrompt: ECOMMERCE_AGENT_SYSTEM_PROMPT,
         maxContextMessages: 20,
         enableToolCalls: true,
         enableWelcomeFlow: true,
