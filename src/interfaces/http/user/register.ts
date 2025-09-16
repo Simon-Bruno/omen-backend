@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import '@shared/fastify.d';
-import { auth0 } from '@infra/auth0';
+import { auth0 } from '@infra/external/auth0';
 import { shopifyOAuth, shopify } from '@infra/external/shopify';
-import { userService } from '@infra/services/user';
+import { userService } from '@infra/dal/user';
 import { prisma } from '@infra/prisma';
 
 export async function userRegistrationRoutes(fastify: FastifyInstance) {
@@ -132,7 +132,7 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
             const { code, shop, hmac, state } = validation.params!;
 
             // Handle OAuth callback
-            const { shopProfile, email } = await shopifyOAuth.handleRegistrationCallback(
+            const { shopProfile, email, encryptedToken } = await shopifyOAuth.handleRegistrationCallback(
                 code, shop, hmac, state
             );
             
@@ -149,6 +149,11 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
             }
 
             // Create project and bind to user
+            await userService.bindProjectToUser(
+                user.id,
+                shopProfile.myshopify_domain,
+                encryptedToken
+            );
 
             // Redirect to frontend login page with success
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';

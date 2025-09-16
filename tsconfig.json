@@ -25,6 +25,7 @@
       "@infra/*": ["infra/*"],
       "@interfaces/*": ["interfaces/*"],
       "@jobs/*": ["jobs/*"],
+      "@services/*": ["services/*"],
       "@shared/*": ["shared/*"],
       "@tests/*": ["tests/*"]
     }

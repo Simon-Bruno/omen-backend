@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify/types/instance.js';
 import '@shared/fastify.d';
 import { authMiddleware } from '@interfaces/http/middleware/auth';
 import { requireAuth } from '@interfaces/http/middleware/authorization';
-import { userService } from '@infra/services/user';
+import { userService } from '@infra/dal/user';
 
 export async function userRoutes(fastify: FastifyInstance) {
     // Get current user info (protected - only requires authentication, not project binding)

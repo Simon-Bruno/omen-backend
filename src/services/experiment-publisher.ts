@@ -5,10 +5,10 @@
  * Used by the experiments API endpoints.
  */
 
-import { CloudflarePublisher } from '../external/cloudflare';
-import { ExperimentDAL } from '../dal/experiment';
+import { CloudflarePublisher } from '@infra/external/cloudflare';
+import { ExperimentDAL } from '@infra/dal/experiment';
 import type { ExperimentDSL } from '@shared/types';
-import type { PublishResult, UnpublishResult } from '../external/cloudflare';
+import type { PublishResult, UnpublishResult } from '@infra/external/cloudflare';
 
 export interface ExperimentPublishResult {
   success: boolean;

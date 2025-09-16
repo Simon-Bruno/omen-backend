@@ -1,6 +1,6 @@
-// Chat HTTP Interface
+
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { serviceContainer } from '@infra/container';
+import { serviceContainer } from '@app/container';
 import type { AgentMessage } from '@domain/agent';
 
 // Request/Response schemas - using JSON Schema directly in Fastify
@@ -53,6 +53,7 @@ interface GetMessagesResponse {
         createdAt: string;
     }>;
 }
+
 
 export async function chatRoutes(fastify: FastifyInstance) {
     // Create or get active chat session
@@ -147,7 +148,31 @@ export async function chatRoutes(fastify: FastifyInstance) {
                                 id: { type: 'string' },
                                 sessionId: { type: 'string' },
                                 role: { type: 'string', enum: ['USER', 'AGENT', 'TOOL', 'SYSTEM'] },
-                                content: { type: 'object' },
+                                content: {
+                                    type: 'object',
+                                    properties: {
+                                        text: { type: 'string' },
+                                        metadata: { type: 'object' },
+                                        toolCalls: {
+                                            type: 'array',
+                                            items: {
+                                                type: 'object',
+                                                properties: {
+                                                    id: { type: 'string' },
+                                                    type: { type: 'string' },
+                                                    function: {
+                                                        type: 'object',
+                                                        properties: {
+                                                            name: { type: 'string' },
+                                                            arguments: { type: 'string' }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        toolCallId: { type: 'string' }
+                                    }
+                                },
                                 createdAt: { type: 'string' },
                             },
                         },
@@ -178,6 +203,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
             const agentMessage = await agentService.sendMessage(sessionId, message);
 
             console.log(`[HTTP] Agent message: ${JSON.stringify(agentMessage)}`);
+
 
             const processingTime = Date.now() - startTime;
 
@@ -230,12 +256,12 @@ export async function chatRoutes(fastify: FastifyInstance) {
         try {
             const { sessionId } = request.params;
             const { limit } = request.query;
-            
+
             // Convert limit to number if provided
             const numericLimit = limit ? parseInt(limit.toString(), 10) : undefined;
-            
+
             console.log(`[HTTP] Getting messages for session: ${sessionId}, limit: ${numericLimit}`);
-            
+
             const agentService = serviceContainer.getAgentService();
 
             const messages = await agentService.getSessionMessages(sessionId, numericLimit);
@@ -253,7 +279,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
             const response = {
                 messages: formattedMessages,
             };
-            
+
             console.log(`[HTTP] Final response being sent: ${JSON.stringify(response, null, 2)}`);
 
             return reply.code(200).send(response);

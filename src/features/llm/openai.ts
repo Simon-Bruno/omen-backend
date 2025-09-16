@@ -133,6 +133,7 @@ export class OpenAIService implements LLMService, LLMProvider {
         }),
         temperature,
         max_tokens: maxTokens,
+        ...(options?.tools && { tools: options.tools }),
       });
 
       const apiTime = Date.now() - startTime;

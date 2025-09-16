@@ -55,6 +55,14 @@ export interface LLMOptions {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+  tools?: Array<{
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: any;
+    };
+  }>;
 }
 
 export interface LLMConfig {
