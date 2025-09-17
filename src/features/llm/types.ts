@@ -1,7 +1,9 @@
 // LLM Service Types
+import type { ChatMessage } from '@domain/agent/types';
+import type { ToolSet } from 'ai';
+
 export interface LLMService {
-  analyzeBrand(request: BrandAnalysisRequest): Promise<BrandAnalysisResponse>;
-  generateText(prompt: string, options?: LLMOptions): Promise<string>;
+  generateStreamText(messages: ChatMessage[], systemPrompt?: string, options?: LLMOptions): Promise<unknown>;
 }
 
 export interface LLMResponse {
@@ -13,48 +15,13 @@ export interface LLMResponse {
   };
 }
 
-export interface BrandAnalysisRequest {
-  htmlContent: {
-    homePage: string;
-    productPages: string[];
-  };
-  screenshots: {
-    homePage: string;
-    productPages: string[];
-  };
-  shopDomain: string;
-}
-
-export interface BrandAnalysisResponse {
-  colors: string[]; // ≤6 colors
-  fonts: string[]; // ≤2 fonts
-  components: string[]; // presence tags like Hero/CTA/Trust/Reviews
-  voice?: {
-    tone: string;
-    personality: string;
-    keyPhrases: string[];
-  };
-  designSystem: {
-    layout: string;
-    spacing: string;
-    typography: string;
-    colorScheme: string;
-  };
-  brandPersonality: {
-    adjectives: string[];
-    values: string[];
-    targetAudience: string;
-  };
-  recommendations: {
-    strengths: string[];
-    opportunities: string[];
-  };
-}
-
 export interface LLMOptions {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+  tools?: ToolSet;
+  toolChoice?: 'auto' | 'none' | 'required';
+  onToolCall?: (toolCall: any) => Promise<any>;
 }
 
 export interface LLMConfig {

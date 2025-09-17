@@ -6,7 +6,7 @@
  */
 
 import 'fastify';
-import type { DiagnosticsService } from '@infra/services/diagnostics';
+import type { DiagnosticsService } from '@domain/analytics/diagnostics';
 
 declare module 'fastify' {
   interface FastifyRequest {

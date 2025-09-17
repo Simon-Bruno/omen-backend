@@ -3,9 +3,10 @@ import fastify from 'fastify';
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import { prisma } from '@infra/prisma';
 import { registerRoutes } from '@interfaces/http/index';
-import { serviceContainer } from '@infra/container';
+import { serviceContainer } from '@app/container';
 
-export async function createServer(): Promise<FastifyInstance> {
+export async function createServer(): Promise<{ server: FastifyInstance; httpServer: any }> {
+    // Create Fastify instance
     const server: FastifyInstance = fastify({
         logger: process.env.NODE_ENV === 'development' ? {
             level: 'info',
@@ -30,15 +31,19 @@ export async function createServer(): Promise<FastifyInstance> {
     server.decorate('diagnosticsService', serviceContainer.getDiagnosticsService());
     await server.register(registerRoutes, { prefix: '/api' });
 
-    return server;
+    // Get the underlying HTTP server from Fastify
+    const httpServer = server.server;
+
+    return { server, httpServer };
 }
 
 export async function startServer(): Promise<void> {
     try {
-        const server = await createServer();
+        const { server } = await createServer();
         const port = parseInt(process.env.PORT || '3000', 10);
         const host = process.env.HOST || '0.0.0.0';
 
+        // Start the Fastify server
         await server.listen({ port, host });
 
         // Graceful shutdown

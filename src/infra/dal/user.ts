@@ -1,4 +1,4 @@
-import { prisma } from '../prisma';
+import { prisma } from '@infra/prisma';
 
 export interface User {
   id: string;

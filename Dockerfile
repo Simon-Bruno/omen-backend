@@ -1,5 +1,5 @@
 # Development Dockerfile with hot reloading
-FROM node:20-alpine
+FROM node:20-bullseye-slim
 
 # Set working directory
 WORKDIR /app
@@ -8,11 +8,25 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies)
+RUN npm install --package-lock-only
 RUN npm ci
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    libnss3 \
+    libfreetype6 \
+    libharfbuzz0b \
+    ca-certificates \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    fonts-freefont-ttf \
+    udev
+
+RUN npx playwright install chromium
 
 # Copy source code and config files
 COPY src/ ./src/
-COPY scripts/ ./scripts/
 COPY tsconfig.json ./
 COPY prisma/ ./prisma/
 
