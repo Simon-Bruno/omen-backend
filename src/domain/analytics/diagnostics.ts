@@ -1,8 +1,9 @@
 // Diagnostics Service - Main orchestrator
 import { DiagnosticsDAL } from '@infra/dal/diagnostics';
 import { ProjectDAL } from '@infra/dal/project';
-import type { BrandAnalysisService, BrandAnalysisResult } from './brand-analysis';
-import type { DiagnosticsRun, DiagnosticsStatus } from '@prisma/client';
+import type { BrandAnalysisService } from '@features/brand_analysis';
+import type { CrawlerService } from '@features/crawler';
+import type { DiagnosticsStatus } from '@prisma/client';
 
 export interface DiagnosticsService {
   startDiagnostics(projectId: string): Promise<{ runId: string }>;
@@ -46,7 +47,8 @@ export interface DiagnosticsResult {
 
 export class DiagnosticsServiceImpl implements DiagnosticsService {
   constructor(
-    private brandAnalysisService: BrandAnalysisService
+    private brandAnalysisService: BrandAnalysisService,
+    private crawler: CrawlerService
   ) {}
 
   async startDiagnostics(projectId: string): Promise<{ runId: string }> {
@@ -107,7 +109,7 @@ export class DiagnosticsServiceImpl implements DiagnosticsService {
       }
 
       // Perform brand analysis
-      const analysisResult = await this.brandAnalysisService.analyzeProject(projectId, project.shopDomain);
+      const analysisResult = await this.brandAnalysisService.analyzeProject(project.shopDomain, this.crawler);
 
       if (!analysisResult.success) {
         throw new Error(analysisResult.error || 'Brand analysis failed');
@@ -145,7 +147,8 @@ export class DiagnosticsServiceImpl implements DiagnosticsService {
 
 // Factory function
 export function createDiagnosticsService(
-  brandAnalysisService: BrandAnalysisService
+  brandAnalysisService: BrandAnalysisService,
+  crawler: CrawlerService
 ): DiagnosticsService {
-  return new DiagnosticsServiceImpl(brandAnalysisService);
+  return new DiagnosticsServiceImpl(brandAnalysisService, crawler);
 }

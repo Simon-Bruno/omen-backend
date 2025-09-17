@@ -16,13 +16,12 @@ services:
       - ./src:/app/src
       - ./prisma:/app/prisma
       - ./tsconfig.json:/app/tsconfig.json
-      # Exclude node_modules to avoid conflicts
       - /app/node_modules
     depends_on:
       - postgres
     restart: unless-stopped
     command: sh -c "npx prisma migrate deploy && npm run dev"
-
+          
   postgres:
     image: postgres:15-alpine
     environment:

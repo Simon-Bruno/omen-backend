@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify/types/request.js';
 import type { FastifyReply } from 'fastify/types/reply.js';
 import '@shared/fastify.d';
-import { auth0 } from '@infra/auth0';
+import { auth0 } from '@infra/external/auth0';
 import type { ProjectParams, ProjectBody } from '@shared/types';
 
 /**
@@ -48,7 +48,7 @@ export const requireProjectOwnership = async (request: FastifyRequest, reply: Fa
   }
 
   // Check if user owns this project
-  const { userService } = await import('@infra/services/user');
+  const { userService } = await import('@infra/dal/user');
   const ownsProject = await userService.userOwnsProject(request.userId, projectId);
 
   if (!ownsProject) {
@@ -77,7 +77,7 @@ export const optionalProjectOwnership = async (request: FastifyRequest, reply: F
   const projectId = (request.params as ProjectParams)?.projectId || (request.body as ProjectBody)?.projectId;
 
   if (projectId) {
-    const { userService } = await import('@infra/services/user');
+    const { userService } = await import('@infra/dal/user');
     const ownsProject = await userService.userOwnsProject(request.userId, projectId);
 
     if (!ownsProject) {

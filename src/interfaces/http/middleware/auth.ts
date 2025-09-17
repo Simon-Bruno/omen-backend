@@ -78,7 +78,7 @@ export const authMiddleware = async (request: FastifyRequest, reply: FastifyRepl
     };
 
     // Get user from our database
-    const { userService } = await import('@infra/services/user');
+    const { userService } = await import('@infra/dal/user');
     const user = await userService.getUserByAuth0Id(payload.sub as string);
     
     if (!user) {
