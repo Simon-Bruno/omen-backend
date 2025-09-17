@@ -1,10 +1,10 @@
 // Brand Analysis Service
 import type { CrawlerService, CrawlResult } from '@features/crawler';
-import type { LLMService } from '@features/llm';
 import type { BrandAnalysisRequest, BrandAnalysisResponse } from './types';
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
+import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
 
 export interface BrandAnalysisService {
   analyzeProject(shopDomain: string): Promise<BrandAnalysisResult>;
@@ -43,10 +43,13 @@ const brandAnalysisSchema = z.object({
 });
 
 export class BrandAnalysisServiceImpl implements BrandAnalysisService {
+  private aiConfig: ReturnType<typeof getAIConfig>;
+
   constructor(
-    private crawler: CrawlerService,
-    private llm: LLMService
-  ) { }
+    private crawler: CrawlerService
+  ) {
+    this.aiConfig = getAIConfig();
+  }
 
   async analyzeBrand(request: BrandAnalysisRequest): Promise<BrandAnalysisResponse> {
     // Ensure screenshots are proper data URLs
@@ -74,7 +77,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
     const prompt = this.buildBrandAnalysisPrompt(regexFinds.join("\n"));
     try {
       const result = await generateObject({
-        model: openai('gpt-4o'),
+        model: openai(this.aiConfig.model),
         schema: brandAnalysisSchema,
         messages: [
           {
@@ -86,7 +89,8 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
               { type: 'image', image: toDataUrl(request.pages.screenshot[2]) }
             ]
           }
-        ]
+        ],
+        ...AI_CONFIGS.STRUCTURED_OUTPUT
       });
 
       return result.object;
@@ -243,8 +247,7 @@ ${additionalInfo}
 
 // Factory function
 export function createBrandAnalysisService(
-  crawler: CrawlerService,
-  llm: LLMService
+  crawler: CrawlerService
 ): BrandAnalysisService {
-  return new BrandAnalysisServiceImpl(crawler, llm);
+  return new BrandAnalysisServiceImpl(crawler);
 }

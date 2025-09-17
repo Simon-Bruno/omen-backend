@@ -1,5 +1,9 @@
 // Hypothesis Generation Service for Experiment Creation
 import type { BrandAnalysisResult } from '@features/brand_analysis';
+import { generateObject } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { z } from 'zod';
+import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
 
 export interface HypothesisGenerationRequest {
   projectId: string;
@@ -56,16 +60,26 @@ export interface HypothesisGenerationResult {
   };
 }
 
+const pageAnalysisSchema = z.object({
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+  opportunities: z.array(z.string()),
+  keyElements: z.array(z.string()),
+});
+
 export interface HypothesisGeneratorService {
   generateHypotheses(request: HypothesisGenerationRequest): Promise<HypothesisGenerationResult>;
   analyzePage(pageData: PageAnalysis): Promise<PageAnalysis>;
 }
 
 export class HypothesisGeneratorServiceImpl implements HypothesisGeneratorService {
+  private aiConfig: ReturnType<typeof getAIConfig>;
+
   constructor(
-    private llmService: unknown, // Will be LLMService type
     private crawlerService: unknown // Will be CrawlerService type
-  ) {}
+  ) {
+    this.aiConfig = getAIConfig();
+  }
 
   async generateHypotheses(request: HypothesisGenerationRequest): Promise<HypothesisGenerationResult> {
     try {
@@ -111,20 +125,26 @@ export class HypothesisGeneratorServiceImpl implements HypothesisGeneratorServic
 
   async analyzePage(pageData: PageAnalysis): Promise<PageAnalysis> {
     try {
-      // Use LLM to analyze the page
-      // const analysisPrompt = this.buildPageAnalysisPrompt(pageData);
-      // TODO: Implement LLM service integration
-      // const analysisResult = await this.llmService.analyzePage(analysisPrompt);
-      const analysisResult = {
-        strengths: ['Mock strength 1', 'Mock strength 2'],
-        weaknesses: ['Mock weakness 1', 'Mock weakness 2'],
-        opportunities: ['Mock opportunity 1', 'Mock opportunity 2'],
-        keyElements: ['Mock element 1', 'Mock element 2'],
-      };
+      const analysisPrompt = this.buildPageAnalysisPrompt(pageData);
+      
+      const result = await generateObject({
+        model: openai(this.aiConfig.model),
+        schema: pageAnalysisSchema,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: analysisPrompt },
+              { type: 'image', image: pageData.screenshot }
+            ]
+          }
+        ],
+        ...AI_CONFIGS.ANALYSIS
+      });
 
       return {
         ...pageData,
-        analysis: analysisResult,
+        analysis: result.object,
       };
     } catch (error) {
       console.error(`[HYPOTHESIS] Failed to analyze page ${pageData.url}:`, error);
@@ -303,8 +323,7 @@ Return in JSON format:
 }
 
 export function createHypothesisGeneratorService(
-  llmService: unknown,
   crawlerService: unknown
 ): HypothesisGeneratorService {
-  return new HypothesisGeneratorServiceImpl(llmService, crawlerService);
+  return new HypothesisGeneratorServiceImpl(crawlerService);
 }
