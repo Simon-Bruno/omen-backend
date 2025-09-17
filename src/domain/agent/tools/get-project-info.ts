@@ -13,7 +13,7 @@ class GetProjectInfoExecutor {
 
   private async getProjectInfo(projectId: string): Promise<ProjectInfo> {
     // If using default project ID (sessions disabled), return mock data
-    if (projectId != 'cmfkzwyuj0001qhopskyshs91') {
+    if (projectId != 'cmfnzbogn0001qjeqcnud7suy') {
       return {
         id: 'default-project-id',
         shopDomain: 'example.myshopify.com',
@@ -39,7 +39,7 @@ class GetProjectInfoExecutor {
 
 export function createGetProjectInfoTool() {
   const executor = new GetProjectInfoExecutor();
-  
+
   return tool({
     description: 'Get detailed information about the current project including Shopify store details and experiment statistics',
     inputSchema: getProjectInfoSchema,
