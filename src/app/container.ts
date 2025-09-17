@@ -1,9 +1,9 @@
 // Service Container for Dependency Injection
 import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler';
-import { createBrandAnalysisService, type BrandAnalysisService } from '@domain/analytics/brand-analysis';
 import { createDiagnosticsService, type DiagnosticsService } from '@domain/analytics/diagnostics';
 import { createAgentService, type AgentService, type LLMProvider, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
 import { createOpenAIService, createOpenAIProvider, type LLMService } from '@features/llm';
+import { createBrandAnalysisService, type BrandAnalysisService } from '@features/brand_analysis';
 import { getServiceConfig } from '@infra/config/services';
 
 class ServiceContainer {
@@ -28,8 +28,8 @@ class ServiceContainer {
 
   getBrandAnalysisService(): BrandAnalysisService {
     if (!this.services.has('brandAnalysis')) {
-      const llm = this.getLLMService();
       const crawler = this.getCrawlerService();
+      const llm = this.getLLMService();
       const brandAnalysisService = createBrandAnalysisService(crawler, llm);
       this.services.set('brandAnalysis', brandAnalysisService);
     }
@@ -39,7 +39,8 @@ class ServiceContainer {
   getDiagnosticsService(): DiagnosticsService {
     if (!this.services.has('diagnostics')) {
       const brandAnalysis = this.getBrandAnalysisService();
-      const diagnosticsService = createDiagnosticsService(brandAnalysis);
+      const crawler = this.getCrawlerService();
+      const diagnosticsService = createDiagnosticsService(brandAnalysis, crawler);
       this.services.set('diagnostics', diagnosticsService);
     }
     return this.services.get('diagnostics');

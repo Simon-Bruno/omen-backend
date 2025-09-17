@@ -1,5 +1,5 @@
 // Hypothesis Generation Service for Experiment Creation
-import type { BrandAnalysisResult } from '@domain/analytics/brand-analysis';
+import type { BrandAnalysisResult } from '@features/brand_analysis';
 
 export interface HypothesisGenerationRequest {
   projectId: string;

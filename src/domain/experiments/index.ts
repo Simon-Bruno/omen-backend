@@ -1,1 +1,1 @@
-export * from './hypothesis-generator';
+export { }

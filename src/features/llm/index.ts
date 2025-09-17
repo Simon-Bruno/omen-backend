@@ -3,8 +3,6 @@ export { OpenAIService, createOpenAIService, createOpenAIProvider } from './open
 export type { 
   LLMService, 
   LLMResponse, 
-  BrandAnalysisRequest, 
-  BrandAnalysisResponse, 
   LLMOptions, 
   LLMConfig
 } from './types';

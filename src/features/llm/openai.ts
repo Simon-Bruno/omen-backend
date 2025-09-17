@@ -18,7 +18,7 @@ function extractTextContent(message: ChatMessage): string {
   if (typeof message.content === 'string') {
     return message.content;
   }
-  
+
   return message.content
     .filter(block => block.type === 'text')
     .map(block => block.text || '')

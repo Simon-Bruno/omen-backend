@@ -17,11 +17,18 @@ export class PlaywrightCrawlerService implements CrawlerService {
   }
 
   async initialize(): Promise<void> {
-    if (!this.browser) {
+    //if (!this.browser) {
       this.browser = await chromium.launch({
         headless: this.config.headless,
+        args: [
+          '--disable-gpu',
+          '--no-sandbox',
+          '--disable-dev-shm-usage',
+          '--single-process',
+          '--disable-setuid-sandbox',
+        ],
       });
-    }
+    //}
   }
 
   async close(): Promise<void> {
@@ -55,10 +62,11 @@ export class PlaywrightCrawlerService implements CrawlerService {
       // Set timeout
       const timeout = options.timeout || this.config.defaultTimeout!;
       page.setDefaultTimeout(timeout);
-
+      
       // Navigate to page
-      await page.goto(url, { waitUntil: 'networkidle' });
-
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('load', { timeout: 5000}).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 3000}).catch(() => {});
       // Wait additional time if specified
       const waitFor = options.waitFor || this.config.defaultWaitFor!;
       if (waitFor > 0) {
@@ -67,12 +75,11 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
       // Extract HTML content
       const html = await page.content();
-
       // Take screenshot
       const screenshot = await page.screenshot({
         type: 'png',
         fullPage: options.screenshot?.fullPage ?? true,
-        quality: options.screenshot?.quality ?? 80,
+        // quality: options.screenshot?.quality ?? 80,
       });
 
       // Extract metadata
@@ -81,12 +88,13 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
       return {
         url,
-        html,
+         html,
         screenshot: screenshot.toString('base64'),
         title,
         description: description || undefined,
       };
     } catch (error) {
+      console.error(error);
       return {
         url,
         html: '',
