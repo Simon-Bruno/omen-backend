@@ -3,7 +3,6 @@ import { shopifyApi, ApiVersion, Session } from '@shopify/shopify-api';
 import { ProjectDAL } from '../../dal';
 import { decrypt } from '../../encryption';
 
-
 const shopify = shopifyApi({
     apiKey: process.env.SHOPIFY_API_KEY,
     apiSecretKey: process.env.SHOPIFY_API_SECRET!,
@@ -44,7 +43,7 @@ const getDefaultProjectInfo = async () => {
 
     const data = await client.query({
         data: `query GetThemes {
-  themes(first: 10) {
+  themes(roles: MAIN, first: 1) {
     edges {
       node {
         id
@@ -57,12 +56,31 @@ const getDefaultProjectInfo = async () => {
   }
 }
   `,
-    });
+    }) as any;
 
-    const themes = data.body.data.themes.edges;
-    const mainTheme = themes.find(edge => edge.node.role === "MAIN").node;
-
-
+    const mainTheme = data.body.data.themes.edges[0].node;
+    console.log(mainTheme);
+    console.log(mainTheme.id);
+    const themeData = await client.query({
+      data: `query GetTheme {
+  theme(id: "${mainTheme.id}") {
+    id
+    name
+    role
+    files {
+      nodes {
+        body {
+          ... on OnlineStoreThemeFileBodyText {
+            content
+          }
+        }
+      }
+    }
+  }
+}
+`,
+  }) as any;
+    console.log(themeData.body.data.theme.files.nodes);
     return mainTheme
 
 }
