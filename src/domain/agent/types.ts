@@ -1,5 +1,4 @@
 // Agent Domain Types
-import type { LLMOptions } from '@features/llm';
 
 export interface AgentMessage {
   id: string;
@@ -51,9 +50,6 @@ export interface ChatCompletionResponse {
   };
 }
 
-export interface LLMProvider {
-  generateStreamText(messages: ChatMessage[], systemPrompt?: string, options?: LLMOptions): Promise<unknown>;
-}
 
 export interface AgentConfig {
   systemPrompt?: string;

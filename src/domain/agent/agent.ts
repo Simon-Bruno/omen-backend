@@ -1,19 +1,22 @@
 // Agent Domain Service - Provider-agnostic conversation management
 import { getToolsConfiguration } from './tools';
 import { createEcommerceAgentSystemPrompt } from './prompts';
+import { streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
 import type {
   AgentService,
   AgentConfig,
   ChatMessage,
-  LLMProvider,
 } from './types';
 
 export class AgentServiceImpl implements AgentService {
+  private aiConfig: ReturnType<typeof getAIConfig>;
 
   constructor(
-    private llmProvider: LLMProvider,
     private config: AgentConfig = {}
   ) {
+    this.aiConfig = getAIConfig();
   }
 
   async sendMessageStream(sessionId: string, message: string): Promise<{ stream: unknown; messageId: string }> {
@@ -59,12 +62,38 @@ export class AgentServiceImpl implements AgentService {
       };
     }
 
+    // Convert messages to AI SDK format
+    const aiMessages = llmMessages.map(msg => {
+      const content = typeof msg.content === 'string'
+        ? msg.content
+        : msg.content
+            .filter(block => block.type === 'text')
+            .map(block => block.text || '')
+            .join('');
+
+      return {
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content,
+        ...(msg.tool_calls && { toolCalls: msg.tool_calls }),
+        ...(msg.tool_call_id && { toolCallId: msg.tool_call_id }),
+      };
+    });
+
+    // Add system prompt if provided
+    if (systemPrompt) {
+      aiMessages.unshift({
+        role: 'system',
+        content: systemPrompt,
+      });
+    }
+
     // Use AI SDK streaming with tools enabled
-    const result = await this.llmProvider.generateStreamText(
-      llmMessages,
-      systemPrompt,
-      llmOptions
-    );
+    const result = streamText({
+      tools: llmOptions.tools,
+      model: openai(this.aiConfig.model),
+      messages: aiMessages,
+      ...AI_CONFIGS.STREAMING
+    });
 
     // Create a message ID for the response
     const messageId = `msg-${Date.now()}`;
@@ -75,8 +104,7 @@ export class AgentServiceImpl implements AgentService {
 
 // Factory function
 export function createAgentService(
-  llmProvider: LLMProvider,
   config?: AgentConfig
 ): AgentService {
-  return new AgentServiceImpl(llmProvider, config);
+  return new AgentServiceImpl(config);
 }

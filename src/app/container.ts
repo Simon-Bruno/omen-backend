@@ -1,22 +1,14 @@
 // Service Container for Dependency Injection
 import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler';
 import { createDiagnosticsService, type DiagnosticsService } from '@domain/analytics/diagnostics';
-import { createAgentService, type AgentService, type LLMProvider, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
-import { createOpenAIService, createOpenAIProvider, type LLMService } from '@features/llm';
+import { createAgentService, type AgentService, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
 import { createBrandAnalysisService, type BrandAnalysisService } from '@features/brand_analysis';
 import { getServiceConfig } from '@infra/config/services';
 
 class ServiceContainer {
-  private services: Map<string, any> = new Map();
+  private services: Map<string, unknown> = new Map();
   private config = getServiceConfig();
 
-  getLLMService(): LLMService {
-    if (!this.services.has('llm')) {
-      const llmService = createOpenAIService(this.config.openai);
-      this.services.set('llm', llmService);
-    }
-    return this.services.get('llm');
-  }
 
   getCrawlerService(): CrawlerService {
     if (!this.services.has('crawler')) {
@@ -29,8 +21,7 @@ class ServiceContainer {
   getBrandAnalysisService(): BrandAnalysisService {
     if (!this.services.has('brandAnalysis')) {
       const crawler = this.getCrawlerService();
-      const llm = this.getLLMService();
-      const brandAnalysisService = createBrandAnalysisService(crawler, llm);
+      const brandAnalysisService = createBrandAnalysisService(crawler);
       this.services.set('brandAnalysis', brandAnalysisService);
     }
     return this.services.get('brandAnalysis');
@@ -46,22 +37,10 @@ class ServiceContainer {
     return this.services.get('diagnostics');
   }
 
-  getLLMProvider(): LLMProvider {
-    if (!this.services.has('llmProvider')) {
-      const llmProvider = createOpenAIProvider(this.config.openai);
-      this.services.set('llmProvider', llmProvider);
-    }
-    return this.services.get('llmProvider');
-  }
-
-  getLLMConfig() {
-    return this.config.openai;
-  }
 
   getAgentService(): AgentService {
     if (!this.services.has('agent')) {
-      const llmProvider = this.getLLMProvider();
-      const agentService = createAgentService(llmProvider, {
+      const agentService = createAgentService({
         systemPrompt: ECOMMERCE_AGENT_SYSTEM_PROMPT,
         maxContextMessages: 20,
         enableToolCalls: true,
