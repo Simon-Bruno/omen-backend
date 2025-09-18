@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { ProjectDAL } from '@infra/dal'
 
 export interface HypothesesGenerationService {
-    generateHypotheses(url: string, projectId: number): Promise<HypothesesGenerationResult>;
+    generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
 }
 
 export interface HypothesesGenerationResult {
@@ -33,7 +33,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         this.crawlerService = new PlaywrightCrawlerService();
     }
 
-    async generateHypotheses(url: string, projectId: number): Promise<HypothesesGenerationResult> {
+    async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
             if (b64.startsWith('data:')) return b64;
