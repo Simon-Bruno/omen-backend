@@ -1,6 +1,6 @@
 // Brand Analysis Service
 import type { CrawlerService, CrawlResult } from '@features/crawler';
-import type { DetailedBrandAnalysisResponse } from './types';
+import type { BrandAnalysisResponse } from './types';
 import { ScreenshotAnalyzer } from './screenshot-analyzer';
 import { LanguageAnalyzer } from './language-analyzer';
 import { CodeAnalyzer } from './code-analyzer';
@@ -13,7 +13,7 @@ export interface BrandAnalysisService {
 
 export interface BrandAnalysisResult {
   success: boolean;
-  brandSummary?: DetailedBrandAnalysisResponse;
+  brandSummary?: BrandAnalysisResponse;
   error?: string;
 }
 
@@ -111,7 +111,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         language: languageAnalysis,
         // code: codeAnalysis,
       };
-      
+
       await ProjectDAL.updateProjectBrandAnalysis(projectId, detailedAnalysis);
       return {
         success: true,
