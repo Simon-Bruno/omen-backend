@@ -59,8 +59,6 @@ const getDefaultProjectInfo = async () => {
     }) as any;
 
     const mainTheme = data.body.data.themes.edges[0].node;
-    console.log(mainTheme);
-    console.log(mainTheme.id);
     const themeData = await client.query({
       data: `query GetTheme {
   theme(id: "${mainTheme.id}") {
@@ -80,7 +78,7 @@ const getDefaultProjectInfo = async () => {
 }
 `,
   }) as any;
-    console.log(themeData.body.data.theme.files.nodes);
+    console.log(themeData.body.data.theme.files[0]);
     return mainTheme
 
 }

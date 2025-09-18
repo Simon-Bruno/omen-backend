@@ -56,7 +56,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         candidates = this.buildCrawlUrls(shopDomain);
       }
 
-      const response = { home: candidates[0], products: candidates[1], about: candidates[4] };
+      const response = this.codeAnalyzer
 
       const filteredCandidates = (['home', 'products', 'about'] as const)
         .map(k => response[k])
