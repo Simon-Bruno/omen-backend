@@ -60,7 +60,7 @@ class ServiceContainer {
     return this.services.get('hypothesisGenerator');
   }
 
-
+  
   async cleanup(): Promise<void> {
     // Cleanup any services that need it
     const crawler = this.services.get('crawler');

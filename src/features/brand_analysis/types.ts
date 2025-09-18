@@ -7,36 +7,7 @@ export interface BrandAnalysisRequest {
   };
   shopDomain: string;
 }
-
-// Legacy response type for backward compatibility
 export interface BrandAnalysisResponse {
-  colors: string[]; // ≤6 colors
-  fonts: string[]; // ≤2 fonts
-  components: string[]; // presence tags like Hero/CTA/Trust/Reviews
-  voice?: {
-    tone: string;
-    personality: string;
-    keyPhrases: string[];
-  };
-  designSystem: {
-    layout: string;
-    spacing: string;
-    typography: string;
-    colorScheme: string;
-  };
-  brandPersonality: {
-    adjectives: string[];
-    values: string[];
-    targetAudience: string;
-  };
-  recommendations: {
-    strengths: string[];
-    opportunities: string[];
-  };
-}
-
-// New detailed response type - simple combination of analyzer results
-export interface DetailedBrandAnalysisResponse {
   screenshot: {
     visualStyle: {
       overallAesthetic: string;

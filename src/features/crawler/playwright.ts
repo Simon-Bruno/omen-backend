@@ -94,6 +94,39 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
     return '';
   }
+  
+  private async handleShopifyPasswordAuth(page: import('playwright').Page, auth: { type: 'shopify_password'; password: string; shopDomain: string }): Promise<void> {
+    try {
+      // Check if we're on a Shopify password page by looking for the password input
+      const passwordInput = await page.$('input[type="password"][id="password"][name="password"]');
+      
+      if (passwordInput) {
+        console.log(`Detected Shopify password page for ${auth.shopDomain}, attempting to fill password`);
+        
+        // Fill in the password
+        await passwordInput.fill(auth.password);
+        
+        // Find and click the submit button
+        const submitButton = await page.$('button[type="submit"]');
+        if (submitButton) {
+          await submitButton.click();
+          
+          // Wait for navigation after form submission
+          await page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
+          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+          
+          console.log(`Successfully submitted password for ${auth.shopDomain}`);
+        } else {
+          console.warn(`Submit button not found for ${auth.shopDomain}`);
+        }
+      } else {
+        console.log(`No password input found for ${auth.shopDomain}, proceeding without authentication`);
+      }
+    } catch (error) {
+      console.error(`Error handling Shopify password authentication for ${auth.shopDomain}:`, error);
+      // Don't throw the error, just log it and continue
+    }
+  }
 
   async crawlPage(url: string, options: CrawlOptions = {}): Promise<CrawlResult> {
     await this.initialize();
@@ -116,6 +149,20 @@ export class PlaywrightCrawlerService implements CrawlerService {
         });
       }
 
+      // Set timeout
+      const timeout = options.timeout || this.config.defaultTimeout!;
+      page.setDefaultTimeout(timeout);
+
+      // Navigate to page
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('load', { timeout: 5000}).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 3000}).catch(() => {});
+
+      // Handle Shopify password authentication if needed
+      if (options.authentication?.type === 'shopify_password') {
+        await this.handleShopifyPasswordAuth(page, options.authentication);
+      }
+
       const lazyImagesLocator = page.locator('img[loading="lazy"]:visible');
       const lazyImages = await lazyImagesLocator.all();
       for (const lazyImage of lazyImages) {
@@ -129,15 +176,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
           document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
         }
       });
-
-      // Set timeout
-      const timeout = options.timeout || this.config.defaultTimeout!;
-      page.setDefaultTimeout(timeout);
-
-      // Navigate to page
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
-      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => { });
+      
       // Wait additional time if specified
       const waitFor = options.waitFor || this.config.defaultWaitFor!;
       if (waitFor > 0) {
