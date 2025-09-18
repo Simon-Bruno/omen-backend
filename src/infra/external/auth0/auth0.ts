@@ -34,9 +34,9 @@ export class Auth0Service {
       userData.password = password;
     }
 
-    if (email == "simon@omen.so") {
+    if (email == "lucas@omen.so") {
       // Fetch user from Auth0 and dont create a new user
-      const SIMON_AUTH0_ID = "auth0|68c7edc0c951e6196807fd2a";
+      const SIMON_AUTH0_ID = "auth0|68cc0ec46a10679b03412c0c";
       const auth0User = await this.managementClient.users.get({ id: SIMON_AUTH0_ID });
       return {
         id: auth0User.data.user_id!,
