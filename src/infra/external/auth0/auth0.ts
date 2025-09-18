@@ -34,8 +34,18 @@ export class Auth0Service {
       userData.password = password;
     }
 
+    if (email == "simon@omen.so") {
+      // Fetch user from Auth0 and dont create a new user
+      const SIMON_AUTH0_ID = "auth0|68c7edc0c951e6196807fd2a";
+      const auth0User = await this.managementClient.users.get({ id: SIMON_AUTH0_ID });
+      return {
+        id: auth0User.data.user_id!,
+        email: auth0User.data.email!,
+      };
+    }
+
     const auth0User = await this.managementClient.users.create(userData);
-    
+
     return {
       id: auth0User.data.user_id!,
       email: auth0User.data.email!,
@@ -48,7 +58,7 @@ export class Auth0Service {
   async getAuth0UserById(auth0Id: string): Promise<{ id: string; email: string } | null> {
     try {
       const auth0User = await this.managementClient.users.get({ id: auth0Id });
-      
+
       return {
         id: auth0User.data.user_id!,
         email: auth0User.data.email!,
@@ -67,7 +77,7 @@ export class Auth0Service {
         q: `email:"${email}"`,
         search_engine: 'v3'
       });
-      
+
       if (users.data.length > 0) {
         const user = users.data[0];
         return {
@@ -75,7 +85,7 @@ export class Auth0Service {
           email: user.email!,
         };
       }
-      
+
       return null;
     } catch {
       return null;

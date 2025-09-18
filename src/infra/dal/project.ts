@@ -74,6 +74,19 @@ export class ProjectDAL {
   }
 
   /**
+   * Update project access token
+   */
+  static async updateProjectBrandAnalysis(
+    projectId: string,
+    brandAnalysis: any
+  ): Promise<Project> {
+    return await prisma.project.update({
+      where: { id: projectId },
+      data: { brandAnalysis: brandAnalysis },
+    });
+  }
+
+  /**
    * Delete project (cascade will handle related records)
    */
   static async deleteProject(projectId: string): Promise<void> {
@@ -91,5 +104,28 @@ export class ProjectDAL {
       select: { id: true },
     });
     return project !== null;
+  }
+
+  /**
+   * Create a brand summary job
+   */
+  static async createBrandSummaryJob(projectId: string): Promise<{ id: string }> {
+    const job = await prisma.brandSummaryJob.create({
+      data: {
+        projectId,
+        status: 'PENDING',
+        progress: 0,
+      },
+    });
+    return { id: job.id };
+  }
+
+  /**
+   * Get brand summary job status
+   */
+  static async getBrandSummaryJob(jobId: string) {
+    return await prisma.brandSummaryJob.findUnique({
+      where: { id: jobId },
+    });
   }
 }
