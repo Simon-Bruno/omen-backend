@@ -5,6 +5,10 @@ export const getProjectInfoSchema = z.object({
   // Empty object for now, but can be extended with parameters if needed
 });
 
+export const createHypothesesSchema = z.object({
+  // Empty object for now, but can be extended with parameters if needed
+});
+
 export const toolSchemas = {
   get_project_info: getProjectInfoSchema,
 } as const;

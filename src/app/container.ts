@@ -54,7 +54,8 @@ class ServiceContainer {
 
   getHypothesisGenerator(): HypothesesGenerationService {
     if (!this.services.has('hypothesesGeneration')) {
-      const hypothesesGenerator = createHypothesesGenerationService();
+      const crawler = this.getCrawlerService();
+      const hypothesesGenerator = createHypothesesGenerationService(crawler);
       this.services.set('hypothesesGeneration', hypothesesGenerator);
     }
     return this.services.get('hypothesesGeneration');

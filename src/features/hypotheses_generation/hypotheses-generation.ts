@@ -16,9 +16,9 @@ export interface HypothesesGenerationResult {
 // Factory function
 export function createHypothesesGenerationService(
     crawler: CrawlerService
-  ): HypothesesGenerationService {
+): HypothesesGenerationService {
     return new HypothesesGenerationServiceImpl(crawler);
-  }
+}
 
 const hypothesisSchema = z.object({
     hypothesis: z.string(),
@@ -47,7 +47,8 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             return `data:image/png;base64,${b64}`;
         };
 
-        const screenshot = await this.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true);
+        const screenshot = await this.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: 'omen-mvp.myshopify.com' });
+
 
         const brandAnalysis = await ProjectDAL.getProjectBrandAnalysis(projectId);
 
@@ -59,7 +60,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                     role: 'user',
                     content: [
                         { type: "text", text: this.buildHypothesesGenerationPrompt() },
-                        { type: "text", text: projectBrandAnalysis },
+                        { type: "text", text: brandAnalysis },
                         { type: "image", image: toDataUrl(screenshot) }
                     ]
                 }
