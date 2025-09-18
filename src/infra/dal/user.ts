@@ -7,6 +7,7 @@ export interface User {
   project?: {
     id: string;
     shopDomain: string;
+    brandAnalysis?: unknown;
   };
 }
 
@@ -35,6 +36,7 @@ export class UserService {
       project: user.project ? {
         id: user.project.id,
         shopDomain: user.project.shopDomain,
+        brandAnalysis: user.project.brandAnalysis,
       } : undefined,
     };
   }
@@ -77,6 +79,7 @@ export class UserService {
       project: user.project ? {
         id: user.project.id,
         shopDomain: user.project.shopDomain,
+        brandAnalysis: user.project.brandAnalysis,
       } : undefined,
     };
   }
@@ -101,6 +104,7 @@ export class UserService {
       project: user.project ? {
         id: user.project.id,
         shopDomain: user.project.shopDomain,
+        brandAnalysis: user.project.brandAnalysis,
       } : undefined,
     };
   }
@@ -123,6 +127,7 @@ export class UserService {
       project: user.project ? {
         id: user.project.id,
         shopDomain: user.project.shopDomain,
+        brandAnalysis: user.project.brandAnalysis,
       } : undefined,
     };
   }
@@ -179,6 +184,7 @@ export class UserService {
       project: {
         id: user.project!.id,
         shopDomain: user.project!.shopDomain,
+        brandAnalysis: user.project!.brandAnalysis,
       },
     };
   }

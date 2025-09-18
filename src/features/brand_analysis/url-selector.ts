@@ -14,7 +14,7 @@ const urlSelectionSchema = z.object({
 
 export class UrlSelector {
     constructor() { }
-    
+
     async selectUrls(urls: string[]): Promise<UrlSelectionResult> {
         const systemText = `
         You are a professional brand analyst.
@@ -28,9 +28,12 @@ Rules:
 - Normalize relative links to absolute using baseUrl.
 - Choose the single best URL per category when possible.
 
+
+The urls to select from are:
+${urls.join('\n')}
+
 Return ONLY valid JSON.`;
 
-        // Try file-based large input using Responses API
         try {
             const result = await generateObject({
                 model: openai('gpt-4o'),
@@ -38,7 +41,7 @@ Return ONLY valid JSON.`;
                 messages: [
                     {
                         role: 'user',
-                        content: prompt
+                        content: systemText
                     }
                 ]
             });

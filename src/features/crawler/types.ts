@@ -25,6 +25,11 @@ export interface CrawlOptions {
     fullPage?: boolean;
     quality?: number;
   };
+  authentication?: {
+    type: 'shopify_password';
+    password: string;
+    shopDomain: string;
+  };
 }
 
 export interface CrawlerConfig {
