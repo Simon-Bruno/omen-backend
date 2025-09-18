@@ -74,6 +74,19 @@ export class ProjectDAL {
   }
 
   /**
+   * Update project access token
+   */
+  static async updateProjectBrandAnalysis(
+    projectId: string,
+    brandAnalysis: string
+  ): Promise<Project> {
+    return await prisma.project.update({
+      where: { id: projectId },
+      data: { brandAnalysis: brandAnalysis },
+    });
+  }
+
+  /**
    * Delete project (cascade will handle related records)
    */
   static async deleteProject(projectId: string): Promise<void> {
