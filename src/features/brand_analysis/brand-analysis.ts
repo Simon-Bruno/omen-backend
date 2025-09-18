@@ -4,9 +4,11 @@ import type { DetailedBrandAnalysisResponse } from './types';
 import { ScreenshotAnalyzer } from './screenshot-analyzer';
 import { LanguageAnalyzer } from './language-analyzer';
 import { CodeAnalyzer } from './code-analyzer';
+import { UrlSelector } from './url-selector';
+import { ProjectDAL } from '@infra/dal'
 
 export interface BrandAnalysisService {
-  analyzeProject(shopDomain: string): Promise<BrandAnalysisResult>;
+  analyzeProject(projectId: number, shopDomain: string): Promise<BrandAnalysisResult>;
 }
 
 export interface BrandAnalysisResult {
@@ -21,6 +23,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
   private screenshotAnalyzer: ScreenshotAnalyzer;
   private languageAnalyzer: LanguageAnalyzer;
   private codeAnalyzer: CodeAnalyzer;
+  private urlSelector: UrlSelector;
 
   constructor(
     private crawler: CrawlerService
@@ -28,10 +31,11 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
     this.screenshotAnalyzer = new ScreenshotAnalyzer();
     this.languageAnalyzer = new LanguageAnalyzer();
     this.codeAnalyzer = new CodeAnalyzer();
+    this.urlSelector = new UrlSelector();
   }
 
 
-  async analyzeProject(shopDomain: string): Promise<BrandAnalysisResult> {
+  async analyzeProject(projectId: number, shopDomain: string): Promise<BrandAnalysisResult> {
     try {
       const baseUrl = `https://${shopDomain}`;
 
@@ -45,7 +49,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
       let candidates = [baseUrl];
       try {
         // Determine URLs to crawl
-        const regex = /href="((?:\/[a-zA-Z0-9]+)+)\/*"/g;
+        const regex = /href="((?:\/[a-zA-Z0-9?\-=]+)+)\/*"/g;
         let m: RegExpExecArray | null;
         while ((m = regex.exec(homeResult.html)) !== null) {
           const path = m[1];
@@ -56,7 +60,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         candidates = this.buildCrawlUrls(shopDomain);
       }
 
-      const response = this.codeAnalyzer
+      const response = (await this.urlSelector.selectUrls(candidates)).urlScheme as any;
 
       const filteredCandidates = (['home', 'products', 'about'] as const)
         .map(k => response[k])
@@ -97,7 +101,8 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         language: languageAnalysis,
         // code: codeAnalysis,
       };
-
+      
+      await ProjectDAL.updateProjectBrandAnalysis(projectId, detailedAnalysis);
       return {
         success: true,
         brandSummary: detailedAnalysis,
