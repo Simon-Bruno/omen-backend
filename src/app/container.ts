@@ -3,7 +3,7 @@ import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler'
 import { createDiagnosticsService, type DiagnosticsService } from '@domain/analytics/diagnostics';
 import { createAgentService, type AgentService, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
 import { createBrandAnalysisService, type BrandAnalysisService } from '@features/brand_analysis';
-import { createHypothesisGeneratorService, type HypothesisGeneratorService } from '@features/hypothesis_generation';
+import { createHypothesesGenerationService, HypothesesGenerationService } from '@features/hypotheses_generation/hypotheses-generation';
 import { getServiceConfig } from '@infra/config/services';
 
 class ServiceContainer {
@@ -52,12 +52,12 @@ class ServiceContainer {
     return this.services.get('agent');
   }
 
-  getHypothesisGenerator(): HypothesisGeneratorService {
-    if (!this.services.has('hypothesisGenerator')) {
-      const hypothesisGenerator = createHypothesisGeneratorService();
-      this.services.set('hypothesisGenerator', hypothesisGenerator);
+  getHypothesisGenerator(): HypothesesGenerationService {
+    if (!this.services.has('hypothesesGeneration')) {
+      const hypothesesGenerator = createHypothesesGenerationService();
+      this.services.set('hypothesesGeneration', hypothesesGenerator);
     }
-    return this.services.get('hypothesisGenerator');
+    return this.services.get('hypothesesGeneration');
   }
 
   

@@ -1,7 +1,7 @@
-// Brand Analysis Service
+// Hypotheses Generation Service
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { PlaywrightCrawlerService } from '@features/crawler';
+import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
 import { ProjectDAL } from '@infra/dal'
 
@@ -12,6 +12,13 @@ export interface HypothesesGenerationService {
 export interface HypothesesGenerationResult {
     hypothesesSchema: string;
 }
+
+// Factory function
+export function createHypothesesGenerationService(
+    crawler: CrawlerService
+  ): HypothesesGenerationService {
+    return new HypothesesGenerationServiceImpl(crawler);
+  }
 
 const hypothesisSchema = z.object({
     hypothesis: z.string(),
@@ -28,9 +35,9 @@ const hypothesesResponseSchema = z.object({
 
 
 export class HypothesesGenerationServiceImpl implements HypothesesGenerationService {
-    private crawlerService: PlaywrightCrawlerService;
-    constructor() {
-        this.crawlerService = new PlaywrightCrawlerService();
+    private crawlerService: CrawlerService;
+    constructor(crawler: CrawlerService) {
+        this.crawlerService = crawler;
     }
 
     async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
