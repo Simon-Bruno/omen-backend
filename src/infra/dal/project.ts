@@ -74,7 +74,7 @@ export class ProjectDAL {
   }
 
   /**
-   * Update project access token
+   * Update project brand analysis
    */
   static async updateProjectBrandAnalysis(
     projectId: string,
@@ -84,6 +84,19 @@ export class ProjectDAL {
       where: { id: projectId },
       data: { brandAnalysis: brandAnalysis },
     });
+  }
+
+  /**
+   * Get project brand analysis
+   */
+  static async getProjectBrandAnalysis(
+    projectId: string
+  ): Promise<string | null> {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { brandAnalysis: true },
+    });
+    return JSON.stringify(project?.brandAnalysis) ?? null;
   }
 
   /**

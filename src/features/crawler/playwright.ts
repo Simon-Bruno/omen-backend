@@ -18,16 +18,16 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
   async initialize(): Promise<void> {
     //if (!this.browser) {
-      this.browser = await chromium.launch({
-        headless: this.config.headless,
-        args: [
-          '--disable-gpu',
-          '--no-sandbox',
-          '--disable-dev-shm-usage',
-          '--single-process',
-          '--disable-setuid-sandbox',
-        ],
-      });
+    this.browser = await chromium.launch({
+      headless: this.config.headless,
+      args: [
+        '--disable-gpu',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process',
+        '--disable-setuid-sandbox',
+      ],
+    });
     //}
   }
 
@@ -38,15 +38,72 @@ export class PlaywrightCrawlerService implements CrawlerService {
     }
   }
 
-  async crawlPage(url: string, options: CrawlOptions = {}): Promise<CrawlResult> {
+  async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: bool): Promise<string> {
     await this.initialize();
-    
+
+    if (!url.startsWith("https://")) {
+      url = `https://${url}`;
+    }
+
     if (!this.browser) {
       throw new Error('Browser not initialized');
     }
 
     const page = await this.browser.newPage();
-    
+
+    try {
+      // Set viewport
+      await page.setViewportSize(viewport);
+
+      // Navigate to page
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
+
+      await page.setExtraHTTPHeaders({
+        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+      });
+
+      const lazyImagesLocator = page.locator('img[loading="lazy"]:visible');
+      const lazyImages = await lazyImagesLocator.all();
+      for (const lazyImage of lazyImages) {
+        await lazyImage.scrollIntoViewIfNeeded();
+      }
+
+      page.evaluate((_) => window.scrollTo(0, 0), 0);
+      await page.evaluate(() => {
+        const selectors = ['.needsClick', '.needsclick'];
+        for (const sel of selectors) {
+          document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
+        }
+      });
+
+      // Take screenshot
+      return (await page.screenshot({
+        type: 'png',
+        fullPage: fullPage,
+        path: `ss-${viewport.height}.png`
+      })).toString('base64');
+    }
+    catch (error) {
+      console.error(`Detailed brand analysis failed for project ${url}:`, error);
+    }
+    finally {
+      await this.close();
+    }
+
+    return '';
+  }
+
+  async crawlPage(url: string, options: CrawlOptions = {}): Promise<CrawlResult> {
+    await this.initialize();
+
+    if (!this.browser) {
+      throw new Error('Browser not initialized');
+    }
+
+    const page = await this.browser.newPage();
+
     try {
       // Set viewport
       const viewport = options.viewport || this.config.defaultViewport!;
@@ -59,14 +116,28 @@ export class PlaywrightCrawlerService implements CrawlerService {
         });
       }
 
+      const lazyImagesLocator = page.locator('img[loading="lazy"]:visible');
+      const lazyImages = await lazyImagesLocator.all();
+      for (const lazyImage of lazyImages) {
+        await lazyImage.scrollIntoViewIfNeeded();
+      }
+
+      page.evaluate((_) => window.scrollTo(0, 0), 0);
+      await page.evaluate(() => {
+        const selectors = ['.needsClick', '.needsclick'];
+        for (const sel of selectors) {
+          document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
+        }
+      });
+
       // Set timeout
       const timeout = options.timeout || this.config.defaultTimeout!;
       page.setDefaultTimeout(timeout);
-      
+
       // Navigate to page
       await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForLoadState('load', { timeout: 5000}).catch(() => {});
-      await page.waitForLoadState('networkidle', { timeout: 3000}).catch(() => {});
+      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => { });
       // Wait additional time if specified
       const waitFor = options.waitFor || this.config.defaultWaitFor!;
       if (waitFor > 0) {
@@ -88,7 +159,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
       return {
         url,
-         html,
+        html,
         screenshot: screenshot.toString('base64'),
         title,
         description: description || undefined,
@@ -108,7 +179,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
   async crawlMultiplePages(urls: string[], options: CrawlOptions = {}): Promise<CrawlResult[]> {
     const results: CrawlResult[] = [];
-    
+
     for (const url of urls) {
       try {
         const result = await this.crawlPage(url, options);
