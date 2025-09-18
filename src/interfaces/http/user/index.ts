@@ -10,7 +10,7 @@ export async function userRoutes(fastify: FastifyInstance) {
         try {
             // Get full user data including project details
             const user = await userService.getUserById(request.userId!);
-            
+
             if (!user) {
                 return reply.status(404).send({
                     error: 'NOT_FOUND',
@@ -26,6 +26,7 @@ export async function userRoutes(fastify: FastifyInstance) {
                     project: user.project ? {
                         id: user.project.id,
                         shopDomain: user.project.shopDomain,
+                        brandAnalysis: user.project.brandAnalysis,
                     } : null,
                 },
             };

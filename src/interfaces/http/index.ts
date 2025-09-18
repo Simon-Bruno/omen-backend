@@ -3,8 +3,8 @@ import { healthRoutes } from './health';
 import { userRoutes } from './user/index';
 import { userRegistrationRoutes } from './user/register';
 import { shopifyRoutes } from './shopify';
-import { brandRoutes } from './brand';
 import { chatRoutes } from './chat';
+import { brandSummaryRoutes } from './project/brandSummary';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(healthRoutes);
@@ -12,5 +12,5 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(userRegistrationRoutes);
     await fastify.register(shopifyRoutes);
     await fastify.register(chatRoutes);
-    await fastify.register(brandRoutes);
+    await fastify.register(brandSummaryRoutes);
 }
