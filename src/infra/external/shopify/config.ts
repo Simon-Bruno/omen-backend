@@ -6,7 +6,7 @@
 export const shopifyConfig = {
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecret: process.env.SHOPIFY_API_SECRET!,
-  scopes: process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_orders,write_orders',
+  scopes: process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_orders,write_orders, write_themes, read_themes',
   redirectUri: process.env.SHOPIFY_REDIRECT_URI!,
   encryptionKey: process.env.ENCRYPTION_KEY!,
 };

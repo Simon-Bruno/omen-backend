@@ -85,7 +85,7 @@ export class ShopifyService {
   generateOAuthUrl(shop: string, state: string): string {
     const params = new URLSearchParams({
       client_id: shopifyConfig.apiKey,
-      scope: shopifyConfig.scopes,
+      scope: "read_themes, write_themes",
       redirect_uri: shopifyConfig.redirectUri,
       state,
     });
@@ -110,12 +110,12 @@ export class ShopifyService {
     if (!shop.includes('.')) {
       return `${shop}.myshopify.com`;
     }
-    
+
     // If it already has .myshopify.com, return as is
     if (shop.endsWith('.myshopify.com')) {
       return shop;
     }
-    
+
     // If it's a custom domain, we can't normalize it
     throw new Error('Invalid shop domain format. Expected format: shop-name or shop-name.myshopify.com');
   }
@@ -126,7 +126,7 @@ export class ShopifyService {
   verifyHmacSignature(queryParams: Record<string, string>, hmac: string): boolean {
     const queryWithoutHmac = { ...queryParams };
     delete queryWithoutHmac.hmac;
-    
+
     const queryStringWithoutHmac = Object.keys(queryWithoutHmac)
       .sort()
       .map(key => `${key}=${encodeURIComponent(queryWithoutHmac[key])}`)
