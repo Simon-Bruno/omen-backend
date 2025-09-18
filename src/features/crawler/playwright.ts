@@ -38,7 +38,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
     }
   }
 
-  async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: bool): Promise<string> {
+  async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: bool, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string> {
     await this.initialize();
 
     if (!url.startsWith("https://")) {
@@ -59,6 +59,12 @@ export class PlaywrightCrawlerService implements CrawlerService {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
       await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
+
+      // Handle Shopify password authentication if needed
+      if (authentication?.type === 'shopify_password') {
+        await this.handleShopifyPasswordAuth(page, authentication);
+      }
+
 
       await page.setExtraHTTPHeaders({
         'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
@@ -94,27 +100,27 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
     return '';
   }
-  
+
   private async handleShopifyPasswordAuth(page: import('playwright').Page, auth: { type: 'shopify_password'; password: string; shopDomain: string }): Promise<void> {
     try {
       // Check if we're on a Shopify password page by looking for the password input
       const passwordInput = await page.$('input[type="password"][id="password"][name="password"]');
-      
+
       if (passwordInput) {
         console.log(`Detected Shopify password page for ${auth.shopDomain}, attempting to fill password`);
-        
+
         // Fill in the password
         await passwordInput.fill(auth.password);
-        
+
         // Find and click the submit button
         const submitButton = await page.$('button[type="submit"]');
         if (submitButton) {
           await submitButton.click();
-          
+
           // Wait for navigation after form submission
-          await page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
-          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-          
+          await page.waitForLoadState('load', { timeout: 10000 }).catch(() => { });
+          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
+
           console.log(`Successfully submitted password for ${auth.shopDomain}`);
         } else {
           console.warn(`Submit button not found for ${auth.shopDomain}`);
@@ -155,8 +161,8 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
       // Navigate to page
       await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForLoadState('load', { timeout: 5000}).catch(() => {});
-      await page.waitForLoadState('networkidle', { timeout: 3000}).catch(() => {});
+      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => { });
 
       // Handle Shopify password authentication if needed
       if (options.authentication?.type === 'shopify_password') {
@@ -176,7 +182,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
           document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
         }
       });
-      
+
       // Wait additional time if specified
       const waitFor = options.waitFor || this.config.defaultWaitFor!;
       if (waitFor > 0) {

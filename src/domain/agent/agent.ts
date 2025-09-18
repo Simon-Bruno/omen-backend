@@ -53,7 +53,6 @@ export class AgentServiceImpl implements AgentService {
 
     if (this.config.enableToolCalls) {
       const toolsConfig = getToolsConfiguration();
-
       // Generate dynamic system prompt based on available tools
       systemPrompt = createEcommerceAgentSystemPrompt(toolsConfig.availableTools);
 
@@ -67,9 +66,9 @@ export class AgentServiceImpl implements AgentService {
       const content = typeof msg.content === 'string'
         ? msg.content
         : msg.content
-            .filter(block => block.type === 'text')
-            .map(block => block.text || '')
-            .join('');
+          .filter(block => block.type === 'text')
+          .map(block => block.text || '')
+          .join('');
 
       return {
         role: msg.role as 'user' | 'assistant' | 'system',
