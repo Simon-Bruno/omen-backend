@@ -8,7 +8,7 @@ import { UrlSelector } from './url-selector';
 import { ProjectDAL } from '@infra/dal'
 
 export interface BrandAnalysisService {
-  analyzeProject(projectId: number, shopDomain: string): Promise<BrandAnalysisResult>;
+  analyzeProject(projectId: string, shopDomain: string): Promise<BrandAnalysisResult>;
 }
 
 export interface BrandAnalysisResult {
@@ -35,7 +35,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
   }
 
 
-  async analyzeProject(projectId: number, shopDomain: string): Promise<BrandAnalysisResult> {
+  async analyzeProject(projectId: string, shopDomain: string): Promise<BrandAnalysisResult> {
     try {
       const baseUrl = `https://${shopDomain}`;
 
@@ -43,7 +43,12 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
       const homeResult = await this.crawler.crawlPage(baseUrl, {
         viewport: { width: 1280, height: 720 },
         waitFor: 3000,
-        screenshot: { fullPage: true, quality: 80 }
+        screenshot: { fullPage: true, quality: 80 },
+        authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
+          type: 'shopify_password',
+          password: 'reitri',
+          shopDomain: shopDomain
+        } : undefined
       });
 
       let candidates = [baseUrl];
@@ -60,10 +65,10 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         candidates = this.buildCrawlUrls(shopDomain);
       }
 
-      const response = (await this.urlSelector.selectUrls(candidates)).urlScheme as any;
+      const response = (await this.urlSelector.selectUrls(candidates)).urlScheme;
 
-      const filteredCandidates = (['home', 'products', 'about'] as const)
-        .map(k => response[k])
+      const filteredCandidates = (['home', 'pdp', 'about'] as const)
+        .map(k => (response as any)[k])
         .filter((u): u is string => typeof u === 'string' && u.length > 0);
 
       console.log(filteredCandidates);
@@ -74,7 +79,12 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         screenshot: {
           fullPage: true,
           quality: 80
-        }
+        },
+        authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
+          type: 'shopify_password',
+          password: 'reitri',
+          shopDomain: shopDomain
+        } : undefined
       });
 
       // Check for errors

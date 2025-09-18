@@ -37,6 +37,7 @@ model Project {
   experiments     Experiment[]
   diagnosticsRuns DiagnosticsRun[]
   chatSessions    ChatSession[]
+  brandSummaryJobs BrandSummaryJob[]
 
   @@map("projects")
 }
@@ -104,6 +105,25 @@ model ChatMessage {
   @@map("chat_messages")
 }
 
+model BrandSummaryJob {
+  id          String                @id @default(cuid())
+  projectId   String
+  status      BrandSummaryJobStatus @default(PENDING)
+  progress    Int?                  @default(0) // 0-100
+  result      Json?                 // Brand summary result when completed
+  error       String?               // Error message when failed
+  createdAt   DateTime              @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("brand_summary_jobs")
+}
+
 // Enums
 enum ExperimentStatus {
   DRAFT
@@ -128,4 +148,11 @@ enum MessageRole {
   AGENT
   TOOL
   SYSTEM
+}
+
+enum BrandSummaryJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
