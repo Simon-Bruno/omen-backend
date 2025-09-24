@@ -1,9 +1,10 @@
 // Main tools file - combines all individual tools
 import { createGetProjectInfoTool } from './get-project-info';
+import { generateHypotheses } from './generate-hypotheses';
 
 // Function to get available tool names
 export function getAvailableToolNames(): string[] {
-  return ['get_project_info'];
+  return ['get_project_info', 'generate_hypotheses'];
 }
 
 // Function to get tools configuration for LLM
@@ -16,7 +17,9 @@ export function getToolsConfiguration() {
 
 // Create all tools
 export function createEcommerceAgentTools() {
-  return {
+  const tools = {
     get_project_info: createGetProjectInfoTool(),
+    generate_hypotheses: generateHypotheses(),
   };
+  return tools;
 }
