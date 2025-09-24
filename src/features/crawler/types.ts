@@ -2,6 +2,7 @@
 export interface CrawlerService {
   crawlPage(url: string, options?: CrawlOptions): Promise<CrawlResult>;
   crawlMultiplePages(urls: string[], options?: CrawlOptions): Promise<CrawlResult[]>;
+  takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: boolean, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string>;
 }
 
 export interface CrawlResult {
