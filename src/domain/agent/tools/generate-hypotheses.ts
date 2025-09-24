@@ -18,11 +18,10 @@ class GenerateHypothesesExecutor {
         return await this.hypothesesGenerationService.generateHypotheses(url, projectId);
     }
 
-    async execute(): Promise<HypothesesGenerationResult> {
-        // For now, use a default URL and project ID
-        // TODO: Extract URL from user message context
-        const url = 'https://omen-mvp.myshopify.com'; // Default URL
-        const projectId = 'cmfpgdkja0001k54ww1jpe3vr';
+    async execute(input: { projectId?: string; url?: string }): Promise<HypothesesGenerationResult> {
+        // Use provided project ID or hardcoded fallback
+        const url = input.url || 'https://omen-mvp.myshopify.com';
+        const projectId = input.projectId || 'cmfr3xr1n0004pe2fob8jas4l';
         console.log(`[HYPOTHESES_TOOL] Using URL: ${url}, Project ID: ${projectId}`);
         return await this.generateHypotheses(url, projectId);
     }
@@ -34,9 +33,9 @@ export function generateHypotheses() {
     return tool({
         description: 'Generate hypotheses for a given project',
         inputSchema: createHypothesesSchema,
-        execute: async () => {
+        execute: async (input) => {
             try {
-                const result = await executor.execute();
+                const result = await executor.execute(input);
                 return result;
             } catch (error) {
                 console.error(`[HYPOTHESES_TOOL] Tool execute failed:`, error);

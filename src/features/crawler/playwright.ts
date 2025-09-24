@@ -38,7 +38,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
     }
   }
 
-  async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: bool, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string> {
+  async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: boolean, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string> {
     await this.initialize();
 
     if (!url.startsWith("https://")) {
@@ -92,7 +92,13 @@ export class PlaywrightCrawlerService implements CrawlerService {
       })).toString('base64');
     }
     catch (error) {
-      console.error(`Detailed brand analysis failed for project ${url}:`, error);
+      console.error(`[CRAWLER] Screenshot failed for ${url}:`, error);
+      console.error(`[CRAWLER] Error details:`, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error; // Re-throw to let caller handle
     }
     finally {
       await this.close();

@@ -20,17 +20,15 @@ export function createHypothesesGenerationService(
     return new HypothesesGenerationServiceImpl(crawler);
 }
 
-const hypothesisSchema = z.object({
-    hypothesis: z.string(),
-    rationale: z.string(),
-    measurable_tests: z.string(),
-    success_metrics: z.string(),
-    oec: z.string(),
-    accessibility_check: z.string()
-});
-
 const hypothesesResponseSchema = z.object({
-    hypotheses: hypothesisSchema.array()
+    hypotheses: z.array(z.object({
+        hypothesis: z.string(),
+        rationale: z.string(),
+        measurable_tests: z.string(),
+        success_metrics: z.string(),
+        oec: z.string(),
+        accessibility_check: z.string()
+    }))
 });
 
 
@@ -41,18 +39,29 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
     }
 
     async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
+        console.log(`[HYPOTHESES] Starting generation for URL: ${url}, Project: ${projectId}`);
+        
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
             if (b64.startsWith('data:')) return b64;
             return `data:image/png;base64,${b64}`;
         };
 
+        console.log(`[HYPOTHESES] Taking screenshot for ${url}`);
         const screenshot = await this.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: 'omen-mvp.myshopify.com' });
+        console.log(`[HYPOTHESES] Screenshot taken, length: ${screenshot.length}`);
 
-
+        console.log(`[HYPOTHESES] Fetching brand analysis for project: ${projectId}`);
         const brandAnalysis = await ProjectDAL.getProjectBrandAnalysis(projectId);
+        console.log(`[HYPOTHESES] Brand analysis result:`, brandAnalysis ? `length: ${brandAnalysis.length}` : 'null');
+        
+        if (!brandAnalysis) {
+            console.warn(`[HYPOTHESES] No brand analysis found for project: ${projectId}`);
+            throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
+        }
 
-        const object = await generateObject({
+        console.log(`[HYPOTHESES] Generating AI response with GPT-4o`);
+        const result = await generateObject({
             model: openai('gpt-4o'),
             schema: hypothesesResponseSchema,
             messages: [
@@ -66,8 +75,8 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 }
             ]
         });
-        const response = object.object;
-        console.log(response);
+        const response = result.object;
+        console.log(`[HYPOTHESES] AI response generated:`, JSON.stringify(response, null, 2));
         return {
             hypothesesSchema: JSON.stringify(response)
         };
@@ -76,7 +85,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 
     private buildHypothesesGenerationPrompt(): string {
         return `
-You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze one or two screenshots of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate up to **two UI-focused hypotheses** that a merchant could test to improve conversions.
+You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze one or two screenshots of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
 
 Your analysis must prioritize **clarity, testability, and accessibility**. You are not writing vague advice—you are producing **hypotheses that can be tested in A/B experiments** without requiring advanced CRO expertise.
 
@@ -102,7 +111,7 @@ Your analysis must prioritize **clarity, testability, and accessibility**. You a
 
 3. **Constraints:**
 
-   * Produce **at most 2 hypotheses** per set of screenshots.
+   * Produce **exactly 1 hypothesis** per set of screenshots.
    * Ensure recommendations are **UI-first** (not backend, pricing, or content strategy).
    * Handle edge cases gracefully:
 

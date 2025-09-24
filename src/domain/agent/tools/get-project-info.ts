@@ -13,7 +13,7 @@ class GetProjectInfoExecutor {
 
   private async getProjectInfo(projectId: string): Promise<ProjectInfo> {
     // If using default project ID (sessions disabled), return mock data
-    if (projectId != 'cmfnzbogn0001qjeqcnud7suy') {
+    if (projectId != 'cmfr3xr1n0004pe2fob8jas4l') {
       return {
         id: 'default-project-id',
         shopDomain: 'example.myshopify.com',
@@ -31,8 +31,10 @@ class GetProjectInfoExecutor {
     return await this.projectInfoService.getProjectInfo(projectId);
   }
 
-  async execute(): Promise<ProjectInfo> {
-    const projectId = 'cmfkzwyuj0001qhopskyshs91';
+  async execute(input: { projectId?: string }): Promise<ProjectInfo> {
+    // Hardcoded project ID for now - will be replaced with request context later
+    const projectId = 'cmfr3xr1n0004pe2fob8jas4l';
+    console.log(`[PROJECT_INFO] Using hardcoded project ID: ${projectId}`);
     return await this.getProjectInfo(projectId);
   }
 }
@@ -43,9 +45,9 @@ export function createGetProjectInfoTool() {
   return tool({
     description: 'Get detailed information about the current project including Shopify store details and experiment statistics',
     inputSchema: getProjectInfoSchema,
-    execute: async () => {
+    execute: async (input) => {
       try {
-        return await executor.execute();
+        return await executor.execute(input);
       } catch (error) {
         throw new Error(error instanceof Error ? error.message : 'Failed to fetch project information');
       }
