@@ -15,7 +15,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         //     return reply.code(400).send({ error: 'Project ID is required' });
         // }
 
-        console.log('🔍 Messages:', messages);
+        console.log(`[CHAT] Processing ${messages.length} messages`);
 
         if (!messages || messages.length === 0) {
             return reply.code(400).send({ error: 'Messages are required' });
@@ -30,10 +30,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
             if (!lastMessage || lastMessage.role !== 'user') {
                 return reply.code(400).send({ error: 'Last message must be from user' });
             }
-
-            console.log('🔍 Last message:', lastMessage);
-            console.log('🔍 Last message role:', lastMessage.role);
-            console.log('🔍 Last message parts:', lastMessage.parts);
 
             // Extract text content from the message parts
             const parts = (lastMessage as any).parts;
@@ -50,9 +46,39 @@ export async function chatRoutes(fastify: FastifyInstance) {
                 return reply.code(400).send({ error: 'Message content is required' });
             }
 
-            // Use the agent service streaming method (includes system prompt and tools)
+            // Convert the full conversation history to the format expected by the agent
+            const conversationHistory = messages.map((msg: any) => {
+                const msgParts = msg.parts || [];
+                const textContent = msgParts
+                    .filter((part: any) => part.type === 'text')
+                    .map((part: any) => part.text)
+                    .join('');
+                
+                return {
+                    role: msg.role,
+                    content: textContent,
+                    // Include tool calls and results from assistant messages
+                    ...(msg.role === 'assistant' && {
+                        tool_calls: msgParts
+                            .filter((part: any) => part.type?.startsWith('tool-'))
+                            .map((part: any) => ({
+                                id: part.toolCallId,
+                                type: 'function',
+                                function: {
+                                    name: part.type.replace('tool-', ''),
+                                    arguments: JSON.stringify(part.input || {})
+                                }
+                            })),
+                        tool_call_id: msgParts
+                            .filter((part: any) => part.type?.startsWith('tool-'))
+                            .map((part: any) => part.toolCallId)[0]
+                    })
+                };
+            });
+
+            // Use the agent service streaming method with full conversation history
             // Session management is disabled for now
-            const { stream } = await agentService.sendMessageStream('no-session', messageText);
+            const { stream } = await agentService.sendMessageStream('no-session', messageText, conversationHistory);
 
             // Use AI SDK's built-in streaming response
             const res = (stream as { toUIMessageStreamResponse: () => Response }).toUIMessageStreamResponse();

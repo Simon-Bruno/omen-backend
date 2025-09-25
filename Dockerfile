@@ -8,8 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies)
-RUN npm install --package-lock-only
-RUN npm ci
+RUN npm install --package-lock-only --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \

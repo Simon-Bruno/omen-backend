@@ -19,13 +19,12 @@ export class AgentServiceImpl implements AgentService {
     this.aiConfig = getAIConfig();
   }
 
-  async sendMessageStream(sessionId: string, message: string): Promise<{ stream: unknown; messageId: string }> {
-    console.log(`[AGENT] Starting streaming message processing`);
-    console.log(`[AGENT] User message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`);
 
-    // For now, disable session management
-    // TODO: Re-enable session management when needed
-    console.log(`[AGENT] Session management disabled - agent will fetch project info dynamically`);
+  async sendMessageStream(sessionId: string, message: string, conversationHistory?: any[]): Promise<{ stream: unknown; messageId: string }> {
+    console.log(`[AGENT] Processing message: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+    if (conversationHistory) {
+      console.log(`[AGENT] Using conversation history (${conversationHistory.length} messages)`);
+    }
 
     // Build messages with system prompt
     const llmMessages: ChatMessage[] = [];
@@ -38,13 +37,23 @@ export class AgentServiceImpl implements AgentService {
       });
     }
 
-    // Add user message
-    llmMessages.push({
-      role: 'user',
-      content: message,
-    });
-
-    console.log(`[AGENT] Using message format: ${llmMessages.length} messages`);
+    // Add conversation history if provided, otherwise just add the current message
+    if (conversationHistory && conversationHistory.length > 0) {
+      conversationHistory.forEach((msg) => {
+        llmMessages.push({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+          ...(msg.tool_calls && { tool_calls: msg.tool_calls }),
+          ...(msg.tool_call_id && { tool_call_id: msg.tool_call_id }),
+        });
+      });
+    } else {
+      // Add user message if no conversation history
+      llmMessages.push({
+        role: 'user',
+        content: message,
+      });
+    }
 
     // Prepare tools if enabled
     let llmOptions: { tools?: any } = {};
@@ -58,6 +67,8 @@ export class AgentServiceImpl implements AgentService {
       llmOptions = {
         tools: toolsConfig.tools,
       };
+      
+      console.log(`[AGENT] Tools enabled: ${toolsConfig.availableTools.join(', ')}`);
     }
 
     // Convert messages to AI SDK format

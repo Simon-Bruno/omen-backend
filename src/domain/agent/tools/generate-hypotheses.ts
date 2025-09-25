@@ -22,7 +22,7 @@ class GenerateHypothesesExecutor {
         // Use provided project ID or hardcoded fallback
         const url = input.url || 'https://omen-mvp.myshopify.com';
         const projectId = input.projectId || 'cmfr3xr1n0004pe2fob8jas4l';
-        console.log(`[HYPOTHESES_TOOL] Using URL: ${url}, Project ID: ${projectId}`);
+        console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url}`);
         return await this.generateHypotheses(url, projectId);
     }
 }
