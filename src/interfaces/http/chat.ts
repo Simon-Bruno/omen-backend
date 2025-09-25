@@ -8,12 +8,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     fastify.post("/chat", async (req, reply) => {
         const { messages } = (req.body ?? {}) as {
             messages?: UIMessage[];
-            // projectId?: string;
         };
-
-        // if (!projectId) {
-        //     return reply.code(400).send({ error: 'Project ID is required' });
-        // }
 
         console.log(`[CHAT] Processing ${messages.length} messages`);
 
@@ -71,7 +66,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
                             })),
                         tool_call_id: msgParts
                             .filter((part: any) => part.type?.startsWith('tool-'))
-                            .map((part: any) => part.toolCallId)[0]
+                            .map((part: any) => part.toolCallId)[0],
+                        // Include tool call outputs so the agent can see the results
+                        tool_results: msgParts
+                            .filter((part: any) => part.type?.startsWith('tool-') && part.output)
+                            .map((part: any) => ({
+                                tool_call_id: part.toolCallId,
+                                content: JSON.stringify(part.output)
+                            }))
                     })
                 };
             });

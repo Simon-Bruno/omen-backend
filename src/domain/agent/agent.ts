@@ -39,12 +39,14 @@ export class AgentServiceImpl implements AgentService {
 
     // Add conversation history if provided, otherwise just add the current message
     if (conversationHistory && conversationHistory.length > 0) {
-      conversationHistory.forEach((msg) => {
+      conversationHistory.forEach((msg, index) => {
+        
         llmMessages.push({
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content,
           ...(msg.tool_calls && { tool_calls: msg.tool_calls }),
           ...(msg.tool_call_id && { tool_call_id: msg.tool_call_id }),
+          ...(msg.tool_results && { tool_results: msg.tool_results }),
         });
       });
     } else {
@@ -72,7 +74,7 @@ export class AgentServiceImpl implements AgentService {
     }
 
     // Convert messages to AI SDK format
-    const aiMessages = llmMessages.map(msg => {
+    const aiMessages = llmMessages.map((msg, index) => {
       const content = typeof msg.content === 'string'
         ? msg.content
         : msg.content
@@ -80,12 +82,20 @@ export class AgentServiceImpl implements AgentService {
           .map(block => block.text || '')
           .join('');
 
-      return {
+      const aiMessage = {
         role: msg.role as 'user' | 'assistant' | 'system',
         content,
         ...(msg.tool_calls && { toolCalls: msg.tool_calls }),
         ...(msg.tool_call_id && { toolCallId: msg.tool_call_id }),
+        ...(msg.tool_results && { toolResults: msg.tool_results }),
       };
+
+      // Log tool results in AI messages for debugging
+      if (msg.tool_results && msg.tool_results.length > 0) {
+        console.log(`[AGENT] AI Message ${index + 1} has tool results:`, JSON.stringify(msg.tool_results, null, 2));
+      }
+
+      return aiMessage;
     });
 
     // Add system prompt if provided
