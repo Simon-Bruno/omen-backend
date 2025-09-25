@@ -18,13 +18,18 @@ export const createVariantsSchema = z.object({
     success_metrics: z.string().describe('The success metrics for this hypothesis'),
     oec: z.string().describe('The Overall Evaluation Criterion (OEC)'),
     accessibility_check: z.string().describe('Accessibility considerations for this hypothesis')
-  }).describe('The hypothesis object to generate variants for - this should be extracted from the conversation history')
+  }).optional().describe('The hypothesis object to generate variants for - if not provided, will use the most recently generated hypothesis from state')
+});
+
+export const getBrandAnalysisSchema = z.object({
+  projectId: z.string().optional().describe('The project ID to get brand analysis for. If not provided, will use the current project.')
 });
 
 export const toolSchemas = {
   get_project_info: getProjectInfoSchema,
   generate_hypotheses: createHypothesesSchema,
   generate_variants: createVariantsSchema,
+  get_brand_analysis: getBrandAnalysisSchema,
 } as const;
 
 export type ToolSchemas = typeof toolSchemas;

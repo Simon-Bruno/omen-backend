@@ -4,6 +4,7 @@ import { createVariantGenerationService, VariantGenerationService } from '@featu
 import { createPlaywrightCrawler } from '@features/crawler';
 import { getServiceConfig } from '@infra/config/services';
 import { Hypothesis } from '@features/hypotheses_generation/types';
+import { hypothesisStateManager } from '../hypothesis-state-manager';
 
 class GenerateVariantsExecutor {
     private variantGenerationService: VariantGenerationService;
@@ -19,13 +20,23 @@ class GenerateVariantsExecutor {
     }
 
     async execute(input: { hypothesis?: Hypothesis }): Promise<any> {
-        console.log(`[VARIANTS_TOOL] Generating variants for hypothesis: "${input.hypothesis?.hypothesis?.substring(0, 50)}..."`);
-
-        if (!input.hypothesis) {
-            throw new Error('Hypothesis is required to generate variants. Please provide a hypothesis object.');
+        console.log(`[VARIANTS_TOOL] ===== VARIANT GENERATION INPUT =====`);
+        console.log(`[VARIANTS_TOOL] Full input received:`, JSON.stringify(input, null, 2));
+        
+        // Get hypothesis from state manager (preferred) or input
+        let hypothesis = hypothesisStateManager.getCurrentHypothesis();
+        
+        if (hypothesis) {
+            console.log(`[VARIANTS_TOOL] Using hypothesis from state manager: "${hypothesis.hypothesis.substring(0, 50)}..."`);
+        } else if (input.hypothesis) {
+            console.log(`[VARIANTS_TOOL] Using hypothesis from input: "${input.hypothesis.hypothesis.substring(0, 50)}..."`);
+            hypothesis = input.hypothesis;
+        } else {
+            console.log(`[VARIANTS_TOOL] No hypothesis available in state or input`);
+            throw new Error('No hypothesis available. Please generate hypotheses first using the generate_hypotheses tool.');
         }
-
-        const hypothesis = input.hypothesis;
+        
+        console.log(`[VARIANTS_TOOL] ======================================`);
         
         try {
             const result = await this.generateVariants(hypothesis);
