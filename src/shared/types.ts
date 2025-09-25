@@ -126,7 +126,7 @@ export interface ExperimentDSL {
 }
 
 // Validation Error Types
-export type ValidationErrorCode = 
+export type ValidationErrorCode =
   | 'INVALID_DSL_STRUCTURE'
   | 'INVALID_TRAFFIC'
   | 'INVALID_SELECTOR'

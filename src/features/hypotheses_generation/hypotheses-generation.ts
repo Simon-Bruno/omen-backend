@@ -4,6 +4,7 @@ import { openai } from '@ai-sdk/openai';
 import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
 import { ProjectDAL } from '@infra/dal'
+import { Hypothesis } from './types'
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
