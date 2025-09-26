@@ -1,8 +1,10 @@
 // Code Generator for Variant Implementation
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { Hypothesis } from '@features/hypotheses_generation/types';
+import { InjectionPoint } from './dom-analyzer';
+import { getAIConfig } from '@shared/ai-config';
 
 export interface CodeGenerationResult {
     css_code: string;
@@ -27,7 +29,8 @@ export class VariantCodeGenerator {
         variant: any, 
         hypothesis: Hypothesis, 
         brandAnalysis: string, 
-        screenshot: string
+        screenshot: string,
+        injectionPoints: InjectionPoint[]
     ): Promise<CodeGenerationResult> {
         const codePrompt = `
 You are a professional frontend developer working on conversion optimization for an e-commerce business. You are creating A/B test variants to help improve the store's performance and user experience.
@@ -46,19 +49,37 @@ ORIGINAL HYPOTHESIS:
 - Measurable Tests: ${hypothesis.measurable_tests}
 - Success Metrics: ${hypothesis.success_metrics}
 
+VALIDATED INJECTION POINTS (USE THESE SELECTORS):
+${injectionPoints.map(point => `
+- Type: ${point.type}
+- Primary Selector: ${point.selector} (Confidence: ${point.confidence})
+- Alternative Selectors: ${point.alternativeSelectors.join(', ')}
+- Context: ${point.context}
+- Reasoning: ${point.reasoning}
+`).join('\n')}
+
 INJECTION METHODS:
 1. **selector**: Modify existing element using CSS selector (e.g., change button color)
 2. **new_element**: Inject completely new HTML element (e.g., add new CTA banner)
 3. **modify_existing**: Modify existing element's HTML structure (e.g., add wrapper div)
 
 REQUIREMENTS:
-1. Generate CSS code that can be injected into a Shopify theme
-2. Generate HTML code changes if needed
-3. Determine the best injection method for this variant
-4. Ensure the code is production-ready and follows best practices
-5. Make sure the code is specific to the variant description
-6. Consider the brand analysis context: ${brandAnalysis}
-7. Code should be ready for A/B testing implementation
+1. **MUST USE VALIDATED SELECTORS**: Use the selectors provided in the injection points above. Do NOT generate your own selectors.
+2. Generate CSS code that can be injected into a Shopify theme
+3. Generate HTML code changes if needed
+4. Determine the best injection method for this variant
+5. Ensure the code is production-ready and follows best practices
+6. Make sure the code is specific to the variant description
+7. Consider the brand analysis context: ${brandAnalysis}
+8. Code should be ready for A/B testing implementation
+
+CRITICAL: Use the validated selectors from the injection points. The selectors have been analyzed and tested for reliability. Do not invent new selectors.
+
+SELECTOR SELECTION RULES:
+- Use the PRIMARY SELECTOR (highest confidence) from the injection points
+- If multiple selectors are available, choose the one that best matches your variant's target element
+- The target_selector field should be one of the validated selectors from above
+- Do NOT create new selectors like .hero-cta.button
 
 Return your response as a JSON object with:
 - css_code: The complete CSS code for this variant
@@ -83,8 +104,11 @@ CRITICAL: Return your response as a flat JSON object with the exact structure:
 Do NOT wrap this in any other structure like {"type": "response", "properties": {...}}. Return ONLY the flat object above.
 `;
 
+        const aiConfig = getAIConfig();
         const codeObject = await generateObject({
-            model: openai('gpt-4o'),
+            model: google(aiConfig.model, {
+                apiKey: aiConfig.apiKey,
+            }),
             schema: codeGenerationSchema,
             messages: [
                 {

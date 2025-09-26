@@ -247,6 +247,161 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
     return results;
   }
+
+  /**
+   * Apply variant code to a page and take a screenshot
+   */
+  async takeVariantScreenshot(
+    url: string, 
+    variant: {
+      css_code: string;
+      html_code: string;
+      injection_method: 'selector' | 'new_element' | 'modify_existing';
+      target_selector?: string;
+      new_element_html?: string;
+    },
+    viewport: { width: number, height: number } = { width: 1920, height: 1080 },
+    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
+  ): Promise<string> {
+    // Always initialize fresh browser for each variant to avoid state issues
+    await this.initialize();
+
+    if (!url.startsWith("https://")) {
+      url = `https://${url}`;
+    }
+
+    if (!this.browser) {
+      throw new Error('Browser not initialized');
+    }
+
+    const page = await this.browser.newPage();
+
+    try {
+      // Set viewport
+      await page.setViewportSize(viewport);
+
+      // Navigate to page
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
+
+      // Handle Shopify password authentication if needed
+      if (authentication?.type === 'shopify_password') {
+        await this.handleShopifyPasswordAuth(page, authentication);
+      }
+
+      await page.setExtraHTTPHeaders({
+        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+      });
+
+      // Load lazy images
+      const lazyImagesLocator = page.locator('img[loading="lazy"]:visible');
+      const lazyImages = await lazyImagesLocator.all();
+      for (const lazyImage of lazyImages) {
+        await lazyImage.scrollIntoViewIfNeeded();
+      }
+
+      // Scroll to top
+      await page.evaluate(() => window.scrollTo(0, 0));
+      
+      // Remove any existing overlay elements
+      await page.evaluate(() => {
+        const selectors = ['.needsClick', '.needsclick'];
+        for (const sel of selectors) {
+          document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
+        }
+      });
+
+      // Apply variant code
+      console.log(`[CRAWLER] Applying variant code for selector: ${variant.target_selector}`);
+      await this.applyVariantCode(page, variant);
+
+      // Wait a bit for any animations or dynamic content to settle
+      await page.waitForTimeout(1000);
+      
+      // Debug: Check if element exists after applying code
+      if (variant.target_selector) {
+        const elementExists = await page.locator(variant.target_selector).count();
+        console.log(`[CRAWLER] Element count for selector '${variant.target_selector}': ${elementExists}`);
+      }
+
+      // Take screenshot (viewport only, not full page)
+      return (await page.screenshot({
+        type: 'png',
+        fullPage: false, // Regular browser viewport
+        path: `variant-${Date.now()}.png`
+      })).toString('base64');
+
+    } catch (error) {
+      console.error(`[CRAWLER] Variant screenshot failed for ${url}:`, error);
+      throw error;
+    } finally {
+      await page.close();
+    }
+  }
+
+  /**
+   * Apply variant code to the page
+   */
+  private async applyVariantCode(
+    page: import('playwright').Page, 
+    variant: {
+      css_code: string;
+      html_code: string;
+      injection_method: 'selector' | 'new_element' | 'modify_existing';
+      target_selector?: string;
+      new_element_html?: string;
+    }
+  ): Promise<void> {
+    try {
+      // Inject CSS
+      if (variant.css_code) {
+        await page.addStyleTag({ content: variant.css_code });
+      }
+
+      // Apply HTML changes based on injection method
+      switch (variant.injection_method) {
+        case 'selector':
+          if (variant.target_selector && variant.html_code) {
+            await page.evaluate(({ selector, html }) => {
+              const element = document.querySelector(selector);
+              if (element) {
+                element.innerHTML = html;
+              }
+            }, { selector: variant.target_selector, html: variant.html_code });
+          }
+          break;
+
+        case 'new_element':
+          if (variant.new_element_html) {
+            await page.evaluate((html) => {
+              const tempDiv = document.createElement('div');
+              tempDiv.innerHTML = html;
+              const newElement = tempDiv.firstElementChild;
+              if (newElement) {
+                document.body.appendChild(newElement);
+              }
+            }, variant.new_element_html);
+          }
+          break;
+
+        case 'modify_existing':
+          if (variant.target_selector && variant.html_code) {
+            await page.evaluate(({ selector, html }) => {
+              const element = document.querySelector(selector);
+              if (element) {
+                // For modify_existing, we might want to append or prepend
+                element.insertAdjacentHTML('beforeend', html);
+              }
+            }, { selector: variant.target_selector, html: variant.html_code });
+          }
+          break;
+      }
+    } catch (error) {
+      console.error(`[CRAWLER] Failed to apply variant code:`, error);
+      // Don't throw - we still want to take a screenshot even if code application fails
+    }
+  }
 }
 
 // Factory function for easy instantiation

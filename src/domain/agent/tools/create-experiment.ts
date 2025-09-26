@@ -24,9 +24,12 @@ const createExperimentSchema = z.object({
     injection_method: z.enum(['selector', 'new_element', 'modify_existing']).describe('How to inject this code'),
     target_selector: z.string().optional().describe('CSS selector to target existing element'),
     new_element_html: z.string().optional().describe('Complete HTML for new element'),
-    implementation_instructions: z.string().describe('Step-by-step implementation instructions')
+    implementation_instructions: z.string().describe('Step-by-step implementation instructions'),
+    screenshot: z.string().optional().describe('URL to the screenshot of the variant applied to the page')
   })).describe('The variants to test')
 });
+
+//TODO: Remove implementation instructions
 
 class CreateExperimentExecutor {
   async execute(input: { 

@@ -1,7 +1,8 @@
 // Screenshot Analysis Service
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { z } from 'zod';
+import { getAIConfig } from '@shared/ai-config';
 
 export interface ScreenshotAnalysisResult {
   visualStyle: {
@@ -46,8 +47,11 @@ export class ScreenshotAnalyzer {
     const prompt = this.buildScreenshotAnalysisPrompt();
     
     try {
+      const aiConfig = getAIConfig();
       const result = await generateObject({
-        model: openai('gpt-4o'),
+        model: google(aiConfig.model, {
+          apiKey: aiConfig.apiKey,
+        }),
         schema: screenshotAnalysisSchema,
         messages: [
           {

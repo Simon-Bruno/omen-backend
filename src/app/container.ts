@@ -4,6 +4,7 @@ import { createDiagnosticsService, type DiagnosticsService } from '@domain/analy
 import { createAgentService, type AgentService, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
 import { createBrandAnalysisService, type BrandAnalysisService } from '@features/brand_analysis';
 import { createHypothesesGenerationService, HypothesesGenerationService } from '@features/hypotheses_generation/hypotheses-generation';
+import { createScreenshotStorageService, type ScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 
 class ServiceContainer {
@@ -59,6 +60,14 @@ class ServiceContainer {
       this.services.set('hypothesesGeneration', hypothesesGenerator);
     }
     return this.services.get('hypothesesGeneration');
+  }
+
+  getScreenshotStorageService(): ScreenshotStorageService {
+    if (!this.services.has('screenshotStorage')) {
+      const screenshotStorageService = createScreenshotStorageService();
+      this.services.set('screenshotStorage', screenshotStorageService);
+    }
+    return this.services.get('screenshotStorage');
   }
 
   

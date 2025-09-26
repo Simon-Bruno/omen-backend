@@ -11,10 +11,10 @@ export interface AIConfig {
 export function getAIConfig(): AIConfig {
   const config = getServiceConfig();
   return {
-    model: config.openai.model || 'gpt-4o',
-    temperature: config.openai.temperature || 0.7,
-    maxTokens: config.openai.maxTokens || 1000,
-    apiKey: config.openai.apiKey,
+    model: config.google?.model || 'gemini-2.5-flash',
+    temperature: config.google?.temperature || 0.7,
+    maxTokens: config.google?.maxTokens || 1000,
+    apiKey: config.google?.apiKey || '',
   };
 }
 

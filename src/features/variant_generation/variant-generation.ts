@@ -1,12 +1,15 @@
 // Variant Generation Service
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
 import { ProjectDAL } from '@infra/dal';
 import { buildVariantGenerationPrompt } from './prompts';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
+import { ScreenshotStorageService } from '@services/screenshot-storage';
+import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
+import { getAIConfig } from '@shared/ai-config';
 
 export interface VariantGenerationService {
     generateVariants(hypothesis: Hypothesis): Promise<VariantGenerationResult>;
@@ -18,17 +21,22 @@ export interface VariantGenerationResult {
 
 // Factory function
 export function createVariantGenerationService(
-    crawler: CrawlerService
+    crawler: CrawlerService,
+    screenshotStorage: ScreenshotStorageService
 ): VariantGenerationService {
-    return new VariantGenerationServiceImpl(crawler);
+    return new VariantGenerationServiceImpl(crawler, screenshotStorage);
 }
 
 export class VariantGenerationServiceImpl implements VariantGenerationService {
     private crawlerService: CrawlerService;
     private codeGenerator: VariantCodeGenerator;
+    private screenshotStorage: ScreenshotStorageService;
+    private domAnalyzer: DOMAnalyzerService;
     
-    constructor(crawler: CrawlerService) {
+    constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService) {
         this.crawlerService = crawler;
+        this.screenshotStorage = screenshotStorage;
+        this.domAnalyzer = createDOMAnalyzer(crawler);
         this.codeGenerator = createVariantCodeGenerator();
     }
 
@@ -58,6 +66,15 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         const screenshot = await this.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain });
         console.log(`[VARIANTS] Screenshot taken, length: ${screenshot.length}`);
 
+        // Analyze DOM for hypothesis-specific injection points
+        console.log(`[VARIANTS] Analyzing DOM for hypothesis: ${hypothesis.hypothesis}`);
+        const injectionPoints = await this.domAnalyzer.analyzeForHypothesis(
+            url, 
+            hypothesis.hypothesis,
+            { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+        );
+        console.log(`[VARIANTS] Found ${injectionPoints.length} injection points for hypothesis`);
+
         console.log(`[VARIANTS] Fetching brand analysis for project: ${projectId}`);
         const brandAnalysis = await ProjectDAL.getProjectBrandAnalysis(projectId);
         console.log(`[VARIANTS] Brand analysis result:`, brandAnalysis ? `length: ${brandAnalysis.length}` : 'null');
@@ -67,9 +84,12 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
         }
 
-        console.log(`[VARIANTS] Generating AI response with GPT-4o`);
+        console.log(`[VARIANTS] Generating AI response with Google Gemini`);
+        const aiConfig = getAIConfig();
         const object = await generateObject({
-            model: openai('gpt-4o'),
+            model: google(aiConfig.model, {
+                apiKey: aiConfig.apiKey,
+            }),
             schema: basicVariantsResponseSchema,
             messages: [
                 {
@@ -91,7 +111,38 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             response.variants.map(async (variant, index) => {
                 console.log(`[VARIANTS] Generating code for variant ${index + 1}: ${variant.variant_label}`);
                 try {
-                    const codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot));
+                    const codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
+                    
+                    // Take screenshot of the variant applied to the page
+                    console.log(`[VARIANTS] Taking screenshot for variant ${index + 1}: ${variant.variant_label}`);
+                    let variantScreenshotUrl = '';
+                    try {
+                        const variantScreenshotBase64 = await this.crawlerService.takeVariantScreenshot(
+                            url,
+                            {
+                                css_code: codeResult.css_code,
+                                html_code: codeResult.html_code,
+                                injection_method: codeResult.injection_method,
+                                target_selector: codeResult.target_selector,
+                                new_element_html: codeResult.new_element_html
+                            },
+                            { width: 1920, height: 1080 },
+                            { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                        );
+                        
+                        // Save screenshot to file and get URL
+                        const filename = await this.screenshotStorage.saveScreenshot(
+                            variantScreenshotBase64,
+                            variant.variant_label,
+                            projectId
+                        );
+                        variantScreenshotUrl = this.screenshotStorage.getScreenshotUrl(filename);
+                        console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
+                    } catch (screenshotError) {
+                        console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
+                        // Continue without screenshot rather than failing the entire variant
+                    }
+                    
                     return {
                         ...variant,
                         css_code: codeResult.css_code,
@@ -99,7 +150,8 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         injection_method: codeResult.injection_method,
                         target_selector: codeResult.target_selector,
                         new_element_html: codeResult.new_element_html,
-                        implementation_instructions: codeResult.implementation_instructions
+                        implementation_instructions: codeResult.implementation_instructions,
+                        screenshot: variantScreenshotUrl
                     };
                 } catch (error) {
                     console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
@@ -111,7 +163,8 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         injection_method: 'selector' as const,
                         target_selector: '',
                         new_element_html: '',
-                        implementation_instructions: `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`
+                        implementation_instructions: `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
+                        screenshot: ''
                     };
                 }
             })

@@ -1,6 +1,12 @@
 // Service Configuration
 export interface ServiceConfig {
-  openai: {
+  // openai: {
+  //   apiKey: string;
+  //   model?: string;
+  //   temperature?: number;
+  //   maxTokens?: number;
+  // };
+  google: {
     apiKey: string;
     model?: string;
     temperature?: number;
@@ -26,11 +32,17 @@ export interface ServiceConfig {
 
 export function getServiceConfig(): ServiceConfig {
   return {
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY || '',
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE || '0.3'),
-      maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS || '2000'),
+    // openai: {
+    //   apiKey: process.env.OPENAI_API_KEY || '',
+    //   model: process.env.OPENAI_MODEL || 'gpt-4o',
+    //   temperature: parseFloat(process.env.OPENAI_TEMPERATURE || '0.3'),
+    //   maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS || '2000'),
+    // },
+    google: {
+      apiKey: process.env.GOOGLE_API_KEY || '',
+      model: process.env.GOOGLE_MODEL || 'gemini-2.5-flash',
+      temperature: parseFloat(process.env.GOOGLE_TEMPERATURE || '0.7'),
+      maxTokens: parseInt(process.env.GOOGLE_MAX_TOKENS || '1000'),
     },
     crawler: {
       headless: process.env.CRAWLER_HEADLESS !== 'false',
