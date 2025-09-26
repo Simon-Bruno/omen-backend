@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { createVariantsSchema } from './schemas';
 import { createVariantGenerationService, VariantGenerationService } from '@features/variant_generation/variant-generation';
 import { createPlaywrightCrawler } from '@features/crawler';
+import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
@@ -12,7 +13,8 @@ class GenerateVariantsExecutor {
     constructor() {
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        this.variantGenerationService = createVariantGenerationService(crawler);
+        const screenshotStorage = createScreenshotStorageService();
+        this.variantGenerationService = createVariantGenerationService(crawler, screenshotStorage);
     }
 
     private async generateVariants(hypothesis: Hypothesis): Promise<any> {

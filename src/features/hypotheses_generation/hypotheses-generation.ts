@@ -1,10 +1,11 @@
 // Hypotheses Generation Service
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
 import { ProjectDAL } from '@infra/dal'
 import { Hypothesis } from './types'
+import { getAIConfig } from '@shared/ai-config'
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
@@ -61,9 +62,12 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
         }
 
-        console.log(`[HYPOTHESES] Generating AI response with GPT-4o`);
+        console.log(`[HYPOTHESES] Generating AI response with Google Gemini`);
+        const aiConfig = getAIConfig();
         const result = await generateObject({
-            model: openai('gpt-4o'),
+            model: google(aiConfig.model, {
+                apiKey: aiConfig.apiKey,
+            }),
             schema: hypothesesResponseSchema,
             messages: [
                 {

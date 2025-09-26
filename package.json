@@ -22,6 +22,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@ai-sdk/google": "^2.0.16",
     "@ai-sdk/langchain": "^1.0.52",
     "@ai-sdk/openai": "^2.0.30",
     "@assistant-ui/react": "^0.11.18",

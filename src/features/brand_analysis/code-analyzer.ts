@@ -1,7 +1,8 @@
 // Code Analysis Service
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { z } from 'zod';
+import { getAIConfig } from '@shared/ai-config';
 
 export interface CodeAnalysisResult {
   websiteStructure: {
@@ -32,8 +33,11 @@ export class CodeAnalyzer {
     const prompt = this.buildCodeAnalysisPrompt(htmlContent, urls);
     
     try {
+      const aiConfig = getAIConfig();
       const result = await generateObject({
-        model: openai('gpt-4o'),
+        model: google(aiConfig.model, {
+          apiKey: aiConfig.apiKey,
+        }),
         schema: codeAnalysisSchema,
         messages: [
           {

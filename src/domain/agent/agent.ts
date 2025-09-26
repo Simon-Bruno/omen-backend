@@ -3,6 +3,7 @@ import { getToolsConfiguration } from './tools';
 import { createEcommerceAgentSystemPrompt } from './prompts';
 import { streamText, stepCountIs } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
 import type {
   AgentService,
@@ -108,7 +109,9 @@ export class AgentServiceImpl implements AgentService {
 
     // Use AI SDK streaming with tools enabled and multi-step calls
     const streamConfig: any = {
-      model: openai(this.aiConfig.model),
+      model: google(this.aiConfig.model, {
+        apiKey: this.aiConfig.apiKey,
+      }),
       messages: aiMessages,
       stopWhen: stepCountIs(5), // Allow up to 5 steps for multi-step tool calls
       ...AI_CONFIGS.STREAMING
