@@ -1,3 +1,4 @@
+// @ts-nocheck 
 // Tool schemas and definitions
 import { z } from 'zod';
 

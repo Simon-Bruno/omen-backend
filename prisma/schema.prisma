@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-1.1.x", "linux-arm64-openssl-1.1.x"]
@@ -15,6 +12,8 @@ model User {
   id        String   @id @default(cuid())
   auth0Id   String   @unique
   email     String   @unique
+  firstName String
+  lastName  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -27,16 +26,15 @@ model User {
 model Project {
   id             String   @id @default(cuid())
   shopDomain     String   @unique
-  brandAnalysis  Json?
+  brandAnalysis  Json? //TODO: Add brand analysis schema
   accessTokenEnc String
   userId         String   @unique
   createdAt      DateTime @default(now())
 
   // Relations
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  experiments     Experiment[]
-  diagnosticsRuns DiagnosticsRun[]
-  chatSessions    ChatSession[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experiments      Experiment[]
+  chatMessages     ChatMessage[]
   brandSummaryJobs BrandSummaryJob[]
 
   @@map("projects")
@@ -46,72 +44,47 @@ model Experiment {
   id          String           @id @default(cuid())
   projectId   String
   name        String
-  status      ExperimentStatus @default(DRAFT)
-  dsl         Json
+  status      JobStatus @default(DRAFT)
   createdAt   DateTime         @default(now())
   publishedAt DateTime?
   finishedAt  DateTime?
 
-  // Relations
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Business goal and runtime (explicit fields)
+  oec                   String // Overall Evaluation Criterion - high-level business goal (e.g., "Increase checkout completion rate by 25%")
+  minDays               Int
+  minSessionsPerVariant Int
 
-  @@index([projectId, status, createdAt])
+  // Relations
+  project    Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  hypothesis ExperimentHypothesis?
+  traffic    ExperimentTraffic[]
+  variants   ExperimentVariant[]
+
+  @@index([projectId, status])
   @@map("experiments")
-}
-
-model DiagnosticsRun {
-  id         String            @id @default(cuid())
-  projectId  String
-  status     DiagnosticsStatus @default(PENDING)
-  startedAt  DateTime          @default(now())
-  finishedAt DateTime?
-  summary    Json?
-  pages      Json?
-
-  // Relations
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId, status, startedAt])
-  @@index([status, startedAt])
-  @@map("diagnostics_runs")
-}
-
-model ChatSession {
-  id        String        @id @default(cuid())
-  projectId String
-  status    SessionStatus @default(ACTIVE)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  // Relations
-  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  messages ChatMessage[]
-
-  @@index([projectId, status, createdAt])
-  @@map("chat_sessions")
 }
 
 model ChatMessage {
   id        String      @id @default(cuid())
-  sessionId String
+  projectId String
   role      MessageRole
   content   Json
   createdAt DateTime    @default(now())
 
   // Relations
-  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@index([sessionId, createdAt])
+  @@index([projectId, createdAt])
   @@map("chat_messages")
 }
 
 model BrandSummaryJob {
   id          String                @id @default(cuid())
   projectId   String
-  status      BrandSummaryJobStatus @default(PENDING)
+  status      JobStatus @default(PENDING)
   progress    Int?                  @default(0) // 0-100
-  result      Json?                 // Brand summary result when completed
-  error       String?               // Error message when failed
+  result      Json? // Brand summary result when completed
+  error       String? // Error message when failed
   createdAt   DateTime              @default(now())
   startedAt   DateTime?
   completedAt DateTime?
@@ -124,23 +97,59 @@ model BrandSummaryJob {
   @@map("brand_summary_jobs")
 }
 
+model ExperimentHypothesis {
+  id           String   @id @default(cuid())
+  experimentId String   @unique
+  hypothesis   String
+  rationale    String
+  primaryKpi   String // Specific metric to measure progress toward the OEC (e.g., "checkout_completion_rate")
+  createdAt    DateTime @default(now())
+
+  // Relations
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@map("experiment_hypotheses")
+}
+
+model ExperimentTraffic {
+  id           String  @id @default(cuid())
+  experimentId String
+  variantId    String // "A", "B", "C", "D", etc.
+  percentage   Decimal @db.Decimal(5, 4) // 0.0000 to 1.0000 (0.01% precision)
+
+  // Relations
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, variantId])
+  @@index([experimentId])
+  @@map("experiment_traffic")
+}
+
+model ExperimentVariant {
+  id           String         @id @default(cuid())
+  experimentId String
+  variantId    String // "A", "B", "C", "D", etc.
+  selector     String? // CSS selector for WHERE to inject (e.g., ".product-title", "body", "head"). Null for page-level variants
+  html         String         @db.Text
+  css          String?        @db.Text
+  position     InjectPosition // HOW to inject relative to selector: INNER, OUTER, BEFORE, AFTER
+
+  // Relations
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, variantId])
+  @@index([experimentId])
+  @@map("experiment_variants")
+}
+
 // Enums
-enum ExperimentStatus {
-  DRAFT
-  RUNNING
-  PAUSED
-  FINISHED
-}
-
-enum DiagnosticsStatus {
-  PENDING
-  COMPLETED
-  FAILED
-}
-
-enum SessionStatus {
-  ACTIVE
-  CLOSED
+enum JobStatus {
+  DRAFT     // Initial state, not yet started
+  PENDING   // Ready to start, waiting for resources
+  RUNNING   // Currently executing
+  PAUSED    // Temporarily stopped, can be resumed
+  COMPLETED // Successfully finished
+  FAILED    // Failed with error
 }
 
 enum MessageRole {
@@ -150,9 +159,9 @@ enum MessageRole {
   SYSTEM
 }
 
-enum BrandSummaryJobStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
+enum InjectPosition {
+  INNER
+  OUTER
+  BEFORE
+  AFTER
 }

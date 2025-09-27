@@ -2,9 +2,8 @@
 import { ChatMessage, MessageRole, Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 
-
 export interface CreateChatMessageData {
-    sessionId: string;
+    projectId: string;
     role: MessageRole;
     content: {
         text?: string;
@@ -37,14 +36,6 @@ export interface UpdateChatMessageData {
     };
 }
 
-export interface ChatMessageWithSession extends ChatMessage {
-    session: {
-        id: string;
-        projectId: string;
-        status: string;
-    };
-}
-
 export class ChatMessageDAL {
     static async createMessage(data: CreateChatMessageData): Promise<ChatMessage> {
         // Clean up content object to remove undefined values
@@ -68,42 +59,20 @@ export class ChatMessageDAL {
         
         return await prisma.chatMessage.create({
             data: {
-                sessionId: data.sessionId,
+                projectId: data.projectId,
                 role: data.role,
                 content: cleanContent as Prisma.InputJsonValue,
             },
         });
     }
 
-    static async getMessagesBySession(
-        sessionId: string,
+    static async getMessagesByProject(
+        projectId: string,
         limit?: number,
         offset?: number
     ): Promise<ChatMessage[]> {
         return await prisma.chatMessage.findMany({
-            where: { sessionId },
-            orderBy: { createdAt: 'asc' },
-            ...(limit && { take: limit }),
-            ...(offset && { skip: offset }),
-        });
-    }
-
-    static async getMessagesBySessionWithSession(
-        sessionId: string,
-        limit?: number,
-        offset?: number
-    ): Promise<ChatMessageWithSession[]> {
-        return await prisma.chatMessage.findMany({
-            where: { sessionId },
-            include: {
-                session: {
-                    select: {
-                        id: true,
-                        projectId: true,
-                        status: true,
-                    },
-                },
-            },
+            where: { projectId },
             orderBy: { createdAt: 'asc' },
             ...(limit && { take: limit }),
             ...(offset && { skip: offset }),
@@ -134,20 +103,20 @@ export class ChatMessageDAL {
         });
     }
 
-    static async getLatestMessagesBySession(
-        sessionId: string,
+    static async getLatestMessagesByProject(
+        projectId: string,
         count: number = 10
     ): Promise<ChatMessage[]> {
         return await prisma.chatMessage.findMany({
-            where: { sessionId },
+            where: { projectId },
             orderBy: { createdAt: 'desc' },
             take: count,
         });
     }
 
-    static async countMessagesBySession(sessionId: string): Promise<number> {
+    static async countMessagesByProject(projectId: string): Promise<number> {
         return await prisma.chatMessage.count({
-            where: { sessionId },
+            where: { projectId },
         });
     }
 }

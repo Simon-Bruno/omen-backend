@@ -2,7 +2,7 @@
 import { getToolsConfiguration } from './tools';
 import { createEcommerceAgentSystemPrompt } from './prompts';
 import { streamText, stepCountIs } from 'ai';
-import { openai } from '@ai-sdk/openai';
+// import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
 import type {
@@ -21,7 +21,7 @@ export class AgentServiceImpl implements AgentService {
   }
 
 
-  async sendMessageStream(sessionId: string, message: string, conversationHistory?: any[]): Promise<{ stream: unknown; messageId: string }> {
+  async sendMessageStream(message: string, projectId: string, conversationHistory?: any[]): Promise<{ stream: unknown; messageId: string }> {
     console.log(`[AGENT] Processing message: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
     if (conversationHistory) {
       console.log(`[AGENT] Using conversation history (${conversationHistory.length} messages)`);
@@ -40,8 +40,8 @@ export class AgentServiceImpl implements AgentService {
 
     // Add conversation history if provided, otherwise just add the current message
     if (conversationHistory && conversationHistory.length > 0) {
-      conversationHistory.forEach((msg, index) => {
-        
+      conversationHistory.forEach((msg) => {
+
         llmMessages.push({
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content,
@@ -63,19 +63,19 @@ export class AgentServiceImpl implements AgentService {
     let systemPrompt = this.config.systemPrompt;
 
     if (this.config.enableToolCalls) {
-      const toolsConfig = getToolsConfiguration();
+      const toolsConfig = getToolsConfiguration(projectId);
       // Generate dynamic system prompt based on available tools
       systemPrompt = createEcommerceAgentSystemPrompt(toolsConfig.availableTools);
 
       llmOptions = {
         tools: toolsConfig.tools,
       };
-      
-      console.log(`[AGENT] Tools enabled: ${toolsConfig.availableTools.join(', ')}`);
+
+      console.log(`[AGENT] Tools enabled: ${toolsConfig.availableTools.join(', ')} for project ${projectId}`);
     }
 
     // Convert messages to AI SDK format
-    const aiMessages = llmMessages.map((msg, index) => {
+    const aiMessages = llmMessages.map((msg) => {
       const content = typeof msg.content === 'string'
         ? msg.content
         : msg.content
@@ -88,12 +88,12 @@ export class AgentServiceImpl implements AgentService {
         content,
         ...(msg.tool_calls && { toolCalls: msg.tool_calls }),
         ...(msg.tool_call_id && { toolCallId: msg.tool_call_id }),
-        ...(msg.tool_results && { toolResults: msg.tool_results }),
+        ...((msg as any).tool_results && { toolResults: (msg as any).tool_results }),
       };
 
       // Log tool results in AI messages for debugging
-      if (msg.tool_results && msg.tool_results.length > 0) {
-        console.log(`[AGENT] AI Message ${index + 1} has tool results:`, JSON.stringify(msg.tool_results, null, 2));
+      if ((msg as any).tool_results && (msg as any).tool_results.length > 0) {
+        console.log(`[AGENT] AI Message has tool results:`, JSON.stringify((msg as any).tool_results, null, 2));
       }
 
       return aiMessage;
@@ -109,9 +109,7 @@ export class AgentServiceImpl implements AgentService {
 
     // Use AI SDK streaming with tools enabled and multi-step calls
     const streamConfig: any = {
-      model: google(this.aiConfig.model, {
-        apiKey: this.aiConfig.apiKey,
-      }),
+      model: google(this.aiConfig.model),
       messages: aiMessages,
       stopWhen: stepCountIs(5), // Allow up to 5 steps for multi-step tool calls
       ...AI_CONFIGS.STREAMING

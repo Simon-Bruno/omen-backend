@@ -4,35 +4,20 @@ import { auth0 } from '@infra/external/auth0';
 import { shopifyOAuth, shopify } from '@infra/external/shopify';
 import { userService } from '@infra/dal/user';
 import { prisma } from '@infra/prisma';
+import { validateBody } from '@interfaces/http/middleware/validation';
+import { UserRegistrationSchema, type UserRegistrationRequest } from './schemas';
+import type { User } from '@infra/dal/user';
 
 export async function userRegistrationRoutes(fastify: FastifyInstance) {
     /**
      * Complete user registration flow
      * Step 1: Create user in Auth0 + Database + initiate Shopify OAuth
      */
-    fastify.post('/register', async (request, reply) => {
+    fastify.post('/register', {
+        preHandler: validateBody(UserRegistrationSchema)
+    }, async (request, reply) => {
         try {
-            const { email, shop, password } = request.body as { 
-                email: string; 
-                shop: string; 
-                password?: string; 
-            };
-
-            if (!email || !shop) {
-                return reply.status(400).send({
-                    error: 'BAD_REQUEST',
-                    message: 'Email and shop domain are required',
-                });
-            }
-
-            // Validate email format
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                return reply.status(400).send({
-                    error: 'BAD_REQUEST',
-                    message: 'Invalid email format',
-                });
-            }
+            const { email, shop, password, firstName, lastName } = request.body as UserRegistrationRequest;
 
             // Normalize shop domain
             const normalizedShop = shopify.normalizeShopDomain(shop);
@@ -71,7 +56,7 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
             }
 
             // Step 2: Create user in our database
-            const user = await userService.getOrCreateUser(auth0User.id, email);
+            const user = await userService.getOrCreateUser(auth0User.id, email, firstName, lastName);
 
             // Step 3: Generate OAuth URL for Shopify connection
             const { oauthUrl, state } = shopifyOAuth.generateRegistrationOAuthUrl(normalizedShop, email);
@@ -81,6 +66,8 @@ export async function userRegistrationRoutes(fastify: FastifyInstance) {
                 user: {
                     id: user.id,
                     email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
                     auth0Id: auth0User.id,
                 },
                 oauthUrl,

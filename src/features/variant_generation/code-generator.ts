@@ -105,24 +105,39 @@ Do NOT wrap this in any other structure like {"type": "response", "properties": 
 `;
 
         const aiConfig = getAIConfig();
-        const codeObject = await generateObject({
-            model: google(aiConfig.model, {
-                apiKey: aiConfig.apiKey,
-            }),
-            schema: codeGenerationSchema,
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        { type: "text", text: codePrompt },
-                        { type: "text", text: brandAnalysis },
-                        { type: "image", image: screenshot }
-                    ]
-                }
-            ]
-        });
+        console.log(`[CODE_GENERATOR] Generating code for variant: ${variant.variant_label}`);
+        console.log(`[CODE_GENERATOR] Using injection points:`, injectionPoints.map(p => ({ type: p.type, selector: p.selector, confidence: p.confidence })));
+        
+        try {
+            const codeObject = await generateObject({
+                model: google(aiConfig.model),
+                schema: codeGenerationSchema,
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            { type: "text", text: codePrompt },
+                            { type: "text", text: brandAnalysis },
+                            { type: "image", image: screenshot }
+                        ]
+                    }
+                ]
+            });
 
-        return codeObject.object;
+            console.log(`[CODE_GENERATOR] Generated code result:`, codeObject.object);
+            return codeObject.object;
+        } catch (error) {
+            console.error(`[CODE_GENERATOR] Error generating code for variant ${variant.variant_label}:`, error);
+            // Return a fallback code result
+            return {
+                css_code: '',
+                html_code: '',
+                injection_method: 'selector' as const,
+                target_selector: injectionPoints[0]?.selector || '',
+                new_element_html: '',
+                implementation_instructions: `Code generation failed. Please implement manually: ${variant.description}`
+            };
+        }
     }
 }
 

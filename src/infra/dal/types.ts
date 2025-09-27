@@ -1,37 +1,27 @@
 // DAL Types and Interfaces
-import type { Project, Experiment, DiagnosticsRun, ExperimentStatus, DiagnosticsStatus } from '@prisma/client';
+import type { Project, Experiment, JobStatus } from '@prisma/client';
 
 // Re-export Prisma types for DAL use
-export type { Project, Experiment, DiagnosticsRun, ExperimentStatus, DiagnosticsStatus };
+export type { Project, Experiment, JobStatus };
 
 export interface CreateExperimentData {
   projectId: string;
   name: string;
-  dsl: Record<string, any>;
+  oec: string;
+  minDays: number;
+  minSessionsPerVariant: number;
 }
 
 export interface UpdateExperimentStatusData {
   experimentId: string;
-  status: ExperimentStatus;
+  status: JobStatus;
   publishedAt?: Date;
-  finishedAt?: Date;
-}
-
-export interface CreateDiagnosticsRunData {
-  projectId: string;
-}
-
-export interface UpdateDiagnosticsRunData {
-  diagnosticsRunId: string;
-  status: DiagnosticsStatus;
-  summary?: Record<string, any>;
-  pages?: Record<string, any>;
   finishedAt?: Date;
 }
 
 export interface ProjectWithRelations extends Project {
   experiments: Experiment[];
-  diagnosticsRuns: DiagnosticsRun[];
+  chatMessages: any[];
 }
 
 export interface ExperimentWithProject extends Experiment {

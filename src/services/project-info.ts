@@ -47,11 +47,6 @@ export class ProjectInfoServiceImpl implements ProjectInfoService {
       exp => exp.status === 'RUNNING'
     ).length;
 
-    // Get last diagnostics run
-    const lastDiagnosticsRun = project.diagnosticsRuns.length > 0 
-      ? project.diagnosticsRuns[0].startedAt 
-      : undefined;
-
     return {
       id: project.id,
       shopDomain: project.shopDomain,
@@ -62,7 +57,6 @@ export class ProjectInfoServiceImpl implements ProjectInfoService {
       shopCountry: shopInfo.country,
       experimentsCount,
       activeExperimentsCount,
-      lastDiagnosticsRun,
     };
   }
 }

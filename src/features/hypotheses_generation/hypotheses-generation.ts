@@ -65,9 +65,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         console.log(`[HYPOTHESES] Generating AI response with Google Gemini`);
         const aiConfig = getAIConfig();
         const result = await generateObject({
-            model: google(aiConfig.model, {
-                apiKey: aiConfig.apiKey,
-            }),
+            model: google(aiConfig.model),
             schema: hypothesesResponseSchema,
             messages: [
                 {

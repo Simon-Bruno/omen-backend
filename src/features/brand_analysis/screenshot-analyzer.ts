@@ -49,9 +49,7 @@ export class ScreenshotAnalyzer {
     try {
       const aiConfig = getAIConfig();
       const result = await generateObject({
-        model: google(aiConfig.model, {
-          apiKey: aiConfig.apiKey,
-        }),
+        model: google(aiConfig.model),
         schema: screenshotAnalysisSchema,
         messages: [
           {

@@ -2,15 +2,17 @@ import { FastifyInstance } from 'fastify';
 import { serviceContainer } from '@app/container';
 import { Readable } from 'node:stream';
 import { UIMessage } from 'ai';
+import { authMiddleware } from './middleware/auth';
+import { requireAuth } from './middleware/authorization';
 
 
 export async function chatRoutes(fastify: FastifyInstance) {
-    fastify.post("/chat", async (req, reply) => {
+    fastify.post("/chat", { preHandler: [authMiddleware, requireAuth] }, async (req, reply) => {
         const { messages } = (req.body ?? {}) as {
             messages?: UIMessage[];
         };
 
-        console.log(`[CHAT] Processing ${messages.length} messages`);
+        console.log(`[CHAT] Processing ${messages?.length || 0} messages`);
 
         if (!messages || messages.length === 0) {
             return reply.code(400).send({ error: 'Messages are required' });
@@ -80,7 +82,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
             // Use the agent service streaming method with full conversation history
             // Session management is disabled for now
-            const { stream } = await agentService.sendMessageStream('no-session', messageText, conversationHistory);
+            const { stream } = await agentService.sendMessageStream(messageText, req.projectId!, conversationHistory);
 
             // Use AI SDK's built-in streaming response
             const res = (stream as { toUIMessageStreamResponse: () => Response }).toUIMessageStreamResponse();

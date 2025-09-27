@@ -1,15 +1,10 @@
 import { prisma } from '@infra/prisma';
+import type { User as PrismaUser, Project } from '@prisma/client';
 
-export interface User {
-  id: string;
-  auth0Id: string;
-  email: string;
-  project?: {
-    id: string;
-    shopDomain: string;
-    brandAnalysis?: unknown;
-  };
-}
+// Use Prisma-generated types as the source of truth
+export type User = PrismaUser & {
+  project?: Pick<Project, 'id' | 'shopDomain' | 'brandAnalysis'>;
+};
 
 /**
  * User service for database operations
@@ -25,27 +20,14 @@ export class UserService {
       include: { project: true },
     });
 
-    if (!user) {
-      return null;
-    }
-
-    return {
-      id: user.id,
-      auth0Id: user.auth0Id,
-      email: user.email,
-      project: user.project ? {
-        id: user.project.id,
-        shopDomain: user.project.shopDomain,
-        brandAnalysis: user.project.brandAnalysis,
-      } : undefined,
-    };
+    return user as User | null;
   }
 
   /**
    * Get or create user from Auth0 payload
    * Creates user on first login
    */
-  async getOrCreateUser(auth0Id: string, email: string): Promise<User> {
+  async getOrCreateUser(auth0Id: string, email: string, firstName: string = '', lastName: string = ''): Promise<User> {
     // Try to find existing user
     let user = await prisma.user.findUnique({
       where: { auth0Id },
@@ -58,6 +40,8 @@ export class UserService {
         data: {
           auth0Id,
           email,
+          firstName,
+          lastName,
         },
         include: { project: true },
       });
@@ -72,16 +56,7 @@ export class UserService {
       }
     }
 
-    return {
-      id: user.id,
-      auth0Id: user.auth0Id,
-      email: user.email,
-      project: user.project ? {
-        id: user.project.id,
-        shopDomain: user.project.shopDomain,
-        brandAnalysis: user.project.brandAnalysis,
-      } : undefined,
-    };
+    return user as User;
   }
 
   /**
@@ -93,20 +68,7 @@ export class UserService {
       include: { project: true },
     });
 
-    if (!user) {
-      return null;
-    }
-
-    return {
-      id: user.id,
-      auth0Id: user.auth0Id,
-      email: user.email,
-      project: user.project ? {
-        id: user.project.id,
-        shopDomain: user.project.shopDomain,
-        brandAnalysis: user.project.brandAnalysis,
-      } : undefined,
-    };
+    return user as User | null;
   }
 
 
@@ -120,16 +82,7 @@ export class UserService {
       include: { project: true },
     });
 
-    return {
-      id: user.id,
-      auth0Id: user.auth0Id,
-      email: user.email,
-      project: user.project ? {
-        id: user.project.id,
-        shopDomain: user.project.shopDomain,
-        brandAnalysis: user.project.brandAnalysis,
-      } : undefined,
-    };
+    return user as User;
   }
 
   /**
@@ -177,16 +130,7 @@ export class UserService {
       include: { project: true },
     });
 
-    return {
-      id: user.id,
-      auth0Id: user.auth0Id,
-      email: user.email,
-      project: {
-        id: user.project!.id,
-        shopDomain: user.project!.shopDomain,
-        brandAnalysis: user.project!.brandAnalysis,
-      },
-    };
+    return user as User;
   }
 
   /**

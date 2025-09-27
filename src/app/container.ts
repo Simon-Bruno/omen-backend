@@ -1,6 +1,5 @@
 // Service Container for Dependency Injection
 import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler';
-import { createDiagnosticsService, type DiagnosticsService } from '@domain/analytics/diagnostics';
 import { createAgentService, type AgentService, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
 import { createBrandAnalysisService, type BrandAnalysisService } from '@features/brand_analysis';
 import { createHypothesesGenerationService, HypothesesGenerationService } from '@features/hypotheses_generation/hypotheses-generation';
@@ -17,7 +16,7 @@ class ServiceContainer {
       const crawlerService = createPlaywrightCrawler(this.config.crawler);
       this.services.set('crawler', crawlerService);
     }
-    return this.services.get('crawler');
+    return this.services.get('crawler') as CrawlerService;
   }
 
   getBrandAnalysisService(): BrandAnalysisService {
@@ -26,17 +25,7 @@ class ServiceContainer {
       const brandAnalysisService = createBrandAnalysisService(crawler);
       this.services.set('brandAnalysis', brandAnalysisService);
     }
-    return this.services.get('brandAnalysis');
-  }
-
-  getDiagnosticsService(): DiagnosticsService {
-    if (!this.services.has('diagnostics')) {
-      const brandAnalysis = this.getBrandAnalysisService();
-      const crawler = this.getCrawlerService();
-      const diagnosticsService = createDiagnosticsService(brandAnalysis, crawler);
-      this.services.set('diagnostics', diagnosticsService);
-    }
-    return this.services.get('diagnostics');
+    return this.services.get('brandAnalysis') as BrandAnalysisService;
   }
 
 
@@ -50,7 +39,7 @@ class ServiceContainer {
       });
       this.services.set('agent', agentService);
     }
-    return this.services.get('agent');
+    return this.services.get('agent') as AgentService;
   }
 
   getHypothesisGenerator(): HypothesesGenerationService {
@@ -59,7 +48,7 @@ class ServiceContainer {
       const hypothesesGenerator = createHypothesesGenerationService(crawler);
       this.services.set('hypothesesGeneration', hypothesesGenerator);
     }
-    return this.services.get('hypothesesGeneration');
+    return this.services.get('hypothesesGeneration') as HypothesesGenerationService;
   }
 
   getScreenshotStorageService(): ScreenshotStorageService {
@@ -67,13 +56,13 @@ class ServiceContainer {
       const screenshotStorageService = createScreenshotStorageService();
       this.services.set('screenshotStorage', screenshotStorageService);
     }
-    return this.services.get('screenshotStorage');
+    return this.services.get('screenshotStorage') as ScreenshotStorageService;
   }
 
-  
+
   async cleanup(): Promise<void> {
     // Cleanup any services that need it
-    const crawler = this.services.get('crawler');
+    const crawler = this.services.get('crawler') as any;
     if (crawler && typeof crawler.close === 'function') {
       await crawler.close();
     }

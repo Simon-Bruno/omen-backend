@@ -13,7 +13,7 @@ export class ProjectDAL {
   }
 
   /**
-   * Get project with all relations (experiments, diagnostics runs)
+   * Get project with all relations (experiments, chat messages)
    */
   static async getProjectWithRelations(projectId: string): Promise<ProjectWithRelations | null> {
     return await prisma.project.findUnique({
@@ -22,8 +22,8 @@ export class ProjectDAL {
         experiments: {
           orderBy: { createdAt: 'desc' },
         },
-        diagnosticsRuns: {
-          orderBy: { startedAt: 'desc' },
+        chatMessages: {
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -96,6 +96,8 @@ export class ProjectDAL {
       where: { id: projectId },
       select: { brandAnalysis: true },
     });
+    console.log()
+    console.log(`[IN PROJECT_BRAND_ANALYSIS] Project brand analysis: ${JSON.stringify(project?.brandAnalysis)}`);
     return JSON.stringify(project?.brandAnalysis) ?? null;
   }
 

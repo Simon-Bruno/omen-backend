@@ -69,16 +69,10 @@ export interface ProjectInfo {
   shopCountry?: string;
   experimentsCount: number;
   activeExperimentsCount: number;
-  lastDiagnosticsRun?: Date;
 }
 
 export interface AgentService {
-  createSession(projectId: string): Promise<{ sessionId: string }>;
-  sendMessageStream(sessionId: string, message: string, conversationHistory?: any[]): Promise<{ stream: unknown; messageId: string }>;
-  sendMessageStreamWithHistory(sessionId: string, conversationHistory: any[]): Promise<{ stream: unknown; messageId: string }>;
-  getSessionMessages(sessionId: string, limit?: number): Promise<AgentMessage[]>;
-  closeSession(sessionId: string): Promise<void>;
-  getActiveSession(projectId: string): Promise<{ sessionId: string } | null>;
+  sendMessageStream(message: string, projectId: string, conversationHistory?: any[]): Promise<{ stream: unknown; messageId: string }>;
 }
 
 

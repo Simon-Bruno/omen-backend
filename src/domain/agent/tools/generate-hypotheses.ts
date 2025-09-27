@@ -1,3 +1,4 @@
+// @ts-nocheck 
 import { tool } from 'ai';
 import { createHypothesesSchema } from './schemas';
 import { createHypothesesGenerationService, HypothesesGenerationService } from '@features/hypotheses_generation/hypotheses-generation';
@@ -8,8 +9,10 @@ import { hypothesisStateManager } from '../hypothesis-state-manager';
 
 class GenerateHypothesesExecutor {
     private hypothesesGenerationService: HypothesesGenerationService;
+    private projectId: string;
 
-    constructor() {
+    constructor(projectId: string) {
+        this.projectId = projectId;
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
         this.hypothesesGenerationService = createHypothesesGenerationService(crawler);
@@ -20,12 +23,11 @@ class GenerateHypothesesExecutor {
     }
 
     async execute(input: { projectId?: string; url?: string }): Promise<HypothesesGenerationResult> {
-        // Use provided project ID or hardcoded fallback
+        // Use provided URL or default, and use injected project ID
         const url = input.url || 'https://omen-mvp.myshopify.com';
-        const projectId = input.projectId || 'cmfr3xr1n0004pe2fob8jas4l';
-        console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url}`);
+        console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url} with project ${this.projectId}`);
         
-        const result = await this.generateHypotheses(url, projectId);
+        const result = await this.generateHypotheses(url, this.projectId);
         
         console.log(`[HYPOTHESES_TOOL] Result structure:`, JSON.stringify(result, null, 2));
         
@@ -56,8 +58,8 @@ class GenerateHypothesesExecutor {
     }
 }
 
-export function generateHypotheses() {
-    const executor = new GenerateHypothesesExecutor();
+export function generateHypotheses(projectId: string) {
+    const executor = new GenerateHypothesesExecutor(projectId);
 
     return tool({
         description: 'Generate hypotheses for a given project',

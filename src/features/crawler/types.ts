@@ -15,29 +15,6 @@ export interface CrawlerService {
     viewport?: { width: number, height: number },
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<string>;
-  analyzeDOM(
-    url: string,
-    viewport?: { width: number, height: number },
-    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
-  ): Promise<{
-    injectionPoints: Array<{
-      type: string;
-      selector: string;
-      confidence: number;
-      description: string;
-      boundingBox: { x: number; y: number; width: number; height: number };
-      alternativeSelectors: string[];
-    }>;
-    pageStructure: {
-      hasHeader: boolean;
-      hasFooter: boolean;
-      hasSidebar: boolean;
-      mainContentSelector?: string;
-      navigationSelectors: string[];
-      ctaButtons: string[];
-      formElements: string[];
-    };
-  }>;
 }
 
 export interface CrawlResult {
