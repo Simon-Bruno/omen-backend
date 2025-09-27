@@ -5,6 +5,7 @@ import { userRegistrationRoutes } from './user/register';
 import { shopifyRoutes } from './shopify';
 import { chatRoutes } from './chat';
 import { brandSummaryRoutes } from './project/brandSummary';
+import { jobRoutes } from './project/jobs';
 import { screenshotRoutes } from './screenshots';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -14,5 +15,6 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(shopifyRoutes);
     await fastify.register(chatRoutes);
     await fastify.register(brandSummaryRoutes);
+    await fastify.register(jobRoutes);
     await fastify.register(screenshotRoutes);
 }

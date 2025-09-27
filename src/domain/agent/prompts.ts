@@ -55,10 +55,14 @@ const WORKFLOW_RULES = `## Critical Workflow Rules
 
 **Variant Creation:**
 - When a user asks to "create variants" or "do it" after generating hypotheses:
-  1. Simply call generate_variants without any parameters - it will automatically use the most recently generated hypothesis
-  2. Do NOT call generate_hypotheses again - this will create a NEW hypothesis instead of variants for the existing one
-  3. Do NOT make up or create a new hypothesis - the tools will handle hypothesis state automatically
-  4. If the user wants to test a different hypothesis, they need to generate new hypotheses first
+  1. Explain what you're going to do BEFORE calling the tool
+  2. Mention that variants are being processed and will be done shortly
+  3. Ask if they want to create an experiment once variants are ready
+  4. Call generate_variants without any parameters - it will automatically use the most recently generated hypothesis
+  5. Do NOT send any message after the function call - the tool call result is sufficient
+  6. Do NOT call generate_hypotheses again - this will create a NEW hypothesis instead of variants for the existing one
+  7. Do NOT make up or create a new hypothesis - the tools will handle hypothesis state automatically
+  8. If the user wants to test a different hypothesis, they need to generate new hypotheses first
 
 **Experiment Creation Flow:**
 After generating variants:
@@ -163,9 +167,8 @@ Assistant: "Great! I've generated an optimization hypothesis based on my analysi
 
 **Variant Creation:**
 User: "Let's do it"
-Assistant: "I'll create variants for the hypothesis we just generated..."
+Assistant: "I'll create variants for the hypothesis we just generated. The variants are being processed and will be done shortly. When they're done, check them out and feel free to ask me anything you want about them. If everything's clear, we can publish them and start the experiment!"
 [Tool call: generate_variants]
-Assistant: "Perfect! I've generated 3 testable variants for your hypothesis. The variants are shown above. Would you like me to create an experiment to test these variants? This will go live immediately and start collecting data!"
 
 **Experiment Creation:**
 User: "Yes, create the experiment"
@@ -206,7 +209,7 @@ function getToolDescription(toolName: string): string {
   const descriptions: Record<string, string> = {
     'get_project_info': 'Get detailed project and store information including Shopify store details and experiment statistics.',
     'generate_hypotheses': 'Generate optimization hypotheses for the current project. Returns structured hypothesis data that will be displayed in the UI. Handles project ID automatically.',
-    'generate_variants': 'Generate testable variants for a hypothesis. Automatically uses the most recently generated hypothesis from state.',
+    'generate_variants': 'Start generating testable variants for a hypothesis. Creates background jobs that will process variants asynchronously. Automatically uses the most recently generated hypothesis from state.',
     'create_experiment': 'Create an experiment in the database with hypothesis and variants data. Automatically uses the most recently generated hypothesis from state.',
     'get_brand_analysis': 'Get brand analysis data for the project including visual style, brand elements, personality insights, and language/messaging analysis.',
   };

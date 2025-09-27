@@ -266,18 +266,27 @@ export class PlaywrightCrawlerService implements CrawlerService {
     viewport: { width: number, height: number } = { width: 1920, height: 1080 },
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<string> {
-    // Initialize browser if not already done
-    await this.initialize();
+    // Create a completely isolated browser instance for this variant
+    const isolatedBrowser = await chromium.launch({
+      executablePath: process.env.CHROME_PATH || '/app/.chrome-for-testing/chrome-linux64/chrome',
+      headless: this.config.headless,
+      args: [
+        '--disable-gpu',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process',
+        '--disable-setuid-sandbox',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+      ],
+    });
 
     if (!url.startsWith("https://")) {
       url = `https://${url}`;
     }
 
-    if (!this.browser) {
-      throw new Error('Browser not initialized');
-    }
-
-    const page = await this.browser.newPage();
+    const page = await isolatedBrowser.newPage();
 
     try {
       // Set viewport
@@ -400,6 +409,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
       throw error;
     } finally {
       await page.close();
+      await isolatedBrowser.close();
     }
   }
 
