@@ -4,7 +4,6 @@ import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
 import { ProjectDAL } from '@infra/dal'
-import { Hypothesis } from './types'
 import { getAIConfig } from '@shared/ai-config'
 
 export interface HypothesesGenerationService {

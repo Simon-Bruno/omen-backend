@@ -1,7 +1,6 @@
 import type { FastifyRequest } from 'fastify/types/request.js';
 import type { FastifyReply } from 'fastify/types/reply.js';
 import '@shared/fastify.d';
-import { auth0 } from '@infra/external/auth0';
 import type { ProjectParams, ProjectBody } from '@shared/types';
 
 /**

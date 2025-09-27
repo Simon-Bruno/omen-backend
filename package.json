@@ -24,6 +24,10 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  },
   "dependencies": {
     "@ai-sdk/google": "^2.0.16",
     "@ai-sdk/langchain": "^1.0.52",
