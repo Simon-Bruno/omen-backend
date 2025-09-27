@@ -90,11 +90,11 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   ): Promise<InjectionPoint[]> {
     console.log(`[DOM_ANALYZER] Analyzing page for hypothesis: "${hypothesis}"`);
     
-    // Get page HTML and screenshot
+    // Get page HTML and screenshot (optimized for memory)
     const crawlResult = await this.crawlerService.crawlPage(url, {
       viewport: { width: 1920, height: 1080 },
       waitFor: 3000,
-      screenshot: { fullPage: true, quality: 80 },
+      screenshot: { fullPage: false, quality: 60 }, // Reduced quality and no full page
       authentication
     });
 
@@ -108,9 +108,17 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
       return `data:image/png;base64,${b64}`;
     };
 
-    // Optimize HTML for AI analysis
+    // Optimize HTML for AI analysis (memory efficient)
     const optimizedHTML = this.optimizeHTMLForAnalysis(crawlResult.html, hypothesis);
     console.log(`[DOM_ANALYZER] Optimized HTML from ${crawlResult.html.length} to ${optimizedHTML.length} characters`);
+
+    // Clear large HTML from memory before AI processing
+    crawlResult.html = ''; // Free memory
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
 
     // Use AI to find specific injection points for this hypothesis
     const aiConfig = getAIConfig();
@@ -130,6 +138,8 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
         }
       ]
     });
+
+    // optimizedHTML will be garbage collected after this scope
 
     // Add metadata to injection points and validate/clean selectors
     const enrichedInjectionPoints = result.object.injectionPoints.map(point => {
@@ -177,35 +187,63 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     // Extract key elements based on hypothesis keywords
     const hypothesisKeywords = this.extractKeywordsFromHypothesis(hypothesis);
     
-    // Remove unnecessary content to reduce size
-    let optimized = html
-      // Remove comments
-      .replace(/<!--[\s\S]*?-->/g, '')
-      // Remove script tags (keep data attributes)
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      // Remove style tags (keep inline styles)
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      // Remove excessive whitespace
-      .replace(/\s+/g, ' ')
-      // Remove empty lines
-      .replace(/\n\s*\n/g, '\n')
-      // Remove common tracking/analytics scripts
-      .replace(/<script[^>]*src="[^"]*(?:google-analytics|gtag|facebook|twitter|linkedin|pinterest)[^"]*"[^>]*>[\s\S]*?<\/script>/gi, '')
-      // Remove meta tags that aren't essential
-      .replace(/<meta[^>]*(?:property|name)="(?:og:|twitter:|article:|product:)[^"]*"[^>]*>/gi, '')
-      // Remove data attributes that aren't useful for analysis
-      .replace(/\sdata-[^=]*="[^"]*"/gi, '');
-
-    // Extract relevant sections based on hypothesis
-    const relevantSections = this.extractRelevantSections(optimized, hypothesisKeywords);
+    // Process HTML in chunks to reduce memory usage
+    const chunkSize = 10000; // Process 10KB at a time
+    const chunks = this.splitIntoChunks(html, chunkSize);
     
-    // Limit total size to prevent token overflow - reduced from 50k to 30k for faster processing
-    const maxLength = 30000; // ~7k tokens
+    let optimized = '';
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      // Process chunk with minimal memory operations
+      const processedChunk = this.processHTMLChunk(chunk);
+      optimized += processedChunk;
+      
+      // Force garbage collection hint for large chunks
+      if (i % 5 === 0 && global.gc) {
+        global.gc();
+      }
+    }
+    
+    // Extract relevant sections based on hypothesis (memory efficient)
+    const relevantSections = this.extractRelevantSectionsEfficient(optimized, hypothesisKeywords);
+    
+    // Limit total size to prevent token overflow - further reduced for memory
+    const maxLength = 15000; // ~3.5k tokens (reduced from 30k)
     if (relevantSections.length > maxLength) {
       return relevantSections.substring(0, maxLength) + '\n\n... [HTML truncated for analysis]';
     }
     
     return relevantSections;
+  }
+
+  private splitIntoChunks(str: string, chunkSize: number): string[] {
+    const chunks = [];
+    for (let i = 0; i < str.length; i += chunkSize) {
+      chunks.push(str.substring(i, i + chunkSize));
+    }
+    return chunks;
+  }
+
+  private processHTMLChunk(chunk: string): string {
+    // Process chunk with single-pass operations to minimize memory
+    return chunk
+      // Remove comments (single pass)
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Remove script tags (single pass)
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      // Remove style tags (single pass)
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      // Remove tracking scripts (single pass)
+      .replace(/<script[^>]*src="[^"]*(?:google-analytics|gtag|facebook|twitter|linkedin|pinterest)[^"]*"[^>]*>[\s\S]*?<\/script>/gi, '')
+      // Remove meta tags (single pass)
+      .replace(/<meta[^>]*(?:property|name)="(?:og:|twitter:|article:|product:)[^"]*"[^>]*>/gi, '')
+      // Remove data attributes (single pass)
+      .replace(/\sdata-[^=]*="[^"]*"/gi, '')
+      // Normalize whitespace (single pass)
+      .replace(/\s+/g, ' ')
+      // Remove empty lines (single pass)
+      .replace(/\n\s*\n/g, '\n');
   }
 
   private extractKeywordsFromHypothesis(hypothesis: string): string[] {
@@ -235,33 +273,41 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     return keywords;
   }
 
-  private extractRelevantSections(html: string, keywords: string[]): string {
-    // Extract sections that contain relevant keywords
-    const sections = [];
+  private extractRelevantSectionsEfficient(html: string, keywords: string[]): string {
+    // Use a more memory-efficient approach with streaming
+    const sections = new Set<string>(); // Use Set to avoid duplicates automatically
     
-    // Always include the main structure
+    // Always include the main structure (single regex)
     const mainMatch = html.match(/<main[^>]*>[\s\S]*?<\/main>/i);
-    if (mainMatch) sections.push(mainMatch[0]);
+    if (mainMatch) sections.add(mainMatch[0]);
     
-    // Look for sections containing keywords
+    // Process keywords one at a time to avoid memory spikes
     for (const keyword of keywords) {
-      const regex = new RegExp(`<[^>]*${keyword}[^>]*>[\s\S]*?<\/[^>]*>`, 'gi');
-      const matches = html.match(regex);
-      if (matches) {
-        sections.push(...matches);
+      // Use a more targeted regex that's less memory intensive
+      const regex = new RegExp(`<[^>]*${this.escapeRegex(keyword)}[^>]*>[\s\S]{0,2000}?<\/[^>]*>`, 'gi');
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        sections.add(match[0]);
+        // Limit matches per keyword to prevent memory overflow
+        if (sections.size > 20) break;
       }
+      // Clear regex state
+      regex.lastIndex = 0;
     }
     
-    // Include header and footer for context
+    // Include header and footer for context (single regex each)
     const headerMatch = html.match(/<header[^>]*>[\s\S]*?<\/header>/i);
-    if (headerMatch) sections.push(headerMatch[0]);
+    if (headerMatch) sections.add(headerMatch[0]);
     
     const footerMatch = html.match(/<footer[^>]*>[\s\S]*?<\/footer>/i);
-    if (footerMatch) sections.push(footerMatch[0]);
+    if (footerMatch) sections.add(footerMatch[0]);
     
-    // Remove duplicates and join
-    const uniqueSections = [...new Set(sections)];
-    return uniqueSections.join('\n\n');
+    // Convert Set to Array and join (memory efficient)
+    return Array.from(sections).join('\n\n');
+  }
+
+  private escapeRegex(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private buildHypothesisFocusedPrompt(hypothesis: string): string {
