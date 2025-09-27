@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "tsx watch -r tsconfig-paths/register src/index.ts",
     "dev:watch": "tsx watch -r tsconfig-paths/register src/index.ts",
-    "build": "tsc && tsc-alias",
-    "start": "node --experimental-specifier-resolution=node dist/index.js",
+    "build": "tsc",
+    "start": "node -r tsconfig-paths/register dist/index.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "check:unused": "ts-unused-exports tsconfig.json",
