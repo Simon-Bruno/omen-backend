@@ -75,7 +75,7 @@ export class ShopifyOAuthService {
     this.removeState(state);
 
     // Validate OAuth parameters
-    const validation = shopify.validateCallbackParams({ code, shop, hmac, state });
+    const validation = shopify.validateCallbackParams({ code, shop, hmac: _hmac, state });
     if (!validation.isValid) {
       throw new Error(validation.error);
     }
