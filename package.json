@@ -18,7 +18,9 @@
     "db:studio": "prisma studio",
     "seed": "tsx -r tsconfig-paths/register scripts/seed.ts",
     "seed:reset": "tsx -r tsconfig-paths/register scripts/seed.ts --reset",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "npx prisma generate && npx playwright install --with-deps chromium",
+    "heroku-postbuild": "npx prisma generate && npx playwright install --with-deps chromium"
   },
   "keywords": [],
   "author": "",
