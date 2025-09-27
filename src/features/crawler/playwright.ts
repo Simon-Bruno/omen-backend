@@ -87,6 +87,9 @@ export class PlaywrightCrawlerService implements CrawlerService {
         }
       });
 
+      // Handle cookie consent banners and popups
+      await this.dismissCookieBanners(page);
+
       // Take screenshot
       return (await page.screenshot({
         type: 'png',
@@ -191,6 +194,9 @@ export class PlaywrightCrawlerService implements CrawlerService {
           document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
         }
       });
+
+      // Handle cookie consent banners and popups
+      await this.dismissCookieBanners(page);
 
       // Wait additional time if specified
       const waitFor = options.waitFor || this.config.defaultWaitFor!;
@@ -327,6 +333,9 @@ export class PlaywrightCrawlerService implements CrawlerService {
           document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
         }
       });
+
+      // Handle cookie consent banners and popups
+      await this.dismissCookieBanners(page);
 
       // Apply variant code
       console.log(`[CRAWLER] Applying variant code for selector: ${variant.target_selector}`);
@@ -594,6 +603,225 @@ export class PlaywrightCrawlerService implements CrawlerService {
     } catch (error) {
       console.error(`[CRAWLER] Failed to apply variant code:`, error);
       // Don't throw - we still want to take a screenshot even if code application fails
+    }
+  }
+
+  /**
+   * Dismiss common cookie consent banners and popups
+   */
+  private async dismissCookieBanners(page: Page): Promise<void> {
+    try {
+      console.log('[CRAWLER] Looking for cookie consent banners...');
+      
+      // Common cookie banner selectors and their corresponding accept/close buttons
+      const cookieBannerSelectors = [
+        // Generic cookie banners
+        '[id*="cookie"]',
+        '[class*="cookie"]',
+        '[id*="consent"]',
+        '[class*="consent"]',
+        '[id*="gdpr"]',
+        '[class*="gdpr"]',
+        '[id*="privacy"]',
+        '[class*="privacy"]',
+        '[id*="banner"]',
+        '[class*="banner"]',
+        // Specific common selectors
+        '.cookie-banner',
+        '.cookie-notice',
+        '.cookie-consent',
+        '.gdpr-banner',
+        '.privacy-banner',
+        '.consent-banner',
+        '#cookie-banner',
+        '#cookie-notice',
+        '#cookie-consent',
+        '#gdpr-banner',
+        '#privacy-banner',
+        '#consent-banner',
+        // Cookiebot
+        '#CybotCookiebotDialog',
+        // OneTrust
+        '#onetrust-consent-sdk',
+        // CookieYes
+        '.cky-consent-container',
+        // Cookiebot alternatives
+        '.cc-window',
+        '.cc-banner',
+        // Generic popup/overlay selectors
+        '[role="dialog"][aria-label*="cookie" i]',
+        '[role="dialog"][aria-label*="consent" i]',
+        '[role="dialog"][aria-label*="privacy" i]',
+        '[role="dialog"][aria-label*="gdpr" i]',
+      ];
+
+      const acceptButtonSelectors = [
+        // Generic accept buttons
+        'button[class*="accept"]',
+        'button[class*="agree"]',
+        'button[class*="allow"]',
+        'button[class*="consent"]',
+        'button[id*="accept"]',
+        'button[id*="agree"]',
+        'button[id*="allow"]',
+        'button[id*="consent"]',
+        // Specific common selectors
+        'button.accept-cookies',
+        'button.accept-all',
+        'button.agree-cookies',
+        'button.allow-cookies',
+        'button.consent-accept',
+        'button.cookie-accept',
+        'button.gdpr-accept',
+        'button.privacy-accept',
+        '#accept-cookies',
+        '#accept-all',
+        '#agree-cookies',
+        '#allow-cookies',
+        '#consent-accept',
+        '#cookie-accept',
+        '#gdpr-accept',
+        '#privacy-accept',
+        // Cookiebot
+        '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+        '#CybotCookiebotDialogBodyButtonAccept',
+        // OneTrust
+        '#onetrust-accept-btn-handler',
+        // CookieYes
+        '.cky-btn-accept',
+        // Generic close/accept buttons
+        'button[aria-label*="accept" i]',
+        'button[aria-label*="agree" i]',
+        'button[aria-label*="allow" i]',
+        'button[aria-label*="consent" i]',
+        'button[aria-label*="close" i]',
+        // Text-based selectors
+        'button:has-text("Accept")',
+        'button:has-text("Accept All")',
+        'button:has-text("Agree")',
+        'button:has-text("Allow")',
+        'button:has-text("Allow All")',
+        'button:has-text("Consent")',
+        'button:has-text("I Accept")',
+        'button:has-text("I Agree")',
+        'button:has-text("OK")',
+        'button:has-text("Got it")',
+        'button:has-text("Continue")',
+        'button:has-text("Close")',
+        'button:has-text("Dismiss")',
+        // Links that might be accept buttons
+        'a[class*="accept"]',
+        'a[class*="agree"]',
+        'a[class*="allow"]',
+        'a[class*="consent"]',
+        'a:has-text("Accept")',
+        'a:has-text("Accept All")',
+        'a:has-text("Agree")',
+        'a:has-text("Allow")',
+        'a:has-text("Allow All")',
+        'a:has-text("I Accept")',
+        'a:has-text("I Agree")',
+        'a:has-text("OK")',
+        'a:has-text("Got it")',
+        'a:has-text("Continue")',
+      ];
+
+      // Wait a bit for cookie banners to load
+      await page.waitForTimeout(1000);
+
+      // Look for cookie banners
+      let bannerFound = false;
+      for (const bannerSelector of cookieBannerSelectors) {
+        try {
+          const banner = page.locator(bannerSelector).first();
+          const isVisible = await banner.isVisible().catch(() => false);
+          
+          if (isVisible) {
+            console.log(`[CRAWLER] Found cookie banner with selector: ${bannerSelector}`);
+            bannerFound = true;
+            
+            // Try to find and click accept button within this banner
+            let buttonClicked = false;
+            for (const buttonSelector of acceptButtonSelectors) {
+              try {
+                const button = banner.locator(buttonSelector).first();
+                const buttonVisible = await button.isVisible().catch(() => false);
+                
+                if (buttonVisible) {
+                  console.log(`[CRAWLER] Clicking accept button: ${buttonSelector}`);
+                  await button.click();
+                  buttonClicked = true;
+                  break;
+                }
+              } catch (buttonError) {
+                // Continue to next button selector
+                continue;
+              }
+            }
+            
+            // If no button found within the banner, try clicking the banner itself
+            if (!buttonClicked) {
+              try {
+                console.log(`[CRAWLER] No accept button found, trying to click banner itself`);
+                await banner.click();
+                buttonClicked = true;
+              } catch (clickError) {
+                console.log(`[CRAWLER] Could not click banner: ${clickError}`);
+              }
+            }
+            
+            if (buttonClicked) {
+              // Wait for banner to disappear
+              await page.waitForTimeout(500);
+              console.log(`[CRAWLER] Cookie banner dismissed`);
+              break;
+            }
+          }
+        } catch (error) {
+          // Continue to next banner selector
+          continue;
+        }
+      }
+
+      if (!bannerFound) {
+        console.log('[CRAWLER] No cookie banners found');
+      }
+
+      // Additional cleanup: remove any remaining cookie-related elements
+      await page.evaluate(() => {
+        const cookieSelectors = [
+          '[id*="cookie"]',
+          '[class*="cookie"]',
+          '[id*="consent"]',
+          '[class*="consent"]',
+          '[id*="gdpr"]',
+          '[class*="gdpr"]',
+          '[id*="privacy"]',
+          '[class*="privacy"]',
+          '[id*="banner"]',
+          '[class*="banner"]',
+        ];
+        
+        cookieSelectors.forEach(selector => {
+          try {
+            document.querySelectorAll(selector).forEach(el => {
+              const element = el as HTMLElement;
+              if (element.style.position === 'fixed' || 
+                  element.style.position === 'absolute' ||
+                  element.classList.contains('fixed') ||
+                  element.classList.contains('absolute')) {
+                element.remove();
+              }
+            });
+          } catch (e) {
+            // Ignore errors
+          }
+        });
+      });
+
+    } catch (error) {
+      console.warn('[CRAWLER] Error dismissing cookie banners:', error);
+      // Don't throw - we still want to continue with the screenshot
     }
   }
 }
