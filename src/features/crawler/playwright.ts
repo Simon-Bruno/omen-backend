@@ -110,7 +110,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
     return '';
   }
 
-  private async handleShopifyPasswordAuth(page: import('playwright').Page, auth: { type: 'shopify_password'; password: string; shopDomain: string }): Promise<void> {
+  private async handleShopifyPasswordAuth(page: import('playwright-chromium').Page, auth: { type: 'shopify_password'; password: string; shopDomain: string }): Promise<void> {
     try {
       // Check if we're on a Shopify password page by looking for the password input
       const passwordInput = await page.$('input[type="password"][id="password"][name="password"]');
@@ -403,7 +403,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
    * Apply variant code to the page
    */
   private async applyVariantCode(
-    page: import('playwright').Page, 
+    page: import('playwright-chromium').Page, 
     variant: {
       css_code: string;
       html_code: string;
