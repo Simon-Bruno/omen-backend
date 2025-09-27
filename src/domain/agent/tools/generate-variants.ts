@@ -6,7 +6,8 @@ import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
-import { variantStateManager } from '../variant-state-manager';
+import { VariantJobDAL } from '@infra/dal';
+import { createVariantJobProcessor } from '@services/variant-job-processor';
 
 class GenerateVariantsExecutor {
     private variantGenerationService: VariantGenerationService;
@@ -20,8 +21,38 @@ class GenerateVariantsExecutor {
         this.variantGenerationService = createVariantGenerationService(crawler, screenshotStorage);
     }
 
-    private async generateVariants(hypothesis: Hypothesis): Promise<any> {
-        return await this.variantGenerationService.generateVariants(hypothesis, this.projectId);
+    private async generateVariantJobs(hypothesis: Hypothesis): Promise<{ jobIds: string[]; projectId: string }> {
+        console.log(`[VARIANTS_TOOL] Starting job-based variant generation for hypothesis: ${hypothesis.hypothesis}`);
+        
+        // Verify project exists
+        const project = await this.variantGenerationService.getCachedProject(this.projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${this.projectId}`);
+        }
+
+        // Create 3 jobs immediately (one for each variant)
+        const jobIds: string[] = [];
+        for (let i = 0; i < 3; i++) {
+            const job = await VariantJobDAL.createJob({ projectId: this.projectId });
+            jobIds.push(job.id);
+            console.log(`[VARIANTS_TOOL] Created job ${job.id} for variant ${i + 1}`);
+        }
+
+        // Start async processing of all jobs
+        // Each job will do its own AI generation, code generation, and screenshots
+        const jobProcessor = createVariantJobProcessor();
+        jobProcessor.processVariantJobs(
+            jobIds, 
+            this.projectId, 
+            hypothesis
+        ).catch(error => {
+            console.error(`[VARIANTS_TOOL] Failed to process variant jobs:`, error);
+        });
+
+        return {
+            jobIds,
+            projectId: this.projectId
+        };
     }
 
     async execute(input: { hypothesis?: Hypothesis }): Promise<any> {
@@ -44,33 +75,12 @@ class GenerateVariantsExecutor {
         console.log(`[VARIANTS_TOOL] ======================================`);
         
         try {
-            const result = await this.generateVariants(hypothesis);
-            console.log(`[VARIANTS_TOOL] Variants generated successfully`);
-            
-            // Parse the variants from the result and store them in state manager
-            try {
-                console.log(`[VARIANTS_TOOL] Raw result from generateVariants: ${result.variantsSchema ? 'Schema generated' : 'No schema'}`);
-                
-                const variantsData = JSON.parse(result.variantsSchema);
-                console.log(`[VARIANTS_TOOL] Parsed variants data: ${variantsData.variants ? variantsData.variants.length : 0} variants found`);
-                
-                if (variantsData.variants && Array.isArray(variantsData.variants)) {
-                    console.log(`[VARIANTS_TOOL] Storing ${variantsData.variants.length} variants in state manager`);
-                    console.log(`[VARIANTS_TOOL] Variant labels:`, variantsData.variants.map((v: any) => v.variant_label));
-                    variantStateManager.setCurrentVariants(variantsData.variants);
-                    console.log(`[VARIANTS_TOOL] Variants stored successfully in state manager`);
-                } else {
-                    console.error(`[VARIANTS_TOOL] Invalid variants data structure:`, variantsData);
-                    console.error(`[VARIANTS_TOOL] Expected 'variants' array, got:`, Object.keys(variantsData));
-                }
-            } catch (parseError) {
-                console.error(`[VARIANTS_TOOL] Failed to parse variants data:`, parseError);
-                console.error(`[VARIANTS_TOOL] Raw result:`, result);
-            }
+            const result = await this.generateVariantJobs(hypothesis);
+            console.log(`[VARIANTS_TOOL] Variant jobs created successfully: ${result.jobIds.length} jobs`);
             
             return result;
         } catch (error) {
-            console.error(`[VARIANTS_TOOL] Failed to generate variants:`, error);
+            console.error(`[VARIANTS_TOOL] Failed to generate variant jobs:`, error);
             throw error;
         }
     }

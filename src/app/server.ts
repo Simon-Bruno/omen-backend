@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@infra/prisma';
 import { registerRoutes } from '@interfaces/http/index';
 import { serviceContainer } from '@app/container';
+import { createJobCleanupService } from '@services/job-cleanup';
 
 export async function createServer(): Promise<{ server: FastifyInstance; httpServer: any }> {
     // Create Fastify instance
@@ -45,8 +46,13 @@ export async function startServer(): Promise<void> {
         // Start the Fastify server
         await server.listen({ port, host });
 
+        // Start job cleanup service
+        const jobCleanupService = createJobCleanupService();
+        jobCleanupService.startCleanup();
+
         // Graceful shutdown
         const gracefulShutdown = async (): Promise<void> => {
+            jobCleanupService.stopCleanup();
             await serviceContainer.cleanup();
             await prisma.$disconnect();
             await server.close();

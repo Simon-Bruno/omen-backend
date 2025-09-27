@@ -14,6 +14,14 @@ import { getAIConfig } from '@shared/ai-config';
 
 export interface VariantGenerationService {
     generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult>;
+    generateSingleVariant(variant: any, hypothesis: Hypothesis, projectId: string, screenshot: string, injectionPoints: any[], brandAnalysis: string): Promise<any>;
+    getCachedProject(projectId: string): Promise<any>;
+    getCachedBrandAnalysis(projectId: string): Promise<string | null>;
+    getAIConfig(): any;
+    buildVariantGenerationPrompt(hypothesis: Hypothesis): string;
+    basicVariantsResponseSchema: any;
+    crawlerService: any;
+    domAnalyzer: any;
 }
 
 export interface VariantGenerationResult {
@@ -44,7 +52,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         this.codeGenerator = createVariantCodeGenerator();
     }
 
-    private async getCachedProject(projectId: string): Promise<any> {
+    private async _getCachedProject(projectId: string): Promise<any> {
         const cached = this.projectCache.get(projectId);
         if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
             console.log(`[VARIANTS] Using cached project data for ${projectId}`);
@@ -59,7 +67,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         return project;
     }
 
-    private async getCachedBrandAnalysis(projectId: string): Promise<string> {
+    private async _getCachedBrandAnalysis(projectId: string): Promise<string> {
         const cached = this.brandAnalysisCache.get(projectId);
         if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
             console.log(`[VARIANTS] Using cached brand analysis for ${projectId}`);
@@ -74,10 +82,126 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         return brandAnalysis;
     }
 
+    // Public methods for external access
+    async getCachedProject(projectId: string): Promise<any> {
+        return this._getCachedProject(projectId);
+    }
+
+    async getCachedBrandAnalysis(projectId: string): Promise<string | null> {
+        return this._getCachedBrandAnalysis(projectId);
+    }
+
+    getAIConfig(): any {
+        return getAIConfig();
+    }
+
+    buildVariantGenerationPrompt(hypothesis: Hypothesis): string {
+        return buildVariantGenerationPrompt(hypothesis);
+    }
+
+    get basicVariantsResponseSchema() {
+        return basicVariantsResponseSchema;
+    }
+
+    get crawlerService() {
+        return this.crawlerService;
+    }
+
+    get domAnalyzer() {
+        return this.domAnalyzer;
+    }
+
     async cleanup(): Promise<void> {
         // Close the browser to free up resources
         if (this.crawlerService && typeof this.crawlerService.close === 'function') {
             await this.crawlerService.close();
+        }
+    }
+
+    async generateSingleVariant(variant: any, hypothesis: Hypothesis, projectId: string, screenshot: string, injectionPoints: any[], brandAnalysis: string): Promise<any> {
+        console.log(`[VARIANTS] Starting single variant generation: ${variant.variant_label}`);
+        
+        const toDataUrl = (b64: string): string => {
+            if (!b64) return '';
+            if (b64.startsWith('data:')) return b64;
+            return `data:image/png;base64,${b64}`;
+        };
+
+        // Get project data for shop domain
+        const project = await this._getCachedProject(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+        
+        const url = `https://${project.shopDomain}`;
+        
+        // Initialize crawler for this variant
+        const { createPlaywrightCrawler } = await import('@features/crawler');
+        const { getServiceConfig } = await import('@infra/config/services');
+        const config = getServiceConfig();
+        const crawler = createPlaywrightCrawler(config.crawler);
+        
+        try {
+            // Generate code for this variant
+            let codeResult;
+            try {
+                console.log(`[VARIANTS] Generating code for variant: ${variant.variant_label}`);
+                codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
+            } catch (error) {
+                console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
+                codeResult = null;
+            }
+            
+            // Take screenshot for this variant
+            let variantScreenshotUrl = '';
+            if (codeResult) {
+                try {
+                    console.log(`[VARIANTS] Taking screenshot for variant: ${variant.variant_label}`);
+                    const variantScreenshotBase64 = await crawler.takeVariantScreenshot(
+                        url,
+                        {
+                            css_code: codeResult.css_code,
+                            html_code: codeResult.html_code,
+                            injection_method: codeResult.injection_method,
+                            target_selector: codeResult.target_selector,
+                            new_element_html: codeResult.new_element_html
+                        },
+                        { width: 1920, height: 1080 },
+                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                    );
+                    
+                    // Save screenshot to file and get URL
+                    const filename = await this.screenshotStorage.saveScreenshot(
+                        variantScreenshotBase64,
+                        variant.variant_label,
+                        projectId
+                    );
+                    variantScreenshotUrl = this.screenshotStorage.getScreenshotUrl(filename);
+                    console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
+                } catch (screenshotError) {
+                    console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
+                    // Continue without screenshot rather than failing the entire variant
+                }
+            }
+            
+            // Create the final variant object
+            const finalVariant = {
+                ...variant,
+                css_code: codeResult?.css_code || '',
+                html_code: codeResult?.html_code || '',
+                injection_method: codeResult?.injection_method || 'selector' as const,
+                target_selector: codeResult?.target_selector || '',
+                new_element_html: codeResult?.new_element_html || '',
+                implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
+                screenshot: variantScreenshotUrl
+            };
+            
+            console.log(`[VARIANTS] Completed single variant: ${variant.variant_label}`);
+            return finalVariant;
+            
+        } finally {
+            // Clean up the crawler
+            await crawler.close();
         }
     }
 
@@ -87,7 +211,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         
         // Get project data to fetch shop domain (with caching)
         console.log(`[VARIANTS] Fetching project data for project: ${projectId}`);
-        const project = await this.getCachedProject(projectId);
+        const project = await this._getCachedProject(projectId);
         if (!project) {
             throw new Error(`Project not found: ${projectId}`);
         }
@@ -110,7 +234,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                 hypothesis.hypothesis,
                 { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
             ),
-            this.getCachedBrandAnalysis(projectId)
+            this._getCachedBrandAnalysis(projectId)
         ]);
 
         console.log(`[VARIANTS] Parallel operations completed:`);

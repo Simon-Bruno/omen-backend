@@ -3,4 +3,5 @@ export * from './project';
 export * from './experiment';
 export * from './chat-message';
 export * from './user';
+export * from './variant-job';
 export * from './types';
