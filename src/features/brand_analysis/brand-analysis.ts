@@ -115,13 +115,43 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
       const screenshots = crawlResults.map((result: CrawlResult) => result.screenshot);
       // const urls = crawlResults.map((result: CrawlResult) => result.url);
 
+      // Filter out empty screenshots and log the issue
+      const validScreenshots = screenshots.filter(screenshot => screenshot && screenshot.trim() !== '');
+      if (validScreenshots.length !== screenshots.length) {
+        console.warn(`[BRAND_ANALYSIS] ${screenshots.length - validScreenshots.length} screenshots are empty or corrupted`);
+      }
+
       // Run separate analyses in parallel
-      console.log(`[BRAND_ANALYSIS] Starting analysis of ${screenshots.length} screenshots and ${htmlContent.length} HTML pages`);
-      const [screenshotAnalysis, languageAnalysis] = await Promise.all([
-        this.screenshotAnalyzer.analyzeScreenshots(screenshots),
-        this.languageAnalyzer.analyzeLanguage(htmlContent),
-        // this.codeAnalyzer.analyzeCode(htmlContent, urls)
-      ]);
+      console.log(`[BRAND_ANALYSIS] Starting analysis of ${validScreenshots.length} screenshots and ${htmlContent.length} HTML pages`);
+      
+      // Only add screenshot analysis if we have valid screenshots
+      let screenshotAnalysis;
+      if (validScreenshots.length > 0) {
+        screenshotAnalysis = await this.screenshotAnalyzer.analyzeScreenshots(validScreenshots);
+      } else {
+        console.warn('[BRAND_ANALYSIS] No valid screenshots available, skipping screenshot analysis');
+        // Add a placeholder for screenshot analysis
+        screenshotAnalysis = {
+          visualStyle: {
+            overallAesthetic: 'Unable to analyze - no valid screenshots available',
+            colorPalette: [],
+            typography: 'Unable to analyze - no valid screenshots available',
+            imagery: 'Unable to analyze - no valid screenshots available',
+          },
+          brandElements: {
+            logo: 'Unable to analyze - no valid screenshots available',
+            keyComponents: [],
+            layout: 'Unable to analyze - no valid screenshots available',
+          },
+          brandPersonality: {
+            adjectives: ['unknown'],
+            targetAudience: 'Unable to analyze - no valid screenshots available',
+          }
+        };
+      }
+
+      // Run language analysis
+      const languageAnalysis = await this.languageAnalyzer.analyzeLanguage(htmlContent);
 
       console.log(`[BRAND_ANALYSIS] Analysis completed, saving results...`);
 

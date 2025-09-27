@@ -44,7 +44,7 @@ export function getServiceConfig(): ServiceConfig {
     //   maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS || '2000'),
     // },
     google: {
-      apiKey: process.env.GOOGLE_API_KEY || '',
+      apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || '',
       model: process.env.GOOGLE_MODEL || 'gemini-2.5-flash',
       temperature: parseFloat(process.env.GOOGLE_TEMPERATURE || '0.7'),
       maxTokens: parseInt(process.env.GOOGLE_MAX_TOKENS || '1000'),
