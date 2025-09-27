@@ -1,5 +1,3 @@
-import { FastifyReply } from 'fastify';
-import { Readable } from 'node:stream';
 import { UIMessagePart } from 'ai';
 
 /**

@@ -1,7 +1,6 @@
 // Screenshot serving routes
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import { serviceContainer } from '@app/container';
-import path from 'path';
 import { promises as fs } from 'fs';
 
 export async function screenshotRoutes(fastify: FastifyInstance) {
@@ -34,7 +33,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
   });
 
   // Health check for screenshots
-  fastify.get('/screenshots/health', async (request, reply) => {
+  fastify.get('/screenshots/health', async (_request, reply) => {
     return reply.send({ 
       status: 'ok', 
       message: 'Screenshot service is running',

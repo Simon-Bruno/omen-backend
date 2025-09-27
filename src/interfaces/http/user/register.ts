@@ -6,7 +6,6 @@ import { userService } from '@infra/dal/user';
 import { prisma } from '@infra/prisma';
 import { validateBody } from '@interfaces/http/middleware/validation';
 import { UserRegistrationSchema, type UserRegistrationRequest } from './schemas';
-import type { User } from '@infra/dal/user';
 
 export async function userRegistrationRoutes(fastify: FastifyInstance) {
     /**

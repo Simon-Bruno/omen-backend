@@ -3,7 +3,6 @@ import type { CrawlerService, CrawlResult } from '@features/crawler';
 import type { BrandAnalysisResponse } from './types';
 import { ScreenshotAnalyzer } from './screenshot-analyzer';
 import { LanguageAnalyzer } from './language-analyzer';
-import { CodeAnalyzer } from './code-analyzer';
 import { UrlSelector } from './url-selector';
 import { ProjectDAL } from '@infra/dal'
 

@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import '@shared/fastify.d';
 import { authMiddleware } from '@interfaces/http/middleware/auth';
-import { requireAuth } from '@interfaces/http/middleware/authorization';
 import { shopifyOAuth, shopify } from '@infra/external/shopify';
 import { userService } from '@infra/dal/user';
 

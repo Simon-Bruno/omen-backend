@@ -61,7 +61,7 @@ export class ShopifyOAuthService {
   async handleAuthenticatedCallback(
     code: string,
     shop: string,
-    hmac: string,
+    _hmac: string,
     state: string,
     userId: string
   ) {
@@ -101,7 +101,7 @@ export class ShopifyOAuthService {
   async handleRegistrationCallback(
     code: string,
     shop: string,
-    hmac: string,
+    _hmac: string,
     state: string
   ) {
     // Validate state parameter for replay protection
