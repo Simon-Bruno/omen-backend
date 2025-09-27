@@ -1,5 +1,5 @@
 // Playwright Web Crawler Service Implementation
-import { chromium, Browser } from 'playwright';
+import { chromium, Browser } from 'playwright-chromium';
 import type { CrawlerService, CrawlResult, CrawlOptions, CrawlerConfig } from './types';
 
 export class PlaywrightCrawlerService implements CrawlerService {
@@ -23,6 +23,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
     }
     this.browser = await chromium.launch({
       headless: this.config.headless,
+      chromiumSandbox: false, // Required for Heroku
       args: [
         '--disable-gpu',
         '--no-sandbox',
