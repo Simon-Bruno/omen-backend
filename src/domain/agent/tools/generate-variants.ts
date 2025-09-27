@@ -6,6 +6,7 @@ import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
+import { variantStateManager } from '../variant-state-manager';
 
 class GenerateVariantsExecutor {
     private variantGenerationService: VariantGenerationService;
@@ -45,6 +46,28 @@ class GenerateVariantsExecutor {
         try {
             const result = await this.generateVariants(hypothesis);
             console.log(`[VARIANTS_TOOL] Variants generated successfully`);
+            
+            // Parse the variants from the result and store them in state manager
+            try {
+                console.log(`[VARIANTS_TOOL] Raw result from generateVariants: ${result.variantsSchema ? 'Schema generated' : 'No schema'}`);
+                
+                const variantsData = JSON.parse(result.variantsSchema);
+                console.log(`[VARIANTS_TOOL] Parsed variants data: ${variantsData.variants ? variantsData.variants.length : 0} variants found`);
+                
+                if (variantsData.variants && Array.isArray(variantsData.variants)) {
+                    console.log(`[VARIANTS_TOOL] Storing ${variantsData.variants.length} variants in state manager`);
+                    console.log(`[VARIANTS_TOOL] Variant labels:`, variantsData.variants.map((v: any) => v.variant_label));
+                    variantStateManager.setCurrentVariants(variantsData.variants);
+                    console.log(`[VARIANTS_TOOL] Variants stored successfully in state manager`);
+                } else {
+                    console.error(`[VARIANTS_TOOL] Invalid variants data structure:`, variantsData);
+                    console.error(`[VARIANTS_TOOL] Expected 'variants' array, got:`, Object.keys(variantsData));
+                }
+            } catch (parseError) {
+                console.error(`[VARIANTS_TOOL] Failed to parse variants data:`, parseError);
+                console.error(`[VARIANTS_TOOL] Raw result:`, result);
+            }
+            
             return result;
         } catch (error) {
             console.error(`[VARIANTS_TOOL] Failed to generate variants:`, error);

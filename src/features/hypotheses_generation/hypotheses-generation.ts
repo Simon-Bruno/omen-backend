@@ -79,7 +79,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             ]
         });
         const response = result.object;
-        console.log(`[HYPOTHESES] AI response generated:`, JSON.stringify(response, null, 2));
+        console.log(`[HYPOTHESES] AI response generated: ${response.hypotheses.length} hypotheses`);
         return {
             hypothesesSchema: JSON.stringify(response)
         };

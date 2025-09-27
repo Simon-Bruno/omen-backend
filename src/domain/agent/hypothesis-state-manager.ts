@@ -9,7 +9,7 @@ class HypothesisStateManager {
    * Set the current hypothesis (from generate_hypotheses tool)
    */
   setCurrentHypothesis(hypothesis: Hypothesis): void {
-    console.log(`[STATE_MANAGER] Setting hypothesis:`, JSON.stringify(hypothesis, null, 2));
+    console.log(`[STATE_MANAGER] Setting hypothesis: "${hypothesis.hypothesis.substring(0, 50)}..."`);
     this.currentHypothesis = hypothesis;
     this.hypothesisHistory.push(hypothesis);
     console.log(`[STATE_MANAGER] Hypothesis set: "${hypothesis.hypothesis.substring(0, 50)}..."`);

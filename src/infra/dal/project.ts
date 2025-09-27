@@ -96,9 +96,9 @@ export class ProjectDAL {
       where: { id: projectId },
       select: { brandAnalysis: true },
     });
-    console.log()
-    console.log(`[IN PROJECT_BRAND_ANALYSIS] Project brand analysis: ${JSON.stringify(project?.brandAnalysis)}`);
-    return JSON.stringify(project?.brandAnalysis) ?? null;
+    const brandAnalysis = JSON.stringify(project?.brandAnalysis) ?? null;
+    console.log(`[PROJECT_BRAND_ANALYSIS] Retrieved brand analysis: ${brandAnalysis ? `${brandAnalysis.length} chars` : 'null'}`);
+    return brandAnalysis;
   }
 
   /**

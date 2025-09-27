@@ -1,231 +1,163 @@
-/**
- * Experiment Publisher Service
- * 
- * High-level service that integrates Cloudflare Publisher with experiment management.
- * Used by the experiments API endpoints.
- */
+// Experiment Publisher Service
+import { CloudflarePublisher, PublishedExperiment, PublishedVariant } from '@infra/external/cloudflare';
+import { prisma } from '@infra/prisma';
 
-import { CloudflarePublisher } from '@infra/external/cloudflare';
-import { ExperimentDAL } from '@infra/dal/experiment';
-import type { ExperimentDSL } from '@shared/types';
-import type { PublishResult, UnpublishResult } from '@infra/external/cloudflare';
-
-export interface ExperimentPublishResult {
-  success: boolean;
-  experimentId: string;
-  projectId: string;
-  databaseUpdated: boolean;
-  kvPublished: boolean;
-  error?: string;
-  details?: unknown;
+export interface ExperimentPublisherService {
+  publishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }>;
+  unpublishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }>;
 }
 
-export interface ExperimentUnpublishResult {
-  success: boolean;
-  experimentId: string;
-  projectId: string;
-  databaseUpdated: boolean;
-  kvUnpublished: boolean;
-  error?: string;
-  details?: unknown;
-}
-
-export class ExperimentPublisherService {
+export class ExperimentPublisherServiceImpl implements ExperimentPublisherService {
   private cloudflarePublisher: CloudflarePublisher;
 
-  constructor() {
-    this.cloudflarePublisher = new CloudflarePublisher();
+  constructor(cloudflarePublisher: CloudflarePublisher) {
+    this.cloudflarePublisher = cloudflarePublisher;
   }
 
-  /**
-   * Publish experiment: Update database status and push to Cloudflare KV
-   */
-  async publishExperiment(dsl: ExperimentDSL): Promise<ExperimentPublishResult> {
-    const { experimentId, projectId } = dsl;
+  async publishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }> {
+    console.log(`[EXPERIMENT_PUBLISHER] Starting publish process for experiment: ${experimentId}`);
     
-    const result: ExperimentPublishResult = {
-      success: false,
-      experimentId,
-      projectId,
-      databaseUpdated: false,
-      kvPublished: false,
-    };
-
     try {
-      // Step 1: Publish to Cloudflare KV first (most likely to fail)
-      const kvResult: PublishResult = await this.cloudflarePublisher.publishExperiment(dsl);
-      result.kvPublished = kvResult.success;
+      // Fetch experiment data from database
+      console.log(`[EXPERIMENT_PUBLISHER] Fetching experiment data from database...`);
+      const experiment = await prisma.experiment.findUnique({
+        where: { id: experimentId },
+        include: {
+          hypothesis: true,
+          traffic: true,
+          variants: true,
+        },
+      });
 
-      if (!kvResult.success) {
-        result.error = kvResult.error;
-        result.details = kvResult.details;
-        return result;
+      if (!experiment) {
+        console.error(`[EXPERIMENT_PUBLISHER] Experiment not found: ${experimentId}`);
+        return { success: false, error: 'Experiment not found' };
       }
 
-      // Step 2: Update database status to RUNNING
-      await ExperimentDAL.updateStatus({
-        experimentId,
-        status: 'RUNNING',
-        publishedAt: new Date(),
+      console.log(`[EXPERIMENT_PUBLISHER] Found experiment:`, {
+        id: experiment.id,
+        name: experiment.name,
+        status: experiment.status,
+        variantCount: experiment.variants.length,
+        trafficCount: experiment.traffic.length
       });
-      result.databaseUpdated = true;
 
-      result.success = true;
-      return result;
+      if (experiment.status !== 'DRAFT') {
+        console.error(`[EXPERIMENT_PUBLISHER] Experiment ${experimentId} is not in DRAFT status: ${experiment.status}`);
+        return { success: false, error: 'Only DRAFT experiments can be published' };
+      }
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // If KV succeeded but database failed, we should log this for manual cleanup
-      if (result.kvPublished && !result.databaseUpdated) {
-        console.error(`CRITICAL: Experiment ${experimentId} published to KV but database update failed. Manual cleanup required.`, {
-          experimentId,
-          projectId,
-          error: errorMessage,
+      // Transform database data to published format
+      console.log(`[EXPERIMENT_PUBLISHER] Transforming experiment data for Cloudflare...`);
+      const publishedExperiment: PublishedExperiment = {
+        id: experiment.id,
+        projectId: experiment.projectId,
+        name: experiment.name,
+        status: 'RUNNING', // Published experiments are running
+        oec: experiment.oec,
+        traffic: this.buildTrafficDistribution(experiment.traffic),
+        variants: this.buildVariants(experiment.variants),
+      };
+
+      console.log(`[EXPERIMENT_PUBLISHER] Transformed experiment data:`, {
+        id: publishedExperiment.id,
+        name: publishedExperiment.name,
+        status: publishedExperiment.status,
+        trafficDistribution: publishedExperiment.traffic,
+        variantCount: Object.keys(publishedExperiment.variants).length
+      });
+
+      // Publish to Cloudflare
+      console.log(`[EXPERIMENT_PUBLISHER] Publishing to Cloudflare...`);
+      const result = await this.cloudflarePublisher.publishExperiment(publishedExperiment);
+
+      if (result.success) {
+        console.log(`[EXPERIMENT_PUBLISHER] Cloudflare publish successful, updating database status...`);
+        // Update experiment status in database
+        await prisma.experiment.update({
+          where: { id: experimentId },
+          data: { 
+            status: 'RUNNING',
+            publishedAt: new Date(),
+          },
         });
-        result.error = 'DATABASE_UPDATE_FAILED_AFTER_KV_PUBLISH';
+        console.log(`[EXPERIMENT_PUBLISHER] Database status updated to RUNNING for experiment: ${experimentId}`);
       } else {
-        result.error = errorMessage;
+        console.error(`[EXPERIMENT_PUBLISHER] Cloudflare publish failed:`, result.error);
       }
-      
-      result.details = { originalError: errorMessage };
-      return result;
+
+      return { success: result.success, error: result.error };
+    } catch (error) {
+      console.error(`[EXPERIMENT_PUBLISHER] Failed to publish experiment ${experimentId}:`, error);
+      console.error(`[EXPERIMENT_PUBLISHER] Error details:`, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        experimentId
+      });
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
     }
   }
 
-  /**
-   * Pause experiment: Update database status and remove from Cloudflare KV index
-   */
-  async pauseExperiment(experimentId: string, projectId: string): Promise<ExperimentUnpublishResult> {
-    const result: ExperimentUnpublishResult = {
-      success: false,
-      experimentId,
-      projectId,
-      databaseUpdated: false,
-      kvUnpublished: false,
-    };
-
+  async unpublishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }> {
+    console.log(`[EXPERIMENT_PUBLISHER] Starting unpublish process for experiment: ${experimentId}`);
+    
     try {
-      // Step 1: Remove from Cloudflare KV index first
-      const kvResult: UnpublishResult = await this.cloudflarePublisher.unpublishExperiment(experimentId, projectId);
-      result.kvUnpublished = kvResult.success;
+      // Unpublish from Cloudflare
+      console.log(`[EXPERIMENT_PUBLISHER] Unpublishing from Cloudflare...`);
+      const result = await this.cloudflarePublisher.unpublishExperiment(experimentId);
 
-      if (!kvResult.success) {
-        result.error = kvResult.error;
-        result.details = kvResult.details;
-        return result;
-      }
-
-      // Step 2: Update database status to PAUSED
-      await ExperimentDAL.updateStatus({
-        experimentId,
-        status: 'PAUSED',
-      });
-      result.databaseUpdated = true;
-
-      result.success = true;
-      return result;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // If KV succeeded but database failed, log for manual cleanup
-      if (result.kvUnpublished && !result.databaseUpdated) {
-        console.error(`CRITICAL: Experiment ${experimentId} unpublished from KV but database update failed. Manual cleanup required.`, {
-          experimentId,
-          projectId,
-          error: errorMessage,
+      if (result.success) {
+        console.log(`[EXPERIMENT_PUBLISHER] Cloudflare unpublish successful, updating database status...`);
+        // Update experiment status in database
+        await prisma.experiment.update({
+          where: { id: experimentId },
+          data: { status: 'DRAFT' },
         });
-        result.error = 'DATABASE_UPDATE_FAILED_AFTER_KV_UNPUBLISH';
+        console.log(`[EXPERIMENT_PUBLISHER] Database status updated to DRAFT for experiment: ${experimentId}`);
       } else {
-        result.error = errorMessage;
-      }
-      
-      result.details = { originalError: errorMessage };
-      return result;
-    }
-  }
-
-  /**
-   * Finish experiment: Update database status and remove from Cloudflare KV index
-   */
-  async finishExperiment(experimentId: string, projectId: string): Promise<ExperimentUnpublishResult> {
-    const result: ExperimentUnpublishResult = {
-      success: false,
-      experimentId,
-      projectId,
-      databaseUpdated: false,
-      kvUnpublished: false,
-    };
-
-    try {
-      // Step 1: Remove from Cloudflare KV index first
-      const kvResult: UnpublishResult = await this.cloudflarePublisher.unpublishExperiment(experimentId, projectId);
-      result.kvUnpublished = kvResult.success;
-
-      if (!kvResult.success) {
-        result.error = kvResult.error;
-        result.details = kvResult.details;
-        return result;
+        console.error(`[EXPERIMENT_PUBLISHER] Cloudflare unpublish failed:`, result.error);
       }
 
-      // Step 2: Update database status to FINISHED
-      await ExperimentDAL.updateStatus({
-        experimentId,
-        status: 'COMPLETED',
-        finishedAt: new Date(),
-      });
-      result.databaseUpdated = true;
-
-      result.success = true;
-      return result;
-
+      return { success: result.success, error: result.error };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // If KV succeeded but database failed, log for manual cleanup
-      if (result.kvUnpublished && !result.databaseUpdated) {
-        console.error(`CRITICAL: Experiment ${experimentId} finished in KV but database update failed. Manual cleanup required.`, {
-          experimentId,
-          projectId,
-          error: errorMessage,
-        });
-        result.error = 'DATABASE_UPDATE_FAILED_AFTER_KV_FINISH';
-      } else {
-        result.error = errorMessage;
-      }
-      
-      result.details = { originalError: errorMessage };
-      return result;
+      console.error(`[EXPERIMENT_PUBLISHER] Failed to unpublish experiment ${experimentId}:`, error);
+      console.error(`[EXPERIMENT_PUBLISHER] Error details:`, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        experimentId
+      });
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
     }
   }
 
-  /**
-   * Get current running experiments from KV
-   */
-  async getRunningExperiments(): Promise<string[]> {
-    try {
-      return await this.cloudflarePublisher.getRunningExperiments();
-    } catch (error) {
-      console.error('Failed to get running experiments from KV:', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return [];
-    }
+  private buildTrafficDistribution(traffic: any[]): Record<string, number> {
+    const distribution: Record<string, number> = {};
+    traffic.forEach(t => {
+      distribution[t.variantId] = parseFloat(t.percentage.toString());
+    });
+    return distribution;
   }
 
-  /**
-   * Check if experiment is currently published to KV
-   */
-  async isExperimentPublished(experimentId: string): Promise<boolean> {
-    try {
-      return await this.cloudflarePublisher.isExperimentPublished(experimentId);
-    } catch (error) {
-      console.error(`Failed to check if experiment ${experimentId} is published:`, {
-        error: error instanceof Error ? error.message : String(error),
-        experimentId,
-      });
-      return false;
-    }
+  private buildVariants(variants: any[]): Record<string, PublishedVariant> {
+    const variantMap: Record<string, PublishedVariant> = {};
+    variants.forEach(v => {
+      variantMap[v.variantId] = {
+        selector: v.selector || 'body',
+        html: v.html,
+        css: v.css || '',
+        position: v.position,
+      };
+    });
+    return variantMap;
   }
+}
+
+export function createExperimentPublisherService(cloudflarePublisher: CloudflarePublisher): ExperimentPublisherService {
+  return new ExperimentPublisherServiceImpl(cloudflarePublisher);
 }

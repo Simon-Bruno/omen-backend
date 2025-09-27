@@ -22,6 +22,7 @@ export function getToolsConfiguration(projectId: string) {
 
 // Create all tools
 export function createEcommerceAgentTools(projectId: string) {
+  console.log(`[TOOLS_CONFIG] Creating tools for project: ${projectId}`);
   const tools = {
     get_project_info: createGetProjectInfoTool(projectId),
     generate_hypotheses: generateHypotheses(projectId),
@@ -29,5 +30,6 @@ export function createEcommerceAgentTools(projectId: string) {
     create_experiment: createExperiment(projectId),
     get_brand_analysis: createGetBrandAnalysisTool(projectId),
   };
+  console.log(`[TOOLS_CONFIG] Tools created successfully:`, Object.keys(tools));
   return tools;
 }

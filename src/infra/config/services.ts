@@ -28,6 +28,11 @@ export interface ServiceConfig {
     timeout?: number;
     retryAttempts?: number;
   };
+  cloudflare: {
+    accountId: string;
+    apiToken: string;
+    namespaceId: string;
+  };
 }
 
 export function getServiceConfig(): ServiceConfig {
@@ -59,6 +64,11 @@ export function getServiceConfig(): ServiceConfig {
       projectId: process.env.POSTHOG_PROJECT_ID || '',
       timeout: parseInt(process.env.POSTHOG_TIMEOUT || '10000'),
       retryAttempts: parseInt(process.env.POSTHOG_RETRY_ATTEMPTS || '3'),
+    },
+    cloudflare: {
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
+      apiToken: process.env.CLOUDFLARE_API_TOKEN || '',
+      namespaceId: process.env.CLOUDFLARE_NAMESPACE_ID || '',
     },
   };
 }

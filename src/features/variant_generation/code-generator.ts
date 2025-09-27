@@ -56,6 +56,8 @@ ${injectionPoints.map(point => `
 - Alternative Selectors: ${point.alternativeSelectors.join(', ')}
 - Context: ${point.context}
 - Reasoning: ${point.reasoning}
+- Original Text Content: ${point.originalText || 'Not available'}
+- Text Length: ${point.originalText ? point.originalText.length + ' characters' : 'Unknown'}
 `).join('\n')}
 
 INJECTION METHODS:
@@ -83,11 +85,34 @@ SELECTOR SELECTION RULES:
 
 Return your response as a JSON object with:
 - css_code: The complete CSS code for this variant
-- html_code: Any HTML changes needed (or empty string if none)
+- html_code: ONLY static HTML content (no JavaScript). For text changes, use the actual HTML text content, not JavaScript code
 - injection_method: How to inject this code (selector/new_element/modify_existing)
 - target_selector: CSS selector to target existing element (if using selector method)
 - new_element_html: Complete HTML for new element (if using new_element method)
 - implementation_instructions: Step-by-step instructions for implementing this variant
+
+CRITICAL HTML_CODE RULES:
+- html_code should contain ONLY static HTML content (e.g., "New Button Text", "<span>New Text</span>")
+- NEVER include JavaScript code in html_code (e.g., document.querySelector, innerHTML assignments)
+- For text changes, just put the new text content directly
+- For HTML structure changes, put the actual HTML elements
+- If no HTML changes are needed, use an empty string ""
+
+TEXT LENGTH CONSIDERATIONS:
+- When changing button text or other UI text, consider the original text length
+- Keep new text similar in length to the original (within 20% if possible)
+- For buttons, prefer shorter, punchy text that fits well
+- For longer text elements, ensure the new text doesn't overflow the container
+- If the original text is very short (1-3 words), keep the new text similarly concise
+- If the original text is longer, you can use slightly longer text but avoid excessive length
+- Consider mobile responsiveness - shorter text works better on small screens
+
+TEXT LENGTH EXAMPLES:
+- Original: "Buy Now" (8 chars) → Good: "Shop Now" (9 chars) or "Get It" (6 chars)
+- Original: "Add to Cart" (11 chars) → Good: "Add to Bag" (10 chars) or "Buy Now" (8 chars)
+- Original: "Learn More" (10 chars) → Good: "Discover" (8 chars) or "See Details" (11 chars)
+- Original: "Get Started" (11 chars) → Good: "Start Now" (9 chars) or "Begin" (5 chars)
+- Avoid: "Get Started" → "Click here to get started with our amazing product" (too long!)
 
 IMPORTANT: Return actual code, not descriptions. The code should be ready to implement for A/B testing.
 
@@ -124,7 +149,7 @@ Do NOT wrap this in any other structure like {"type": "response", "properties": 
                 ]
             });
 
-            console.log(`[CODE_GENERATOR] Generated code result:`, codeObject.object);
+            console.log(`[CODE_GENERATOR] Generated code for variant: ${variant.variant_label} (${codeObject.object.css_code.length} chars CSS, ${codeObject.object.html_code.length} chars HTML)`);
             return codeObject.object;
         } catch (error) {
             console.error(`[CODE_GENERATOR] Error generating code for variant ${variant.variant_label}:`, error);
