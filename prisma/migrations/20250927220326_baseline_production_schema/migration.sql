@@ -75,21 +75,6 @@ CREATE TABLE "public"."brand_summary_jobs" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."variant_jobs" (
-    "id" TEXT NOT NULL,
-    "projectId" TEXT NOT NULL,
-    "status" "public"."JobStatus" NOT NULL DEFAULT 'PENDING',
-    "progress" INTEGER DEFAULT 0,
-    "result" JSONB,
-    "error" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "startedAt" TIMESTAMP(3),
-    "completedAt" TIMESTAMP(3),
-
-    CONSTRAINT "variant_jobs_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."experiment_hypotheses" (
     "id" TEXT NOT NULL,
     "experimentId" TEXT NOT NULL,
@@ -149,12 +134,6 @@ CREATE INDEX "brand_summary_jobs_projectId_status_createdAt_idx" ON "public"."br
 CREATE INDEX "brand_summary_jobs_status_createdAt_idx" ON "public"."brand_summary_jobs"("status", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "variant_jobs_projectId_status_createdAt_idx" ON "public"."variant_jobs"("projectId", "status", "createdAt");
-
--- CreateIndex
-CREATE INDEX "variant_jobs_status_createdAt_idx" ON "public"."variant_jobs"("status", "createdAt");
-
--- CreateIndex
 CREATE UNIQUE INDEX "experiment_hypotheses_experimentId_key" ON "public"."experiment_hypotheses"("experimentId");
 
 -- CreateIndex
@@ -180,9 +159,6 @@ ALTER TABLE "public"."chat_messages" ADD CONSTRAINT "chat_messages_projectId_fke
 
 -- AddForeignKey
 ALTER TABLE "public"."brand_summary_jobs" ADD CONSTRAINT "brand_summary_jobs_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "public"."projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "public"."variant_jobs" ADD CONSTRAINT "variant_jobs_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "public"."projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."experiment_hypotheses" ADD CONSTRAINT "experiment_hypotheses_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "public"."experiments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
