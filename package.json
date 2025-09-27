@@ -20,8 +20,7 @@
     "seed:reset": "tsx -r tsconfig-paths/register scripts/seed.ts --reset",
     "test": "echo \"Error: no test specified\" && exit 1",
     "postinstall": "npx prisma generate",
-    "heroku-postbuild": "npx prisma generate",
-    "heroku-cleanup": "npx playwright install chromium"
+    "heroku-postbuild": "npx prisma generate"
   },
   "keywords": [],
   "author": "",
