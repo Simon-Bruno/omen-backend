@@ -9,8 +9,10 @@ import { hypothesisStateManager } from '../hypothesis-state-manager';
 
 class GenerateVariantsExecutor {
     private variantGenerationService: VariantGenerationService;
+    private projectId: string;
 
-    constructor() {
+    constructor(projectId: string) {
+        this.projectId = projectId;
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
         const screenshotStorage = createScreenshotStorageService();
@@ -18,7 +20,7 @@ class GenerateVariantsExecutor {
     }
 
     private async generateVariants(hypothesis: Hypothesis): Promise<any> {
-        return await this.variantGenerationService.generateVariants(hypothesis);
+        return await this.variantGenerationService.generateVariants(hypothesis, this.projectId);
     }
 
     async execute(input: { hypothesis?: Hypothesis }): Promise<any> {
@@ -51,8 +53,8 @@ class GenerateVariantsExecutor {
     }
 }
 
-export function generateVariants() {
-    const executor = new GenerateVariantsExecutor();
+export function generateVariants(projectId: string) {
+    const executor = new GenerateVariantsExecutor(projectId);
 
     return tool({
         description: 'Generate variants for testing a hypothesis',

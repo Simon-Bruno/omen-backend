@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { getAIConfig } from '@shared/ai-config';
 
 export interface UrlSelectionResult {
-    urlScheme: string
+    home: string;
+    pdp: string;
+    about: string;
 }
 
 const urlSelectionSchema = z.object({
@@ -38,9 +40,7 @@ Return ONLY valid JSON.`;
         try {
             const aiConfig = getAIConfig();
             const result = await generateObject({
-                model: google(aiConfig.model, {
-                    apiKey: aiConfig.apiKey,
-                }),
+                model: google(aiConfig.model),
                 schema: urlSelectionSchema,
                 messages: [
                     {
@@ -51,9 +51,7 @@ Return ONLY valid JSON.`;
             });
 
             const data = result.object;
-            return {
-                urlScheme: data
-            };
+            return data;
         } catch (error) {
             throw new Error(`Failed to get urls: ${error}`);
 

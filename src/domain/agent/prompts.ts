@@ -1,5 +1,5 @@
 // System prompts for the e-commerce optimization assistant
-import { getAvailableToolNames } from './tools';
+// import { getAvailableToolNames } from './tools';
 
 // Core identity and role definition
 const CORE_IDENTITY = `You are Omen, an AI growth partner for eCommerce brands. Your job is to speak with merchants in a personable, confident, and proactive way. You should sound like a trusted advisor who has already analyzed their store deeply and is excited to share high-value insights. Keep the tone warm, approachable, and slightly urgent—emphasize that every moment without testing is a missed opportunity, but do it in a motivating, not pushy way. Present findings as if you've just completed a brand analysis, then smoothly transition into proposing experiments that can capture quick wins. Always frame Omen as hands-on, on-brand, and outcome-driven: your role is to help them turn more visitors into customers, compounding growth over time.
@@ -205,4 +205,4 @@ function getToolDescription(toolName: string): string {
 }
 
 // Legacy export for backward compatibility
-export const ECOMMERCE_AGENT_SYSTEM_PROMPT = createEcommerceAgentSystemPrompt(getAvailableToolNames());
+export const ECOMMERCE_AGENT_SYSTEM_PROMPT = createEcommerceAgentSystemPrompt(['get_project_info', 'generate_hypotheses', 'generate_variants', 'create_experiment', 'get_brand_analysis']);

@@ -5,10 +5,28 @@ import { z } from 'zod';
 import { CrawlerService } from '@features/crawler';
 import { getAIConfig } from '@shared/ai-config';
 
-export interface DOMAnalysisResult {
-  injectionPoints: InjectionPoint[];
-  pageStructure: PageStructure;
+// CSS selector validation utility
+function isValidCSSSelector(selector: string): boolean {
+  try {
+    // Create a temporary element to test the selector
+    const testElement = document.createElement('div');
+    testElement.querySelector(selector);
+    return true;
+  } catch {
+    return false;
+  }
 }
+
+// Clean selector by removing invalid parts like :contains()
+function cleanCSSSelector(selector: string): string {
+  // Remove :contains() pseudo-selector and similar invalid selectors
+  return selector
+    .replace(/:contains\([^)]*\)/g, '') // Remove :contains() pseudo-selector
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+}
+
+// Removed unused DOMAnalysisResult interface
 
 export interface InjectionPoint {
   type: 'button' | 'text' | 'image' | 'container' | 'form' | 'navigation' | 'price' | 'title' | 'description';
@@ -31,24 +49,7 @@ export interface InjectionPoint {
   successRate?: number; // Success rate if tested multiple times
 }
 
-export interface PageStructure {
-  pageType: 'homepage' | 'product' | 'category' | 'checkout' | 'about' | 'contact' | 'unknown';
-  hasHeader: boolean;
-  hasFooter: boolean;
-  hasSidebar: boolean;
-  mainContentSelector?: string;
-  navigationSelectors: string[];
-  ctaButtons: string[];
-  formElements: string[];
-  keyElements: {
-    primaryCTA?: string;
-    secondaryCTA?: string;
-    productTitle?: string;
-    productPrice?: string;
-    productImage?: string;
-    navigation?: string;
-  };
-}
+// Removed unused PageStructure interface
 
 // Zod schemas for AI response
 const injectionPointSchema = z.object({
@@ -67,29 +68,7 @@ const injectionPointSchema = z.object({
   reasoning: z.string().describe('Detailed explanation of why this selector was chosen and why it should work reliably')
 });
 
-const pageStructureSchema = z.object({
-  pageType: z.enum(['homepage', 'product', 'category', 'checkout', 'about', 'contact', 'unknown']),
-  hasHeader: z.boolean(),
-  hasFooter: z.boolean(),
-  hasSidebar: z.boolean(),
-  mainContentSelector: z.string().optional(),
-  navigationSelectors: z.array(z.string()),
-  ctaButtons: z.array(z.string()),
-  formElements: z.array(z.string()),
-  keyElements: z.object({
-    primaryCTA: z.string().optional(),
-    secondaryCTA: z.string().optional(),
-    productTitle: z.string().optional(),
-    productPrice: z.string().optional(),
-    productImage: z.string().optional(),
-    navigation: z.string().optional()
-  })
-});
-
-const domAnalysisSchema = z.object({
-  injectionPoints: z.array(injectionPointSchema),
-  pageStructure: pageStructureSchema
-});
+// Removed unused schemas - we only need injectionPointSchema for this service
 
 export interface DOMAnalyzerService {
   analyzeForHypothesis(
@@ -134,9 +113,7 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     // Use AI to find specific injection points for this hypothesis
     const aiConfig = getAIConfig();
     const result = await generateObject({
-      model: google(aiConfig.model, {
-        apiKey: aiConfig.apiKey,
-      }),
+      model: google(aiConfig.model),
       schema: z.object({
         injectionPoints: z.array(injectionPointSchema)
       }),
@@ -152,15 +129,36 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
       ]
     });
 
-    // Add metadata to injection points
-    const enrichedInjectionPoints = result.object.injectionPoints.map(point => ({
-      ...point,
-      hypothesis,
-      url,
-      timestamp: new Date().toISOString(),
-      tested: false,
-      successRate: undefined
-    }));
+    // Add metadata to injection points and validate/clean selectors
+    const enrichedInjectionPoints = result.object.injectionPoints.map(point => {
+      // Clean the primary selector
+      const cleanedSelector = cleanCSSSelector(point.selector);
+      
+      // Clean alternative selectors
+      const cleanedAlternatives = point.alternativeSelectors.map(cleanCSSSelector);
+      
+      // Validate selectors and log warnings for invalid ones
+      if (!isValidCSSSelector(cleanedSelector)) {
+        console.warn(`[DOM_ANALYZER] Invalid primary selector detected: "${point.selector}" -> cleaned to: "${cleanedSelector}"`);
+      }
+      
+      cleanedAlternatives.forEach((alt, index) => {
+        if (!isValidCSSSelector(alt)) {
+          console.warn(`[DOM_ANALYZER] Invalid alternative selector ${index + 1}: "${point.alternativeSelectors[index]}" -> cleaned to: "${alt}"`);
+        }
+      });
+      
+      return {
+        ...point,
+        selector: cleanedSelector,
+        alternativeSelectors: cleanedAlternatives,
+        hypothesis,
+        url,
+        timestamp: new Date().toISOString(),
+        tested: false,
+        successRate: undefined
+      };
+    });
 
     console.log(`[DOM_ANALYZER] Found ${enrichedInjectionPoints.length} injection points for hypothesis`);
     console.log(`[DOM_ANALYZER] Injection points:`, enrichedInjectionPoints.map(p => ({
@@ -277,6 +275,9 @@ SELECTOR REQUIREMENTS:
 - Avoid selectors that might change (like generated class names)
 - Provide 2-3 alternative selectors for each element
 - Focus only on elements relevant to the hypothesis
+- NEVER use :contains() pseudo-selector - it's not valid CSS
+- Use only standard CSS selectors that work with querySelectorAll()
+- For text-based selection, use attribute selectors or data attributes instead
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Very reliable (ID, data attributes, semantic elements)

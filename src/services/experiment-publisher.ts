@@ -172,7 +172,7 @@ export class ExperimentPublisherService {
       // Step 2: Update database status to FINISHED
       await ExperimentDAL.updateStatus({
         experimentId,
-        status: 'FINISHED',
+        status: 'COMPLETED',
         finishedAt: new Date(),
       });
       result.databaseUpdated = true;

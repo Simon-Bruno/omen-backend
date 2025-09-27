@@ -4,6 +4,7 @@ import { ProjectDAL } from '@infra/dal';
 import { authMiddleware } from '../middleware/auth';
 import { requireAuth } from '../middleware/authorization';
 import { prisma } from '@infra/prisma';
+import { JobStatus } from '@prisma/client';
 
 export async function brandSummaryRoutes(fastify: FastifyInstance) {
     // Start brand summary generation
@@ -21,9 +22,9 @@ export async function brandSummaryRoutes(fastify: FastifyInstance) {
             const job = await ProjectDAL.createBrandSummaryJob(projectId);
 
             // Start async processing
-            processBrandSummary(job.id, projectId).catch(error => {
-                console.error(`Brand summary failed for job ${job.id}:`, error);
-                updateJobStatus(job.id, 'FAILED', undefined, error.message);
+            processBrandSummary(job.id, projectId, fastify).catch(error => {
+                fastify.log.error({ err: error, jobId: job.id }, 'Brand summary failed');
+                updateJobStatus(job.id, 'FAILED', undefined, undefined, error.message);
             });
 
             return reply.status(200).send({
@@ -70,14 +71,18 @@ export async function brandSummaryRoutes(fastify: FastifyInstance) {
 }
 
 // Simple async processing function
-async function processBrandSummary(jobId: string, projectId: string): Promise<void> {
+async function processBrandSummary(jobId: string, projectId: string, fastify: FastifyInstance): Promise<void> {
     try {
-        // Update to processing
-        await updateJobStatus(jobId, 'PROCESSING', 10);
+        fastify.log.info({ jobId, projectId }, 'Starting brand summary processing');
+        
+        // Update to running
+        await updateJobStatus(jobId, 'RUNNING', 10);
 
         // Get project
         const project = await ProjectDAL.getProjectById(projectId);
         if (!project) throw new Error('Project not found');
+
+        fastify.log.info({ jobId, shopDomain: project.shopDomain }, 'Running brand analysis');
 
         // Run brand analysis
         const brandAnalysisService = serviceContainer.getBrandAnalysisService();
@@ -87,11 +92,14 @@ async function processBrandSummary(jobId: string, projectId: string): Promise<vo
             throw new Error(result.error || 'Brand analysis failed');
         }
 
+        fastify.log.info({ jobId }, 'Brand analysis completed successfully');
+
         // Complete job
         await updateJobStatus(jobId, 'COMPLETED', 100, result.brandSummary ? { ...result.brandSummary } : undefined);
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        fastify.log.error({ err: error, jobId, projectId }, 'Brand summary processing failed');
         await updateJobStatus(jobId, 'FAILED', undefined, undefined, errorMessage);
     }
 }
@@ -99,19 +107,21 @@ async function processBrandSummary(jobId: string, projectId: string): Promise<vo
 // Simple job status update
 async function updateJobStatus(
     jobId: string,
-    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED',
+    status: JobStatus,
     progress?: number,
-    result?: Record<string, unknown>,
+    result?: any, // Prisma's JsonValue type
     error?: string
 ): Promise<void> {
-    const updateData: Record<string, unknown> = { status };
-    if (progress !== undefined) updateData.progress = progress;
-    if (result !== undefined) updateData.result = result;
-    if (error !== undefined) updateData.error = error;
-    if (status === 'PROCESSING') updateData.startedAt = new Date();
-    if (status === 'COMPLETED' || status === 'FAILED') updateData.completedAt = new Date();
+    const updateData = {
+        status,
+        ...(progress !== undefined && { progress }),
+        ...(result !== undefined && { result }),
+        ...(error !== undefined && { error }),
+        ...(status === 'RUNNING' && { startedAt: new Date() }),
+        ...((status === 'COMPLETED' || status === 'FAILED') && { completedAt: new Date() })
+    };
 
-    await (prisma as any).brandSummaryJob.update({
+    await prisma.brandSummaryJob.update({
         where: { id: jobId },
         data: updateData,
     });

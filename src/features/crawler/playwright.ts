@@ -314,6 +314,13 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
       // Apply variant code
       console.log(`[CRAWLER] Applying variant code for selector: ${variant.target_selector}`);
+      console.log(`[CRAWLER] Variant details:`, {
+        css_code: variant.css_code,
+        html_code: variant.html_code,
+        injection_method: variant.injection_method,
+        target_selector: variant.target_selector,
+        new_element_html: variant.new_element_html
+      });
       await this.applyVariantCode(page, variant);
 
       // Wait a bit for any animations or dynamic content to settle
@@ -321,8 +328,26 @@ export class PlaywrightCrawlerService implements CrawlerService {
       
       // Debug: Check if element exists after applying code
       if (variant.target_selector) {
-        const elementExists = await page.locator(variant.target_selector).count();
-        console.log(`[CRAWLER] Element count for selector '${variant.target_selector}': ${elementExists}`);
+        try {
+          const elementExists = await page.locator(variant.target_selector).count();
+          console.log(`[CRAWLER] Element count for selector '${variant.target_selector}': ${elementExists}`);
+        } catch (selectorError) {
+          console.warn(`[CRAWLER] Invalid selector '${variant.target_selector}':`, selectorError);
+          // Try to find a fallback selector by removing problematic parts
+          const fallbackSelector = variant.target_selector
+            .replace(/:contains\([^)]*\)/g, '') // Remove :contains() pseudo-selector
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim();
+          
+          if (fallbackSelector && fallbackSelector !== variant.target_selector) {
+            try {
+              const fallbackCount = await page.locator(fallbackSelector).count();
+              console.log(`[CRAWLER] Fallback selector '${fallbackSelector}' found ${fallbackCount} elements`);
+            } catch (fallbackError) {
+              console.warn(`[CRAWLER] Fallback selector also failed:`, fallbackError);
+            }
+          }
+        }
       }
 
       // Take screenshot (viewport only, not full page)
@@ -356,44 +381,111 @@ export class PlaywrightCrawlerService implements CrawlerService {
     try {
       // Inject CSS
       if (variant.css_code) {
+        console.log(`[CRAWLER] Injecting CSS: ${variant.css_code}`);
         await page.addStyleTag({ content: variant.css_code });
+        console.log(`[CRAWLER] CSS injected successfully`);
+      } else {
+        console.log(`[CRAWLER] No CSS code to inject`);
       }
 
       // Apply HTML changes based on injection method
       switch (variant.injection_method) {
         case 'selector':
           if (variant.target_selector && variant.html_code) {
-            await page.evaluate(({ selector, html }) => {
-              const element = document.querySelector(selector);
-              if (element) {
-                element.innerHTML = html;
+            console.log(`[CRAWLER] Applying selector injection: ${variant.target_selector} with HTML: ${variant.html_code}`);
+            try {
+              await page.evaluate(({ selector, html }) => {
+                const element = document.querySelector(selector);
+                if (element) {
+                  element.innerHTML = html;
+                  console.log(`[CRAWLER] Successfully updated element innerHTML`);
+                } else {
+                  console.log(`[CRAWLER] Element not found with selector: ${selector}`);
+                }
+              }, { selector: variant.target_selector, html: variant.html_code });
+              console.log(`[CRAWLER] Selector injection completed successfully`);
+            } catch (selectorError) {
+              console.warn(`[CRAWLER] Invalid selector in applyVariantCode: ${variant.target_selector}`, selectorError);
+              // Try fallback selector
+              const fallbackSelector = variant.target_selector
+                .replace(/:contains\([^)]*\)/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+              
+              if (fallbackSelector && fallbackSelector !== variant.target_selector) {
+                try {
+                  await page.evaluate(({ selector, html }) => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                      element.innerHTML = html;
+                    }
+                  }, { selector: fallbackSelector, html: variant.html_code });
+                  console.log(`[CRAWLER] Successfully applied variant using fallback selector: ${fallbackSelector}`);
+                } catch (fallbackError) {
+                  console.error(`[CRAWLER] Both original and fallback selectors failed:`, fallbackError);
+                }
               }
-            }, { selector: variant.target_selector, html: variant.html_code });
+            }
           }
           break;
 
         case 'new_element':
           if (variant.new_element_html) {
+            console.log(`[CRAWLER] Applying new_element injection with HTML: ${variant.new_element_html}`);
             await page.evaluate((html) => {
               const tempDiv = document.createElement('div');
               tempDiv.innerHTML = html;
               const newElement = tempDiv.firstElementChild;
               if (newElement) {
                 document.body.appendChild(newElement);
+                console.log(`[CRAWLER] Successfully added new element to body`);
+              } else {
+                console.log(`[CRAWLER] Failed to create new element from HTML`);
               }
             }, variant.new_element_html);
+            console.log(`[CRAWLER] New element injection completed`);
+          } else {
+            console.log(`[CRAWLER] No new_element_html provided for new_element injection`);
           }
           break;
 
         case 'modify_existing':
           if (variant.target_selector && variant.html_code) {
-            await page.evaluate(({ selector, html }) => {
-              const element = document.querySelector(selector);
-              if (element) {
-                // For modify_existing, we might want to append or prepend
-                element.insertAdjacentHTML('beforeend', html);
+            console.log(`[CRAWLER] Applying modify_existing injection: ${variant.target_selector} with HTML: ${variant.html_code}`);
+            try {
+              await page.evaluate(({ selector, html }) => {
+                const element = document.querySelector(selector);
+                if (element) {
+                  // For modify_existing, we might want to append or prepend
+                  element.insertAdjacentHTML('beforeend', html);
+                  console.log(`[CRAWLER] Successfully modified existing element`);
+                } else {
+                  console.log(`[CRAWLER] Element not found for modify_existing: ${selector}`);
+                }
+              }, { selector: variant.target_selector, html: variant.html_code });
+              console.log(`[CRAWLER] Modify existing injection completed successfully`);
+            } catch (selectorError) {
+              console.warn(`[CRAWLER] Invalid selector in modify_existing: ${variant.target_selector}`, selectorError);
+              // Try fallback selector
+              const fallbackSelector = variant.target_selector
+                .replace(/:contains\([^)]*\)/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+              
+              if (fallbackSelector && fallbackSelector !== variant.target_selector) {
+                try {
+                  await page.evaluate(({ selector, html }) => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                      element.insertAdjacentHTML('beforeend', html);
+                    }
+                  }, { selector: fallbackSelector, html: variant.html_code });
+                  console.log(`[CRAWLER] Successfully applied modify_existing using fallback selector: ${fallbackSelector}`);
+                } catch (fallbackError) {
+                  console.error(`[CRAWLER] Both original and fallback selectors failed in modify_existing:`, fallbackError);
+                }
               }
-            }, { selector: variant.target_selector, html: variant.html_code });
+            }
           }
           break;
       }

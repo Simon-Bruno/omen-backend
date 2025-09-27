@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 export interface ScreenshotStorageService {
   saveScreenshot(base64Data: string, variantLabel: string, experimentId?: string): Promise<string>;
   getScreenshotUrl(filename: string): string;
+  getScreenshotPath(filename: string): Promise<string>;
   deleteScreenshot(filename: string): Promise<void>;
 }
 

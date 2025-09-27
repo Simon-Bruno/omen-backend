@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import fastify from 'fastify';
-import type { FastifyInstance } from 'fastify/types/instance.js';
+import type { FastifyInstance } from 'fastify';
 import { prisma } from '@infra/prisma';
 import { registerRoutes } from '@interfaces/http/index';
 import { serviceContainer } from '@app/container';
@@ -28,7 +28,6 @@ export async function createServer(): Promise<{ server: FastifyInstance; httpSer
     });
 
     // Register services with Fastify
-    server.decorate('diagnosticsService', serviceContainer.getDiagnosticsService());
     await server.register(registerRoutes, { prefix: '/api' });
 
     // Get the underlying HTTP server from Fastify

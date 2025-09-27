@@ -72,8 +72,8 @@ export class ExperimentDAL {
       updateData.publishedAt = data.publishedAt;
     }
 
-    // Set finishedAt when transitioning to FINISHED
-    if (data.status === 'FINISHED' && data.finishedAt) {
+    // Set finishedAt when transitioning to COMPLETED
+    if (data.status === 'COMPLETED' && data.finishedAt) {
       updateData.finishedAt = data.finishedAt;
     }
 
@@ -83,18 +83,6 @@ export class ExperimentDAL {
     });
   }
 
-  /**
-   * Update experiment DSL
-   */
-  static async updateExperimentDsl(
-    experimentId: string,
-    dsl: Record<string, any>
-  ): Promise<Experiment> {
-    return await prisma.experiment.update({
-      where: { id: experimentId },
-      data: { dsl },
-    });
-  }
 
   /**
    * Update experiment name

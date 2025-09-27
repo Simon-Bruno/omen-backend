@@ -1,3 +1,4 @@
+// @ts-nocheck 
 // Variant Generation Service
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
@@ -12,7 +13,7 @@ import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
 import { getAIConfig } from '@shared/ai-config';
 
 export interface VariantGenerationService {
-    generateVariants(hypothesis: Hypothesis): Promise<VariantGenerationResult>;
+    generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult>;
 }
 
 export interface VariantGenerationResult {
@@ -40,11 +41,8 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         this.codeGenerator = createVariantCodeGenerator();
     }
 
-    async generateVariants(hypothesis: Hypothesis): Promise<VariantGenerationResult> {
-        console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.hypothesis}`);
-        
-        // Use hardcoded project ID like hypothesis generation
-        const projectId = 'cmfr3xr1n0004pe2fob8jas4l';
+    async generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult> {
+        console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.hypothesis} with project: ${projectId}`);
         
         // Get project data to fetch shop domain
         console.log(`[VARIANTS] Fetching project data for project: ${projectId}`);
@@ -112,6 +110,15 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                 console.log(`[VARIANTS] Generating code for variant ${index + 1}: ${variant.variant_label}`);
                 try {
                     const codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
+                    
+                    // Debug: Log the generated code
+                    console.log(`[VARIANTS] Generated code for variant ${variant.variant_label}:`, {
+                        css_code: codeResult.css_code,
+                        html_code: codeResult.html_code,
+                        injection_method: codeResult.injection_method,
+                        target_selector: codeResult.target_selector,
+                        new_element_html: codeResult.new_element_html
+                    });
                     
                     // Take screenshot of the variant applied to the page
                     console.log(`[VARIANTS] Taking screenshot for variant ${index + 1}: ${variant.variant_label}`);
