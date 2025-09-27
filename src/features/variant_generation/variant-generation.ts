@@ -144,98 +144,82 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         const response = object.object;
         console.log(`[VARIANTS] AI response generated: ${response.variants.length} variants`);
 
-        // PARALLEL OPTIMIZATION: Generate code for all variants in parallel
-        console.log(`[VARIANTS] Generating code for ${response.variants.length} variants in parallel`);
-        const variantsWithCode = await Promise.all(
-            response.variants.map(async (variant, index) => {
-                console.log(`[VARIANTS] Starting code generation for variant ${index + 1}: ${variant.variant_label}`);
+        // SEQUENTIAL PROCESSING: Generate code and take screenshots for each variant one by one
+        console.log(`[VARIANTS] Processing ${response.variants.length} variants sequentially`);
+        const variantsWithScreenshots = [];
+        
+        // Initialize a single crawler instance for all variants
+        const { createPlaywrightCrawler } = await import('@features/crawler');
+        const { getServiceConfig } = await import('@infra/config/services');
+        const config = getServiceConfig();
+        const crawler = createPlaywrightCrawler(config.crawler);
+        
+        try {
+            for (let index = 0; index < response.variants.length; index++) {
+                const variant = response.variants[index];
+                console.log(`[VARIANTS] Processing variant ${index + 1}/${response.variants.length}: ${variant.variant_label}`);
+                
+                // Generate code for this variant
+                let codeResult;
                 try {
-                    const codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
-                    
-                    return {
-                        ...variant,
-                        css_code: codeResult.css_code,
-                        html_code: codeResult.html_code,
-                        injection_method: codeResult.injection_method,
-                        target_selector: codeResult.target_selector,
-                        new_element_html: codeResult.new_element_html,
-                        implementation_instructions: codeResult.implementation_instructions,
-                        codeResult // Store the full result for screenshot generation
-                    };
+                    console.log(`[VARIANTS] Generating code for variant ${index + 1}: ${variant.variant_label}`);
+                    codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
                 } catch (error) {
                     console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
-                    // Return variant with empty code fields if generation fails
-                    return {
-                        ...variant,
-                        css_code: '',
-                        html_code: '',
-                        injection_method: 'selector' as const,
-                        target_selector: '',
-                        new_element_html: '',
-                        implementation_instructions: `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
-                        codeResult: null
-                    };
-                }
-            })
-        );
-
-        // PARALLEL OPTIMIZATION: Take screenshots for all variants in parallel
-        console.log(`[VARIANTS] Taking screenshots for ${variantsWithCode.length} variants in parallel`);
-        const variantsWithScreenshots = await Promise.all(
-            variantsWithCode.map(async (variant, index) => {
-                if (!variant.codeResult) {
-                    return {
-                        ...variant,
-                        screenshot: ''
-                    };
-                }
-
-                console.log(`[VARIANTS] Taking screenshot for variant ${index + 1}: ${variant.variant_label}`);
-                let variantScreenshotUrl = '';
-                try {
-                    // Create a fresh crawler instance for each variant to avoid browser conflicts
-                    const { createPlaywrightCrawler } = await import('@features/crawler');
-                    const { getServiceConfig } = await import('@infra/config/services');
-                    const config = getServiceConfig();
-                    const freshCrawler = createPlaywrightCrawler(config.crawler);
-                    
-                    const variantScreenshotBase64 = await freshCrawler.takeVariantScreenshot(
-                        url,
-                        {
-                            css_code: variant.codeResult.css_code,
-                            html_code: variant.codeResult.html_code,
-                            injection_method: variant.codeResult.injection_method,
-                            target_selector: variant.codeResult.target_selector,
-                            new_element_html: variant.codeResult.new_element_html
-                        },
-                        { width: 1920, height: 1080 },
-                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                    );
-                    
-                    // Clean up the fresh crawler
-                    await freshCrawler.close();
-                    
-                    // Save screenshot to file and get URL
-                    const filename = await this.screenshotStorage.saveScreenshot(
-                        variantScreenshotBase64,
-                        variant.variant_label,
-                        projectId
-                    );
-                    variantScreenshotUrl = this.screenshotStorage.getScreenshotUrl(filename);
-                    console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
-                } catch (screenshotError) {
-                    console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
-                    // Continue without screenshot rather than failing the entire variant
+                    codeResult = null;
                 }
                 
-                // Remove the temporary codeResult field and add screenshot
-                const { codeResult, ...variantWithoutCodeResult } = variant;
-                return {
-                    ...variantWithoutCodeResult,
+                // Take screenshot for this variant
+                let variantScreenshotUrl = '';
+                if (codeResult) {
+                    try {
+                        console.log(`[VARIANTS] Taking screenshot for variant ${index + 1}: ${variant.variant_label}`);
+                        const variantScreenshotBase64 = await crawler.takeVariantScreenshot(
+                            url,
+                            {
+                                css_code: codeResult.css_code,
+                                html_code: codeResult.html_code,
+                                injection_method: codeResult.injection_method,
+                                target_selector: codeResult.target_selector,
+                                new_element_html: codeResult.new_element_html
+                            },
+                            { width: 1920, height: 1080 },
+                            { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                        );
+                        
+                        // Save screenshot to file and get URL
+                        const filename = await this.screenshotStorage.saveScreenshot(
+                            variantScreenshotBase64,
+                            variant.variant_label,
+                            projectId
+                        );
+                        variantScreenshotUrl = this.screenshotStorage.getScreenshotUrl(filename);
+                        console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
+                    } catch (screenshotError) {
+                        console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
+                        // Continue without screenshot rather than failing the entire variant
+                    }
+                }
+                
+                // Create the final variant object
+                const finalVariant = {
+                    ...variant,
+                    css_code: codeResult?.css_code || '',
+                    html_code: codeResult?.html_code || '',
+                    injection_method: codeResult?.injection_method || 'selector' as const,
+                    target_selector: codeResult?.target_selector || '',
+                    new_element_html: codeResult?.new_element_html || '',
+                    implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
                     screenshot: variantScreenshotUrl
                 };
-            })
-        );
+                
+                variantsWithScreenshots.push(finalVariant);
+                console.log(`[VARIANTS] Completed variant ${index + 1}/${response.variants.length}: ${variant.variant_label}`);
+            }
+        } finally {
+            // Clean up the crawler
+            await crawler.close();
+        }
 
         console.log(`[VARIANTS] All variants with code and screenshots generated successfully`);
         const result = {

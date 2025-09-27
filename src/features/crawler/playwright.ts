@@ -1,5 +1,5 @@
 // Playwright Web Crawler Service Implementation
-import { chromium, Browser } from 'playwright';
+import { chromium, Browser, Page } from 'playwright';
 import type { CrawlerService, CrawlResult, CrawlOptions, CrawlerConfig } from './types';
 
 export class PlaywrightCrawlerService implements CrawlerService {
@@ -266,7 +266,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
     viewport: { width: number, height: number } = { width: 1920, height: 1080 },
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<string> {
-    // Always initialize fresh browser for variant screenshots to avoid state issues
+    // Initialize browser if not already done
     await this.initialize();
 
     if (!url.startsWith("https://")) {
@@ -283,7 +283,8 @@ export class PlaywrightCrawlerService implements CrawlerService {
       // Set viewport
       await page.setViewportSize(viewport);
 
-      // Navigate to page
+      // Navigate to page (refresh to ensure clean state)
+      console.log(`[CRAWLER] Navigating to ${url} for variant: ${variant.target_selector || 'new_element'}`);
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
       await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
@@ -292,6 +293,9 @@ export class PlaywrightCrawlerService implements CrawlerService {
       if (authentication?.type === 'shopify_password') {
         await this.handleShopifyPasswordAuth(page, authentication);
       }
+      
+      // Clear any previous variant code to ensure clean state
+      await this.clearPreviousVariantCode(page);
 
       await page.setExtraHTTPHeaders({
         'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
@@ -397,6 +401,41 @@ export class PlaywrightCrawlerService implements CrawlerService {
     } finally {
       await page.close();
     }
+  }
+
+  /**
+   * Clear any previous variant code from the page to ensure clean state
+   */
+  private async clearPreviousVariantCode(page: Page): Promise<void> {
+    console.log(`[CRAWLER] Clearing previous variant code`);
+    
+    // Remove any previously injected CSS styles
+    await page.evaluate(() => {
+      // Remove any style elements with variant-specific classes or IDs
+      const variantStyles = document.querySelectorAll('style[data-variant], style[id*="variant"], style[class*="variant"]');
+      variantStyles.forEach(style => style.remove());
+      
+      // Remove any injected elements with variant-specific classes
+      const variantElements = document.querySelectorAll('[data-variant], [id*="variant"], [class*="variant"]');
+      variantElements.forEach(el => {
+        // Only remove if it's not a native element
+        if (el.tagName.toLowerCase().startsWith('variant-') || el.hasAttribute('data-variant')) {
+          el.remove();
+        }
+      });
+      
+      // Clear any custom CSS variables or classes that might have been added
+      const body = document.body;
+      if (body) {
+        // Remove variant-specific classes from body
+        const classList = Array.from(body.classList);
+        classList.forEach(className => {
+          if (className.includes('variant-') || className.includes('ab-test')) {
+            body.classList.remove(className);
+          }
+        });
+      }
+    });
   }
 
   /**

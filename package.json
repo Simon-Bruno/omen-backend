@@ -50,12 +50,12 @@
     "jwks-rsa": "^3.2.0",
     "node-fetch": "^3.3.2",
     "openai": "^5.20.1",
-    "playwright": "^1.55.0",
+    "playwright": "^1.55.1",
     "posthog-node": "^5.8.4",
     "prisma": "^6.16.1",
-    "zod": "^3.25.76",
     "tsconfig-paths": "^4.2.0",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/dompurify": "^3.0.5",
