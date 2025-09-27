@@ -22,6 +22,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
       await this.browser.close();
     }
     this.browser = await chromium.launch({
+      executablePath: process.env.CHROME_PATH || '/app/.chrome-for-testing/chrome-linux64/chrome',
       headless: this.config.headless,
       args: [
         '--disable-gpu',

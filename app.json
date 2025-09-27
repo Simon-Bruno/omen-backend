@@ -9,6 +9,9 @@
   "region": "eu",
   "buildpacks": [
     {
+      "url": "https://github.com/heroku/heroku-buildpack-chrome-for-testing"
+    },
+    {
       "url": "heroku/nodejs"
     }
   ],
@@ -20,6 +23,10 @@
     "PORT": {
       "description": "Port for the web server",
       "value": "3000"
+    },
+    "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": {
+      "description": "Skip Playwright browser download, use system Chrome",
+      "value": "true"
     }
   },
   "formation": {
