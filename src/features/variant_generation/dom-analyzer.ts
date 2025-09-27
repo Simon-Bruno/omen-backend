@@ -47,6 +47,7 @@ export interface InjectionPoint {
   timestamp: string; // When this was created
   tested: boolean; // Whether this selector has been tested
   successRate?: number; // Success rate if tested multiple times
+  originalText?: string; // Original text content of the element (for text length considerations)
 }
 
 // Removed unused PageStructure interface
@@ -65,7 +66,8 @@ const injectionPointSchema = z.object({
   }),
   alternativeSelectors: z.array(z.string()).describe('Alternative CSS selectors as fallbacks'),
   context: z.string().describe('What this element is used for in the page context'),
-  reasoning: z.string().describe('Detailed explanation of why this selector was chosen and why it should work reliably')
+  reasoning: z.string().describe('Detailed explanation of why this selector was chosen and why it should work reliably'),
+  originalText: z.string().optional().describe('Original text content of the element (for text length considerations)')
 });
 
 // Removed unused schemas - we only need injectionPointSchema for this service
@@ -186,13 +188,19 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
       // Remove excessive whitespace
       .replace(/\s+/g, ' ')
       // Remove empty lines
-      .replace(/\n\s*\n/g, '\n');
+      .replace(/\n\s*\n/g, '\n')
+      // Remove common tracking/analytics scripts
+      .replace(/<script[^>]*src="[^"]*(?:google-analytics|gtag|facebook|twitter|linkedin|pinterest)[^"]*"[^>]*>[\s\S]*?<\/script>/gi, '')
+      // Remove meta tags that aren't essential
+      .replace(/<meta[^>]*(?:property|name)="(?:og:|twitter:|article:|product:)[^"]*"[^>]*>/gi, '')
+      // Remove data attributes that aren't useful for analysis
+      .replace(/\sdata-[^=]*="[^"]*"/gi, '');
 
     // Extract relevant sections based on hypothesis
     const relevantSections = this.extractRelevantSections(optimized, hypothesisKeywords);
     
-    // Limit total size to prevent token overflow
-    const maxLength = 50000; // ~12k tokens
+    // Limit total size to prevent token overflow - reduced from 50k to 30k for faster processing
+    const maxLength = 30000; // ~7k tokens
     if (relevantSections.length > maxLength) {
       return relevantSections.substring(0, maxLength) + '\n\n... [HTML truncated for analysis]';
     }
@@ -278,6 +286,14 @@ SELECTOR REQUIREMENTS:
 - NEVER use :contains() pseudo-selector - it's not valid CSS
 - Use only standard CSS selectors that work with querySelectorAll()
 - For text-based selection, use attribute selectors or data attributes instead
+
+TEXT CONTENT CAPTURE:
+- For text elements (buttons, headings, paragraphs, etc.), capture the original text content
+- Include the originalText field with the exact text that appears in the element
+- This helps with text length considerations when generating variants
+- For buttons, capture the button text (e.g., "Add to Cart", "Learn More")
+- For headings, capture the heading text
+- For paragraphs or descriptions, capture the first 50-100 characters
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Very reliable (ID, data attributes, semantic elements)

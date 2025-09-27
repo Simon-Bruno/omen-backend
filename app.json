@@ -1,0 +1,36 @@
+{
+  "name": "omen-backend",
+  "description": "Omen Backend API",
+  "repository": "https://github.com/your-username/omen",
+  "logo": "",
+  "keywords": ["node", "fastify", "typescript", "prisma"],
+  "image": "heroku/nodejs",
+  "stack": "heroku-22",
+  "region": "eu",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "Environment",
+      "value": "production"
+    },
+    "PORT": {
+      "description": "Port for the web server",
+      "value": "3000"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0"
+    }
+  ]
+}

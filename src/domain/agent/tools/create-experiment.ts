@@ -3,10 +3,14 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ExperimentDAL } from '@infra/dal';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
+import { variantStateManager } from '../variant-state-manager';
 import { prisma } from '@infra/prisma';
+import { createExperimentPublisherService } from '@services/experiment-publisher';
+import { createCloudflarePublisher } from '@infra/external/cloudflare';
+import { getServiceConfig } from '@infra/config/services';
 
 const createExperimentSchema = z.object({
-  name: z.string().describe('The name of the experiment'),
+  name: z.string().optional().describe('The name of the experiment - if not provided, will be auto-generated from the hypothesis'),
   hypothesis: z.object({
     hypothesis: z.string().describe('The hypothesis statement'),
     rationale: z.string().describe('The rationale behind the hypothesis'),
@@ -28,7 +32,7 @@ const createExperimentSchema = z.object({
     new_element_html: z.string().optional().describe('Complete HTML for new element'),
     implementation_instructions: z.string().describe('Step-by-step implementation instructions'),
     screenshot: z.string().optional().describe('URL to the screenshot of the variant applied to the page')
-  })).describe('The variants to test')
+  })).optional().describe('The variants to test - if not provided, will use the most recently generated variants from state')
 });
 
 //TODO: Remove implementation instructions
@@ -41,12 +45,14 @@ class CreateExperimentExecutor {
   }
 
   async execute(input: { 
-    name: string; 
+    name?: string; 
     hypothesis?: any; 
-    variants: any[] 
+    variants?: any[] 
   }): Promise<{ experimentId: string; status: string; message: string }> {
-    console.log(`[EXPERIMENT_TOOL] Creating experiment: "${input.name}"`);
-
+    console.log(`[EXPERIMENT_TOOL] ===== EXPERIMENT CREATION INPUT =====`);
+    console.log(`[EXPERIMENT_TOOL] Full input received:`, JSON.stringify(input, null, 2));
+    console.log(`[EXPERIMENT_TOOL] Input variants length:`, input.variants ? input.variants.length : 'undefined');
+    
     // Get hypothesis from state manager (preferred) or input
     let hypothesis = hypothesisStateManager.getCurrentHypothesis();
     
@@ -60,13 +66,70 @@ class CreateExperimentExecutor {
       throw new Error('No hypothesis available. Please generate hypotheses first using the generate_hypotheses tool.');
     }
 
+    // Get variants from state manager (preferred) or input
+    let variants = variantStateManager.getCurrentVariants();
+    
+    console.log(`[EXPERIMENT_TOOL] State manager variants:`, variants ? `${variants.length} variants` : 'null');
+    console.log(`[EXPERIMENT_TOOL] Input variants:`, input.variants ? `${input.variants.length} variants` : 'undefined');
+    
+    if (variants && variants.length > 0) {
+      console.log(`[EXPERIMENT_TOOL] Using ${variants.length} variants from state manager`);
+      console.log(`[EXPERIMENT_TOOL] Variant labels:`, variants.map(v => v.variant_label));
+    } else if (input.variants && input.variants.length > 0) {
+      console.log(`[EXPERIMENT_TOOL] Using ${input.variants.length} variants from input`);
+      console.log(`[EXPERIMENT_TOOL] Input variant labels:`, input.variants.map(v => v.variant_label || 'unnamed'));
+      variants = input.variants;
+    } else {
+      console.log(`[EXPERIMENT_TOOL] No variants available in state or input`);
+      console.log(`[EXPERIMENT_TOOL] State manager has variants:`, variantStateManager.hasCurrentVariants());
+      console.log(`[EXPERIMENT_TOOL] State manager variant count:`, variantStateManager.getCurrentVariantCount());
+      throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
+    }
+    
+    console.log(`[EXPERIMENT_TOOL] ======================================`);
+
+    // Auto-generate experiment name from hypothesis if not provided
+    let experimentName = input.name;
+    if (!experimentName) {
+      // Extract key words from hypothesis to create a meaningful name
+      const hypothesisText = hypothesis.hypothesis.toLowerCase();
+      let name = 'Button Optimization';
+      
+      if (hypothesisText.includes('button')) {
+        if (hypothesisText.includes('contrast')) {
+          name = 'Button Contrast Optimization';
+        } else if (hypothesisText.includes('color')) {
+          name = 'Button Color Optimization';
+        } else if (hypothesisText.includes('size')) {
+          name = 'Button Size Optimization';
+        } else {
+          name = 'Button Optimization';
+        }
+      } else if (hypothesisText.includes('cta') || hypothesisText.includes('call-to-action')) {
+        name = 'CTA Optimization';
+      } else if (hypothesisText.includes('form')) {
+        name = 'Form Optimization';
+      } else if (hypothesisText.includes('checkout')) {
+        name = 'Checkout Optimization';
+      } else if (hypothesisText.includes('navigation') || hypothesisText.includes('menu')) {
+        name = 'Navigation Optimization';
+      } else {
+        name = 'Conversion Optimization';
+      }
+      
+      experimentName = name;
+      console.log(`[EXPERIMENT_TOOL] Auto-generated experiment name: "${experimentName}"`);
+    } else {
+      console.log(`[EXPERIMENT_TOOL] Using provided experiment name: "${experimentName}"`);
+    }
+
     // Use hardcoded project ID for now
     const projectId = this.projectId;
 
     try {
       const experiment = await ExperimentDAL.createExperiment({
         projectId,
-        name: input.name,
+        name: experimentName,
         oec: hypothesis.oec || 'Improve conversion rate', // Default OEC
         minDays: 7, // Default minimum days
         minSessionsPerVariant: 1000 // Default minimum sessions
@@ -83,9 +146,10 @@ class CreateExperimentExecutor {
       });
 
       // Create traffic distribution (equal split for now)
-      const variantIds = ['A', 'B', 'C'].slice(0, input.variants.length);
+      const variantIds = ['A', 'B', 'C'].slice(0, variants.length);
       const percentagePerVariant = 1.0 / variantIds.length;
       
+      console.log(`[EXPERIMENT_TOOL] Creating traffic distribution for ${variants.length} variants`);
       for (let i = 0; i < variantIds.length; i++) {
         await prisma.experimentTraffic.create({
           data: {
@@ -97,8 +161,18 @@ class CreateExperimentExecutor {
       }
 
       // Create variants
-      for (let i = 0; i < input.variants.length; i++) {
-        const variant = input.variants[i];
+      console.log(`[EXPERIMENT_TOOL] Creating ${variants.length} variants in database`);
+      for (let i = 0; i < variants.length; i++) {
+        const variant = variants[i];
+        console.log(`[EXPERIMENT_TOOL] Creating variant ${i + 1}: ${variant.variant_label}`);
+        console.log(`[EXPERIMENT_TOOL] Variant data:`, JSON.stringify({
+          variant_label: variant.variant_label,
+          target_selector: variant.target_selector,
+          has_css: !!variant.css_code,
+          has_html: !!variant.html_code,
+          injection_method: variant.injection_method
+        }, null, 2));
+        
         await prisma.experimentVariant.create({
           data: {
             experimentId: experiment.id,
@@ -113,11 +187,38 @@ class CreateExperimentExecutor {
 
       console.log(`[EXPERIMENT_TOOL] Experiment created successfully: ${experiment.id}`);
 
-      return {
-        experimentId: experiment.id,
-        status: experiment.status,
-        message: `Experiment "${input.name}" has been created and saved to the database. It's currently in DRAFT status and ready to be published when you're ready.`
-      };
+      // Publish to Cloudflare
+      console.log(`[EXPERIMENT_TOOL] Publishing experiment to Cloudflare...`);
+      try {
+        const config = getServiceConfig();
+        const cloudflarePublisher = createCloudflarePublisher(config.cloudflare);
+        const experimentPublisher = createExperimentPublisherService(cloudflarePublisher);
+        
+        const publishResult = await experimentPublisher.publishExperiment(experiment.id);
+        
+        if (publishResult.success) {
+          console.log(`[EXPERIMENT_TOOL] Experiment published to Cloudflare successfully`);
+          return {
+            experimentId: experiment.id,
+            status: 'RUNNING',
+            message: `Experiment "${experimentName}" has been created, saved to the database, and published to Cloudflare. It's now live and the SDK can load the variants.`
+          };
+        } else {
+          console.error(`[EXPERIMENT_TOOL] Failed to publish to Cloudflare:`, publishResult.error);
+          return {
+            experimentId: experiment.id,
+            status: experiment.status,
+            message: `Experiment "${experimentName}" has been created and saved to the database, but failed to publish to Cloudflare: ${publishResult.error}. The experiment is in DRAFT status.`
+          };
+        }
+      } catch (publishError) {
+        console.error(`[EXPERIMENT_TOOL] Error publishing to Cloudflare:`, publishError);
+        return {
+          experimentId: experiment.id,
+          status: experiment.status,
+          message: `Experiment "${experimentName}" has been created and saved to the database, but failed to publish to Cloudflare: ${publishError instanceof Error ? publishError.message : 'Unknown error'}. The experiment is in DRAFT status.`
+        };
+      }
     } catch (error) {
       console.error(`[EXPERIMENT_TOOL] Failed to create experiment:`, error);
       throw new Error(`Failed to create experiment: ${error instanceof Error ? error.message : 'Unknown error'}`);

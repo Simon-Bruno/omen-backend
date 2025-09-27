@@ -93,7 +93,17 @@ export class AgentServiceImpl implements AgentService {
 
       // Log tool results in AI messages for debugging
       if ((msg as any).tool_results && (msg as any).tool_results.length > 0) {
-        console.log(`[AGENT] AI Message has tool results:`, JSON.stringify((msg as any).tool_results, null, 2));
+        const toolResults = (msg as any).tool_results;
+        console.log(`[AGENT] AI Message has ${toolResults.length} tool results:`, toolResults.map((tr: any) => ({
+          tool_call_id: tr.tool_call_id,
+          content_length: tr.content ? tr.content.length : 0,
+          has_variants: tr.content && tr.content.includes('variantsSchema') ? 'Yes' : 'No'
+        })));
+      }
+      
+      // Log tool calls for debugging
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        console.log(`[AGENT] AI Message has tool calls:`, msg.tool_calls.map(tc => tc.function.name).join(', '));
       }
 
       return aiMessage;

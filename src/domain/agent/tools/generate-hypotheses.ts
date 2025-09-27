@@ -29,7 +29,7 @@ class GenerateHypothesesExecutor {
         
         const result = await this.generateHypotheses(url, this.projectId);
         
-        console.log(`[HYPOTHESES_TOOL] Result structure:`, JSON.stringify(result, null, 2));
+        console.log(`[HYPOTHESES_TOOL] Result structure: ${result.hypotheses ? result.hypotheses.length : 0} hypotheses, schema: ${result.hypothesesSchema ? 'Yes' : 'No'}`);
         
         // Parse the hypotheses from the result structure
         let hypotheses = result.hypotheses;

@@ -17,7 +17,10 @@ export class PlaywrightCrawlerService implements CrawlerService {
   }
 
   async initialize(): Promise<void> {
-    //if (!this.browser) {
+    // Always create a fresh browser instance to avoid conflicts
+    if (this.browser) {
+      await this.browser.close();
+    }
     this.browser = await chromium.launch({
       headless: this.config.headless,
       args: [
@@ -28,7 +31,6 @@ export class PlaywrightCrawlerService implements CrawlerService {
         '--disable-setuid-sandbox',
       ],
     });
-    //}
   }
 
   async close(): Promise<void> {
@@ -101,7 +103,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
       throw error; // Re-throw to let caller handle
     }
     finally {
-      await this.close();
+      await page.close();
     }
 
     return '';
@@ -263,7 +265,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
     viewport: { width: number, height: number } = { width: 1920, height: 1080 },
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<string> {
-    // Always initialize fresh browser for each variant to avoid state issues
+    // Always initialize fresh browser for variant screenshots to avoid state issues
     await this.initialize();
 
     if (!url.startsWith("https://")) {
@@ -326,11 +328,19 @@ export class PlaywrightCrawlerService implements CrawlerService {
       // Wait a bit for any animations or dynamic content to settle
       await page.waitForTimeout(1000);
       
-      // Debug: Check if element exists after applying code
+      // Debug: Check if element exists after applying code and scroll to it
       if (variant.target_selector) {
         try {
           const elementExists = await page.locator(variant.target_selector).count();
           console.log(`[CRAWLER] Element count for selector '${variant.target_selector}': ${elementExists}`);
+          
+          // Scroll to the target element to ensure it's visible in the screenshot
+          if (elementExists > 0) {
+            console.log(`[CRAWLER] Scrolling to target element: ${variant.target_selector}`);
+            await page.locator(variant.target_selector).first().scrollIntoViewIfNeeded();
+            // Wait a bit for scroll to complete
+            await page.waitForTimeout(500);
+          }
         } catch (selectorError) {
           console.warn(`[CRAWLER] Invalid selector '${variant.target_selector}':`, selectorError);
           // Try to find a fallback selector by removing problematic parts
@@ -343,6 +353,13 @@ export class PlaywrightCrawlerService implements CrawlerService {
             try {
               const fallbackCount = await page.locator(fallbackSelector).count();
               console.log(`[CRAWLER] Fallback selector '${fallbackSelector}' found ${fallbackCount} elements`);
+              
+              // Scroll to fallback element if found
+              if (fallbackCount > 0) {
+                console.log(`[CRAWLER] Scrolling to fallback element: ${fallbackSelector}`);
+                await page.locator(fallbackSelector).first().scrollIntoViewIfNeeded();
+                await page.waitForTimeout(500);
+              }
             } catch (fallbackError) {
               console.warn(`[CRAWLER] Fallback selector also failed:`, fallbackError);
             }
@@ -350,12 +367,28 @@ export class PlaywrightCrawlerService implements CrawlerService {
         }
       }
 
-      // Take screenshot (viewport only, not full page)
-      return (await page.screenshot({
-        type: 'png',
-        fullPage: false, // Regular browser viewport
-        path: `variant-${Date.now()}.png`
-      })).toString('base64');
+      // Take screenshot - try viewport first, then full page if element might be outside viewport
+      let screenshot;
+      try {
+        // First try viewport screenshot (faster and more focused)
+        screenshot = await page.screenshot({
+          type: 'png',
+          fullPage: false, // Regular browser viewport
+          path: `variant-${Date.now()}.png`
+        });
+        console.log(`[CRAWLER] Viewport screenshot taken`);
+      } catch (viewportError) {
+        console.warn(`[CRAWLER] Viewport screenshot failed, trying full page:`, viewportError);
+        // Fallback to full page screenshot
+        screenshot = await page.screenshot({
+          type: 'png',
+          fullPage: true, // Full page to ensure we capture the element
+          path: `variant-${Date.now()}-full.png`
+        });
+        console.log(`[CRAWLER] Full page screenshot taken as fallback`);
+      }
+      
+      return screenshot.toString('base64');
 
     } catch (error) {
       console.error(`[CRAWLER] Variant screenshot failed for ${url}:`, error);
@@ -392,13 +425,27 @@ export class PlaywrightCrawlerService implements CrawlerService {
       switch (variant.injection_method) {
         case 'selector':
           if (variant.target_selector && variant.html_code) {
+            // Validate that html_code doesn't contain JavaScript
+            if (variant.html_code.includes('document.') || variant.html_code.includes('querySelector') || variant.html_code.includes('innerHTML =')) {
+              console.warn(`[CRAWLER] Detected JavaScript code in html_code, skipping HTML injection: ${variant.html_code.substring(0, 100)}...`);
+              break;
+            }
+            
             console.log(`[CRAWLER] Applying selector injection: ${variant.target_selector} with HTML: ${variant.html_code}`);
             try {
               await page.evaluate(({ selector, html }) => {
                 const element = document.querySelector(selector);
                 if (element) {
-                  element.innerHTML = html;
-                  console.log(`[CRAWLER] Successfully updated element innerHTML`);
+                  // Check if html_code contains HTML tags or is just text
+                  if (html.includes('<') && html.includes('>')) {
+                    // It's HTML content, use innerHTML
+                    element.innerHTML = html;
+                    console.log(`[CRAWLER] Successfully updated element innerHTML with HTML content`);
+                  } else {
+                    // It's plain text, use textContent or innerText
+                    element.textContent = html;
+                    console.log(`[CRAWLER] Successfully updated element textContent with plain text`);
+                  }
                 } else {
                   console.log(`[CRAWLER] Element not found with selector: ${selector}`);
                 }
@@ -417,7 +464,12 @@ export class PlaywrightCrawlerService implements CrawlerService {
                   await page.evaluate(({ selector, html }) => {
                     const element = document.querySelector(selector);
                     if (element) {
-                      element.innerHTML = html;
+                      // Check if html_code contains HTML tags or is just text
+                      if (html.includes('<') && html.includes('>')) {
+                        element.innerHTML = html;
+                      } else {
+                        element.textContent = html;
+                      }
                     }
                   }, { selector: fallbackSelector, html: variant.html_code });
                   console.log(`[CRAWLER] Successfully applied variant using fallback selector: ${fallbackSelector}`);
