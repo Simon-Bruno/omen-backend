@@ -4,15 +4,19 @@ import { createVariantGenerationService } from '@features/variant_generation/var
 import { createPlaywrightCrawler } from '@features/crawler';
 import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
+import { PrismaClient } from '@prisma/client';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
+    private prisma: PrismaClient;
+    private screenshotStorage: any;
 
     constructor() {
+        this.prisma = new PrismaClient();
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        const screenshotStorage = createScreenshotStorageService();
-        this.variantGenerationService = createVariantGenerationService(crawler, screenshotStorage);
+        this.screenshotStorage = createScreenshotStorageService(this.prisma);
+        this.variantGenerationService = createVariantGenerationService(crawler, this.screenshotStorage, this.prisma);
     }
 
     async processVariantJob(jobId: string, projectId: string, hypothesis: any): Promise<void> {
@@ -42,13 +46,43 @@ export class VariantJobProcessor {
 
             // Run the initial analysis in parallel (screenshot, DOM analysis, brand analysis)
             console.log(`[VARIANT_JOB] Starting parallel operations for job ${jobId}`);
-            const [screenshot, injectionPoints, brandAnalysis] = await Promise.all([
-                this.variantGenerationService.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }),
-                this.variantGenerationService.domAnalyzer.analyzeForHypothesis(
-                    url, 
-                    hypothesis.hypothesis,
-                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                ),
+            
+            // Check for cached screenshot and HTML first
+            const pageType = this.getPageType(url);
+            const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
+                projectId, 
+                pageType, 
+                { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+            );
+            
+            let screenshot: string;
+            let htmlContent: string | null = null;
+            
+            if (cachedData.screenshot) {
+                console.log(`[VARIANT_JOB] Using cached screenshot and HTML for ${pageType} page`);
+                screenshot = cachedData.screenshot;
+                htmlContent = cachedData.html;
+            } else {
+                console.log(`[VARIANT_JOB] Taking new screenshot for ${url}`);
+                screenshot = await this.variantGenerationService.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain });
+            }
+            
+            const [injectionPoints, brandAnalysis] = await Promise.all([
+                // Use cached HTML if available, otherwise fall back to regular analysis
+                htmlContent 
+                    ? this.variantGenerationService.domAnalyzer.analyzeForHypothesisWithHtml(
+                        url, 
+                        hypothesis.hypothesis,
+                        projectId,
+                        htmlContent,
+                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                    )
+                    : this.variantGenerationService.domAnalyzer.analyzeForHypothesis(
+                        url, 
+                        hypothesis.hypothesis,
+                        projectId,
+                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                    ),
                 this.variantGenerationService.getCachedBrandAnalysis(projectId)
             ]);
 
@@ -189,6 +223,41 @@ export class VariantJobProcessor {
             global.gc();
             console.log(`[MEMORY] Forced garbage collection`);
         }
+    }
+
+    private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
+        const urlLower = url.toLowerCase();
+        
+        // Check for product pages first
+        if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
+            return 'pdp';
+        }
+        
+        // Check for about pages
+        if (urlLower.includes('/about')) {
+            return 'about';
+        }
+        
+        // Check for home page - this should be the most common case
+        // Home page is typically just the domain or domain with trailing slash
+        const urlObj = new URL(url);
+        const pathname = urlObj.pathname;
+        
+        // If no path or just a trailing slash, it's the home page
+        if (!pathname || pathname === '/' || pathname === '') {
+            return 'home';
+        }
+        
+        // If path is just common home page indicators
+        if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
+            return 'home';
+        }
+        
+        return 'other';
+    }
+
+    async cleanup(): Promise<void> {
+        await this.prisma.$disconnect();
     }
 }
 

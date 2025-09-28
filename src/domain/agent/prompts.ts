@@ -59,7 +59,7 @@ const WORKFLOW_RULES = `## Critical Workflow Rules
   2. Mention that variants are being processed and will be done shortly
   3. Ask if they want to create an experiment once variants are ready
   4. Call generate_variants without any parameters - it will automatically use the most recently generated hypothesis
-  5. Do NOT send any message after the function call - the tool call result is sufficient
+  5. After calling generate_variants, acknowledge the variants are being created and ask about next steps
   6. Do NOT call generate_hypotheses again - this will create a NEW hypothesis instead of variants for the existing one
   7. Do NOT make up or create a new hypothesis - the tools will handle hypothesis state automatically
   8. If the user wants to test a different hypothesis, they need to generate new hypotheses first
@@ -153,7 +153,7 @@ const BEHAVIOR_RULES = `## Behavior Rules
 **Critical Requirements:**
 9. After calling generate_hypotheses, you MUST continue the conversation with a brief acknowledgment (do NOT repeat the full hypothesis details as they are already displayed in the function call UI) and ask a follow-up question about next steps - never end with just the tool call result
 10. NEVER list or repeat the individual hypotheses in your chat message after calling generate_hypotheses - they are already displayed in the function call UI
-11. After calling generate_variants, acknowledge the variants generated and ask about next steps for implementation or testing
+11. After calling generate_variants, acknowledge the variants are being created and ask about next steps for implementation or testing
 12. After publishing an experiment, always confirm it's live, explain that traffic is now split between the control and the new variants, and let the user know we'll keep them informed and they can check back later to see results`;
 
 // Example conversation flows
@@ -169,6 +169,7 @@ Assistant: "Great! I've generated an optimization hypothesis based on my analysi
 User: "Let's do it"
 Assistant: "I'll create variants for the hypothesis we just generated. The variants are being processed and will be done shortly. When they're done, check them out and feel free to ask me anything you want about them. If everything's clear, we can publish them and start the experiment!"
 [Tool call: generate_variants]
+Assistant: "Perfect! I've started creating variants for your hypothesis. They're being processed in the background and will be ready shortly. Once they're done, you'll be able to see them and we can create an experiment to test them. Would you like me to set up the experiment once the variants are ready?"
 
 **Experiment Creation:**
 User: "Yes, create the experiment"

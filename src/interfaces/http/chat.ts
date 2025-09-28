@@ -82,7 +82,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
             // Use the agent service streaming method with full conversation history
             // Session management is disabled for now
+            console.log(`[CHAT] Calling agent service with message: "${messageText.substring(0, 100)}..." and ${conversationHistory.length} history messages`);
             const { stream } = await agentService.sendMessageStream(messageText, req.projectId!, conversationHistory);
+            console.log(`[CHAT] Agent service returned stream successfully`);
 
             // Use AI SDK's built-in streaming response
             const res = (stream as { toUIMessageStreamResponse: () => Response }).toUIMessageStreamResponse();

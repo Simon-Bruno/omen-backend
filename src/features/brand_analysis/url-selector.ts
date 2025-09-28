@@ -9,6 +9,11 @@ export interface UrlSelectionResult {
     about: string;
 }
 
+export interface UrlWithType {
+    url: string;
+    pageType: 'home' | 'pdp' | 'about';
+}
+
 const urlSelectionSchema = z.object({
     home: z.string(),
     pdp: z.string(),
@@ -56,5 +61,26 @@ Return ONLY valid JSON.`;
             throw new Error(`Failed to get urls: ${error}`);
 
         }
+    }
+
+    /**
+     * Convert URL selection result to an array of URLs with their page types
+     */
+    getUrlsWithTypes(selection: UrlSelectionResult): UrlWithType[] {
+        const urlsWithTypes: UrlWithType[] = [];
+        
+        if (selection.home && selection.home.length > 0) {
+            urlsWithTypes.push({ url: selection.home, pageType: 'home' });
+        }
+        
+        if (selection.pdp && selection.pdp.length > 0) {
+            urlsWithTypes.push({ url: selection.pdp, pageType: 'pdp' });
+        }
+        
+        if (selection.about && selection.about.length > 0) {
+            urlsWithTypes.push({ url: selection.about, pageType: 'about' });
+        }
+        
+        return urlsWithTypes;
     }
 }

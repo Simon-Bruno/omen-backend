@@ -8,9 +8,10 @@ import { buildVariantGenerationPrompt } from './prompts';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
-import { ScreenshotStorageService } from '@services/screenshot-storage';
 import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
 import { getAIConfig } from '@shared/ai-config';
+import { PrismaClient } from '@prisma/client';
+import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 
 export interface VariantGenerationService {
     generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult>;
@@ -31,9 +32,10 @@ export interface VariantGenerationResult {
 // Factory function
 export function createVariantGenerationService(
     crawler: CrawlerService,
-    screenshotStorage: ScreenshotStorageService
+    screenshotStorage: ScreenshotStorageService,
+    prisma: PrismaClient
 ): VariantGenerationService {
-    return new VariantGenerationServiceImpl(crawler, screenshotStorage);
+    return new VariantGenerationServiceImpl(crawler, screenshotStorage, prisma);
 }
 
 export class VariantGenerationServiceImpl implements VariantGenerationService {
@@ -45,10 +47,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
     
-    constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService) {
+    constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService, prisma: PrismaClient) {
         this.crawlerService = crawler;
         this.screenshotStorage = screenshotStorage;
-        this.domAnalyzer = createDOMAnalyzer(crawler);
+        this.domAnalyzer = createDOMAnalyzer(crawler, prisma);
         this.codeGenerator = createVariantCodeGenerator();
     }
 
@@ -170,13 +172,20 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                     );
                     
-                    // Save screenshot to file and get URL
-                    const filename = await this.screenshotStorage.saveScreenshot(
+                    // Save screenshot to database and get the screenshot ID
+                    const variantId = `variant-${variant.variant_label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}`;
+                    const screenshotId = await this.screenshotStorage.saveScreenshot(
+                        projectId,
+                        'other', // Variant screenshots are categorized as 'other'
+                        url,
+                        { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
                         variantScreenshotBase64,
-                        variant.variant_label,
-                        projectId
+                        undefined, // No HTML content for variant screenshots
+                        variantId // Unique variant ID to prevent duplicates
                     );
-                    variantScreenshotUrl = this.screenshotStorage.getScreenshotUrl(filename);
+                    
+                    // Generate a proper URL for the screenshot
+                    variantScreenshotUrl = `/api/screenshots/db/${screenshotId}`;
                     console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
                 } catch (screenshotError) {
                     console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
@@ -225,13 +234,56 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             return `data:image/png;base64,${b64}`;
         };
 
-        // PARALLEL OPTIMIZATION: Run screenshot, DOM analysis, and brand analysis in parallel
-        console.log(`[VARIANTS] Starting parallel operations: screenshot, DOM analysis, and brand analysis`);
-        const [screenshot, injectionPoints, brandAnalysis] = await Promise.all([
-            this.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }),
-            this.domAnalyzer.analyzeForHypothesis(
+        // Check storage first for base screenshot and HTML (reuse from brand analysis or DOM analysis)
+        const pageType = this.getPageType(url);
+        const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
+            projectId, 
+            pageType, 
+            { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+        );
+        
+        let screenshot: string;
+        let htmlContent: string | null = null;
+        
+        if (cachedData.screenshot) {
+            console.log(`[VARIANTS] Using stored screenshot and HTML for ${pageType} page`);
+            screenshot = cachedData.screenshot;
+            htmlContent = cachedData.html;
+        } else {
+            console.log(`[VARIANTS] Taking new screenshot and HTML for ${url}`);
+            const crawlResult = await this.crawlerService.crawlPage(url, {
+                viewport: { width: 1920, height: 1080 },
+                waitFor: 3000,
+                screenshot: { fullPage: true, quality: 80 },
+                authentication: { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+            });
+            
+            screenshot = crawlResult.screenshot || '';
+            htmlContent = crawlResult.html || null;
+            
+            // Store the new screenshot and HTML
+            if (screenshot) {
+                const screenshotId = await this.screenshotStorage.saveScreenshot(
+                    projectId, 
+                    pageType,
+                    url, 
+                    { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+                    screenshot,
+                    htmlContent ? htmlContent.substring(0, 50000) : undefined // Limit HTML size for storage
+                );
+                console.log(`[VARIANTS] Screenshot and HTML saved with ID: ${screenshotId}`);
+            }
+        }
+
+        // PARALLEL OPTIMIZATION: Run DOM analysis and brand analysis in parallel
+        console.log(`[VARIANTS] Starting parallel operations: DOM analysis and brand analysis`);
+        const [injectionPoints, brandAnalysis] = await Promise.all([
+            // Pass the HTML content we already have to avoid re-crawling
+            this.domAnalyzer.analyzeForHypothesisWithHtml(
                 url, 
                 hypothesis.hypothesis,
+                projectId,
+                htmlContent, // Pass the HTML we already have
                 { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
             ),
             this._getCachedBrandAnalysis(projectId)
@@ -272,7 +324,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         console.log(`[VARIANTS] Processing ${response.variants.length} variants sequentially`);
         const variantsWithScreenshots = [];
         
-        // Initialize a single crawler instance for all variants
+        // Initialize a single crawler instance for all variants to reuse browser
         const { createPlaywrightCrawler } = await import('@features/crawler');
         const { getServiceConfig } = await import('@infra/config/services');
         const config = getServiceConfig();
@@ -293,7 +345,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     codeResult = null;
                 }
                 
-                // Take screenshot for this variant
+                // Take screenshot for this variant using the shared crawler instance
                 let variantScreenshotUrl = '';
                 if (codeResult) {
                     try {
@@ -311,13 +363,17 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                             { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                         );
                         
-                        // Save screenshot to file and get URL
-                        const filename = await this.screenshotStorage.saveScreenshot(
+                        // Save screenshot to database and get URL
+                        const screenshotId = await this.screenshotStorage.saveScreenshot(
+                            projectId,
+                            'other', // Variant screenshots are categorized as 'other'
+                            url,
+                            { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
                             variantScreenshotBase64,
-                            variant.variant_label,
-                            projectId
+                            undefined, // No HTML content for variant screenshots
+                            `variant-${index + 1}-${variant.variant_label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}` // Unique variant ID
                         );
-                        variantScreenshotUrl = this.screenshotStorage.getScreenshotUrl(filename);
+                        variantScreenshotUrl = `/api/screenshots/db/${screenshotId}`;
                         console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
                     } catch (screenshotError) {
                         console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
@@ -353,4 +409,34 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         return result;
     }
 
+    private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
+        const urlLower = url.toLowerCase();
+        
+        // Check for product pages first
+        if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
+            return 'pdp';
+        }
+        
+        // Check for about pages
+        if (urlLower.includes('/about')) {
+            return 'about';
+        }
+        
+        // Check for home page - this should be the most common case
+        // Home page is typically just the domain or domain with trailing slash
+        const urlObj = new URL(url);
+        const pathname = urlObj.pathname;
+        
+        // If no path or just a trailing slash, it's the home page
+        if (!pathname || pathname === '/' || pathname === '') {
+            return 'home';
+        }
+        
+        // If path is just common home page indicators
+        if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
+            return 'home';
+        }
+        
+        return 'other';
+    }
 }

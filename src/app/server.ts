@@ -47,7 +47,7 @@ export async function startServer(): Promise<void> {
         await server.listen({ port, host });
 
         // Start job cleanup service
-        const jobCleanupService = createJobCleanupService();
+        const jobCleanupService = createJobCleanupService(prisma);
         jobCleanupService.startCleanup();
 
         // Graceful shutdown

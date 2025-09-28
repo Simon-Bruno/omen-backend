@@ -8,6 +8,7 @@ import { Hypothesis } from '@features/hypotheses_generation/types';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
 import { VariantJobDAL } from '@infra/dal';
 import { createVariantJobProcessor } from '@services/variant-job-processor';
+import { prisma } from '@infra/prisma';
 
 class GenerateVariantsExecutor {
     private variantGenerationService: VariantGenerationService;
@@ -17,8 +18,8 @@ class GenerateVariantsExecutor {
         this.projectId = projectId;
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        const screenshotStorage = createScreenshotStorageService();
-        this.variantGenerationService = createVariantGenerationService(crawler, screenshotStorage);
+        const screenshotStorage = createScreenshotStorageService(prisma);
+        this.variantGenerationService = createVariantGenerationService(crawler, screenshotStorage, prisma);
     }
 
     private async generateVariantJobs(hypothesis: Hypothesis): Promise<{ jobIds: string[]; projectId: string }> {

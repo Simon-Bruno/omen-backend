@@ -6,16 +6,19 @@ import { HypothesesGenerationResult } from '@features/hypotheses_generation/hypo
 import { createPlaywrightCrawler } from '@features/crawler';
 import { getServiceConfig } from '@infra/config/services';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
+import { PrismaClient } from '@prisma/client';
 
 class GenerateHypothesesExecutor {
     private hypothesesGenerationService: HypothesesGenerationService;
     private projectId: string;
+    private prisma: PrismaClient;
 
     constructor(projectId: string) {
         this.projectId = projectId;
+        this.prisma = new PrismaClient();
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        this.hypothesesGenerationService = createHypothesesGenerationService(crawler);
+        this.hypothesesGenerationService = createHypothesesGenerationService(crawler, this.prisma);
     }
 
     private async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
@@ -55,6 +58,10 @@ class GenerateHypothesesExecutor {
         }
         
         return result;
+    }
+
+    async cleanup(): Promise<void> {
+        await this.prisma.$disconnect();
     }
 }
 

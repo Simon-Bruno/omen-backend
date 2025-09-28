@@ -5,6 +5,9 @@ import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
 import { ProjectDAL } from '@infra/dal'
 import { getAIConfig } from '@shared/ai-config'
+import { PrismaClient } from '@prisma/client';
+import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
+import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
@@ -16,9 +19,10 @@ export interface HypothesesGenerationResult {
 
 // Factory function
 export function createHypothesesGenerationService(
-    crawler: CrawlerService
+    crawler: CrawlerService,
+    prisma: PrismaClient
 ): HypothesesGenerationService {
-    return new HypothesesGenerationServiceImpl(crawler);
+    return new HypothesesGenerationServiceImpl(crawler, prisma);
 }
 
 const hypothesesResponseSchema = z.object({
@@ -35,8 +39,11 @@ const hypothesesResponseSchema = z.object({
 
 export class HypothesesGenerationServiceImpl implements HypothesesGenerationService {
     private crawlerService: CrawlerService;
-    constructor(crawler: CrawlerService) {
+    private screenshotStorage: ScreenshotStorageService;
+    
+    constructor(crawler: CrawlerService, prisma: PrismaClient) {
         this.crawlerService = crawler;
+        this.screenshotStorage = createScreenshotStorageService(prisma);
     }
 
     async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
@@ -48,9 +55,54 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             return `data:image/png;base64,${b64}`;
         };
 
-        console.log(`[HYPOTHESES] Taking screenshot for ${url}`);
-        const screenshot = await this.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: 'omen-mvp.myshopify.com' });
-        console.log(`[HYPOTHESES] Screenshot taken, length: ${screenshot.length}`);
+        // Check storage first
+        const pageType = this.getPageType(url);
+        const cachedScreenshot = await this.screenshotStorage.getScreenshot(
+            projectId, 
+            pageType, 
+            { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+        );
+        
+        let screenshot: string;
+        if (cachedScreenshot) {
+            console.log(`[HYPOTHESES] Using stored screenshot for ${pageType} page`);
+            screenshot = cachedScreenshot;
+        } else {
+            console.log(`[HYPOTHESES] Taking new screenshot and HTML for ${url}`);
+            const crawlResult = await this.crawlerService.crawlPage(url, {
+                viewport: { width: 1920, height: 1080 },
+                waitFor: 3000,
+                screenshot: { fullPage: true, quality: 80 },
+                authentication: { type: 'shopify_password', password: 'reitri', shopDomain: 'omen-mvp.myshopify.com' }
+            });
+            
+            screenshot = crawlResult.screenshot || '';
+            
+            // Store the new screenshot and HTML
+            if (crawlResult.html) {
+                const simplifiedHtml = simplifyHTML(crawlResult.html);
+                const screenshotId = await this.screenshotStorage.saveScreenshot(
+                    projectId, 
+                    pageType,
+                    url, 
+                    { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+                    screenshot,
+                    simplifiedHtml
+                );
+                console.log(`[HYPOTHESES] Screenshot and HTML saved with ID: ${screenshotId} (${getHtmlInfo(simplifiedHtml)})`);
+            } else {
+                const screenshotId = await this.screenshotStorage.saveScreenshot(
+                    projectId, 
+                    pageType,
+                    url, 
+                    { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+                    screenshot
+                );
+                console.log(`[HYPOTHESES] Screenshot saved with ID: ${screenshotId}`);
+            }
+        }
+        
+        console.log(`[HYPOTHESES] Screenshot ready, length: ${screenshot.length}`);
 
         console.log(`[HYPOTHESES] Fetching brand analysis for project: ${projectId}`);
         const brandAnalysis = await ProjectDAL.getProjectBrandAnalysis(projectId);
@@ -126,5 +178,36 @@ Your analysis must prioritize **clarity, testability, and accessibility**. You a
    * Use plain, non-jargon language understandable to merchants.
    * Be concise but specific—merchants should see exactly what they could test.
    * Avoid over-promising; these are hypotheses, not guarantees.`;
+    }
+
+    private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
+        const urlLower = url.toLowerCase();
+        
+        // Check for product pages first
+        if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
+            return 'pdp';
+        }
+        
+        // Check for about pages
+        if (urlLower.includes('/about')) {
+            return 'about';
+        }
+        
+        // Check for home page - this should be the most common case
+        // Home page is typically just the domain or domain with trailing slash
+        const urlObj = new URL(url);
+        const pathname = urlObj.pathname;
+        
+        // If no path or just a trailing slash, it's the home page
+        if (!pathname || pathname === '/' || pathname === '') {
+            return 'home';
+        }
+        
+        // If path is just common home page indicators
+        if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
+            return 'home';
+        }
+        
+        return 'other';
     }
 }

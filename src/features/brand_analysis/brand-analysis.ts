@@ -1,10 +1,15 @@
 // Brand Analysis Service
-import type { CrawlerService, CrawlResult } from '@features/crawler';
+import type { CrawlResult } from '@features/crawler';
+import { createPlaywrightCrawler } from '@features/crawler';
 import type { BrandAnalysisResponse } from './types';
 import { ScreenshotAnalyzer } from './screenshot-analyzer';
 import { LanguageAnalyzer } from './language-analyzer';
 import { UrlSelector } from './url-selector';
-import { ProjectDAL } from '@infra/dal'
+import { ProjectDAL } from '@infra/dal';
+import { PrismaClient } from '@prisma/client';
+import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
+import { getServiceConfig } from '@infra/config/services';
+import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
 
 export interface BrandAnalysisService {
   analyzeProject(projectId: string, shopDomain: string): Promise<BrandAnalysisResult>;
@@ -23,26 +28,32 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
   private languageAnalyzer: LanguageAnalyzer;
   // private codeAnalyzer: CodeAnalyzer; // Disabled for now
   private urlSelector: UrlSelector;
+  private screenshotStorage: ScreenshotStorageService;
 
   constructor(
-    private crawler: CrawlerService
+    prisma: PrismaClient
   ) {
     this.screenshotAnalyzer = new ScreenshotAnalyzer();
     this.languageAnalyzer = new LanguageAnalyzer();
     // this.codeAnalyzer = new CodeAnalyzer(); // Disabled for now
     this.urlSelector = new UrlSelector();
+    this.screenshotStorage = createScreenshotStorageService(prisma);
   }
 
 
   async analyzeProject(projectId: string, shopDomain: string): Promise<BrandAnalysisResult> {
+    // Create a new crawler instance for this analysis to avoid conflicts
+    const config = getServiceConfig();
+    const crawler = createPlaywrightCrawler(config.crawler);
+    
     try {
       console.log(`[BRAND_ANALYSIS] Starting analysis for project ${projectId}, shop: ${shopDomain}`);
       const baseUrl = `https://${shopDomain}`;
 
       // 1) Crawl homepage
       console.log(`[BRAND_ANALYSIS] Crawling homepage: ${baseUrl}`);
-      const homeResult = await this.crawler.crawlPage(baseUrl, {
-        viewport: { width: 1280, height: 720 },
+      const homeResult = await crawler.crawlPage(baseUrl, {
+        viewport: { width: 1920, height: 1080 },
         waitFor: 3000,
         screenshot: { fullPage: true, quality: 80 },
         authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
@@ -81,26 +92,72 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         throw new Error(`URL selection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
 
-      const filteredCandidates = (['home', 'pdp', 'about'] as const)
-        .map(k => response[k])
-        .filter((u): u is string => typeof u === 'string' && u.length > 0);
+      const urlsWithTypes = this.urlSelector.getUrlsWithTypes(response);
+      console.log(`[BRAND_ANALYSIS] Selected URLs to crawl:`, urlsWithTypes);
 
-      console.log(`[BRAND_ANALYSIS] Selected URLs to crawl:`, filteredCandidates);
-      // Crawl all pages
-      console.log(`[BRAND_ANALYSIS] Starting multi-page crawl...`);
-      const crawlResults = await this.crawler.crawlMultiplePages(filteredCandidates, {
-        viewport: { width: 1280, height: 720 },
-        waitFor: 3000, // Wait 3 seconds for dynamic content
-        screenshot: {
-          fullPage: true,
-          quality: 80
-        },
-        authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
-          type: 'shopify_password',
-          password: 'reitri',
-          shopDomain: shopDomain
-        } : undefined
-      });
+      // Check storage first for each URL
+      const cachedScreenshots = new Map<string, string>();
+      const urlsToCapture: Array<{ url: string, pageType: 'home' | 'pdp' | 'about' }> = [];
+
+      for (const { url, pageType } of urlsWithTypes) {
+        const cached = await this.screenshotStorage.getScreenshot(
+          projectId,
+          pageType,
+          { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+        );
+
+        if (cached) {
+          cachedScreenshots.set(url, cached);
+          console.log(`[BRAND_ANALYSIS] Using stored screenshot for ${pageType} page`);
+        } else {
+          urlsToCapture.push({ url, pageType });
+        }
+      }
+
+      // Only capture screenshots for URLs not in cache
+      let crawlResults: CrawlResult[] = [];
+      if (urlsToCapture.length > 0) {
+        console.log(`[BRAND_ANALYSIS] Capturing ${urlsToCapture.length} new screenshots`);
+        try {
+          crawlResults = await crawler.crawlMultiplePages(urlsToCapture.map(u => u.url), {
+            viewport: { width: 1920, height: 1080 },
+            waitFor: 3000, // Wait 3 seconds for dynamic content
+            screenshot: {
+              fullPage: true,
+              quality: 80
+            },
+            authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
+              type: 'shopify_password',
+              password: 'reitri',
+              shopDomain: shopDomain
+            } : undefined
+          });
+        } catch (crawlError) {
+          console.error(`[BRAND_ANALYSIS] Error during screenshot capture:`, crawlError);
+          // Continue with empty results - we'll still have the home page screenshot
+          crawlResults = [];
+        }
+
+        // Store the new screenshots
+        for (let i = 0; i < crawlResults.length; i++) {
+          const result = crawlResults[i];
+          const urlInfo = urlsToCapture[i];
+          if (result.screenshot && urlInfo) {
+            // Simplify HTML content before saving
+            const simplifiedHtml = result.html ? simplifyHTML(result.html) : undefined;
+            
+            const screenshotId = await this.screenshotStorage.saveScreenshot(
+              projectId,
+              urlInfo.pageType,
+              result.url,
+              { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+              result.screenshot,
+              simplifiedHtml
+            );
+            console.log(`[BRAND_ANALYSIS] Screenshot and HTML saved with ID: ${screenshotId} (${getHtmlInfo(simplifiedHtml)})`);
+          }
+        }
+      }
 
       // Check for errors
       const errors = crawlResults.filter((result: CrawlResult) => result.error);
@@ -110,9 +167,12 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
 
       console.log(`[BRAND_ANALYSIS] Crawl completed. ${crawlResults.length} pages crawled, ${errors.length} errors`);
 
-      // Prepare data for analysis
+      // Prepare data for analysis - combine cached and new screenshots
       const htmlContent = crawlResults.map((result: CrawlResult) => result.html);
-      const screenshots = crawlResults.map((result: CrawlResult) => result.screenshot);
+      const screenshots = [
+        ...cachedScreenshots.values(),
+        ...crawlResults.map((result: CrawlResult) => result.screenshot).filter(s => s)
+      ];
       // const urls = crawlResults.map((result: CrawlResult) => result.url);
 
       // Filter out empty screenshots and log the issue
@@ -123,7 +183,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
 
       // Run separate analyses in parallel
       console.log(`[BRAND_ANALYSIS] Starting analysis of ${validScreenshots.length} screenshots and ${htmlContent.length} HTML pages`);
-      
+
       // Only add screenshot analysis if we have valid screenshots
       let screenshotAnalysis;
       if (validScreenshots.length > 0) {
@@ -164,7 +224,7 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
 
       await ProjectDAL.updateProjectBrandAnalysis(projectId, detailedAnalysis);
       console.log(`[BRAND_ANALYSIS] Brand analysis completed successfully for project ${projectId}`);
-      
+
       return {
         success: true,
         brandSummary: detailedAnalysis,
@@ -175,6 +235,13 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
+    } finally {
+      // Clean up the crawler instance
+      try {
+        await crawler.close();
+      } catch (cleanupError) {
+        console.warn(`[BRAND_ANALYSIS] Error closing crawler:`, cleanupError);
+      }
     }
   }
 
@@ -198,11 +265,12 @@ export class BrandAnalysisServiceImpl implements BrandAnalysisService {
 
     return urls;
   }
+
 }
 
 // Factory function
 export function createBrandAnalysisService(
-  crawler: CrawlerService
+  prisma: PrismaClient
 ): BrandAnalysisService {
-  return new BrandAnalysisServiceImpl(crawler);
+  return new BrandAnalysisServiceImpl(prisma);
 }
