@@ -4,6 +4,9 @@ import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { CrawlerService } from '@features/crawler';
 import { getAIConfig } from '@shared/ai-config';
+import { PrismaClient } from '@prisma/client';
+import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
+import { simplifyHTML, simplifyHTMLForForensics, getHtmlInfo } from '@shared/utils/html-simplifier';
 
 // CSS selector validation utility
 function isValidCSSSelector(selector: string): boolean {
@@ -52,23 +55,22 @@ export interface InjectionPoint {
 
 // Removed unused PageStructure interface
 
-// Zod schemas for AI response
-const injectionPointSchema = z.object({
-  type: z.enum(['button', 'text', 'image', 'container', 'form', 'navigation', 'price', 'title', 'description']),
-  selector: z.string().describe('CSS selector that reliably targets this element'),
-  confidence: z.number().min(0).max(1).describe('Confidence level (0-1) that this selector will work'),
-  description: z.string().describe('Human-readable description of this element'),
-  boundingBox: z.object({
-    x: z.number(),
-    y: z.number(),
-    width: z.number(),
-    height: z.number()
-  }),
-  alternativeSelectors: z.array(z.string()).describe('Alternative CSS selectors as fallbacks'),
-  context: z.string().describe('What this element is used for in the page context'),
-  reasoning: z.string().describe('Detailed explanation of why this selector was chosen and why it should work reliably'),
-  originalText: z.string().optional().describe('Original text content of the element (for text length considerations)')
+// Simplified schema for variant injection - only what we actually need
+const elementFoundSchema = z.object({
+  css_selector: z.string().describe('CSS selector that targets exactly 1 element'),
+  element_text: z.string().optional().describe('Text content of the element if any'),
+  section_context: z.string().optional().describe('Section or context where element was found'),
+  confidence: z.number().min(0).max(1).describe('Confidence this selector will work (0-1)'),
+  reasoning: z.string().describe('Why this selector was chosen')
 });
+
+const elementNotFoundSchema = z.object({
+  NOT_FOUND: z.boolean().describe('True if element not found'),
+  reason: z.string().describe('Why element was not found'),
+  suggestions: z.array(z.string()).describe('Suggestions for finding similar elements')
+});
+
+const injectionPointSchema = z.union([elementFoundSchema, elementNotFoundSchema]);
 
 // Removed unused schemas - we only need injectionPointSchema for this service
 
@@ -76,41 +78,210 @@ export interface DOMAnalyzerService {
   analyzeForHypothesis(
     url: string, 
     hypothesis: string,
+    projectId: string,
+    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
+  ): Promise<InjectionPoint[]>;
+  
+  analyzeForHypothesisWithHtml(
+    url: string, 
+    hypothesis: string,
+    projectId: string,
+    htmlContent: string | null,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]>;
 }
 
 export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
-  constructor(private crawlerService: CrawlerService) {}
+  private screenshotStorage: ScreenshotStorageService;
+
+  constructor(
+    private crawlerService: CrawlerService,
+    prisma: PrismaClient
+  ) {
+    this.screenshotStorage = createScreenshotStorageService(prisma);
+  }
+
+  async analyzeForHypothesisWithHtml(
+    url: string, 
+    hypothesis: string,
+    projectId: string,
+    htmlContent: string | null,
+    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
+  ): Promise<InjectionPoint[]> {
+    console.log(`[DOM_ANALYZER] Starting analysis with provided HTML for hypothesis: ${hypothesis}`);
+    
+    // If we have HTML content, use it directly without crawling
+    if (htmlContent) {
+      console.log(`[DOM_ANALYZER] Using provided HTML content (${htmlContent.length} chars)`);
+      
+      // Optimize HTML for AI analysis (memory efficient)
+      const optimizedHTML = this.optimizeHTMLForAnalysis(htmlContent, hypothesis);
+      console.log(`[DOM_ANALYZER] Optimized HTML from ${htmlContent.length} to ${optimizedHTML.length} characters (${Math.round((1 - optimizedHTML.length / htmlContent.length) * 100)}% reduction)`);
+
+      // Use AI to find specific injection points for this hypothesis
+      const aiConfig = getAIConfig();
+      const result = await generateObject({
+        model: google(aiConfig.model),
+        schema: injectionPointSchema,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Analyze this HTML to find the EXACT element mentioned in the hypothesis for variant injection.
+
+HYPOTHESIS: "${hypothesis}"
+
+INSTRUCTIONS:
+1. Look for the SPECIFIC element mentioned in the hypothesis (e.g., "Get waxy now" button, "Stay hydrated" section)
+2. Find the exact CSS selector for that specific element
+3. Do NOT select generic buttons or CTAs that are not mentioned in the hypothesis
+4. Look for text content that matches what's described in the hypothesis
+5. If the hypothesis mentions a specific section (like "Stay hydrated"), look within that section
+6. Prioritize elements with the exact text mentioned in the hypothesis
+
+Find the most specific and accurate selector for the element that needs to be modified according to the hypothesis.`
+              },
+              {
+                type: 'text',
+                text: `HTML Content:\n${optimizedHTML}`
+              }
+            ]
+          }
+        ]
+      });
+
+      // Process the simplified result
+      const forensicsResult = result.object;
+      
+      // Check if element was found
+      if ('NOT_FOUND' in forensicsResult && forensicsResult.NOT_FOUND === true) {
+        console.log(`[DOM_ANALYZER] Element not found: ${forensicsResult.reason}`);
+        console.log(`[DOM_ANALYZER] Suggestions:`, forensicsResult.suggestions);
+        return []; // Return empty array if not found
+      }
+      
+      // Type guard to ensure we have the success result
+      if (!('css_selector' in forensicsResult)) {
+        console.error(`[DOM_ANALYZER] Invalid response format from AI`);
+        return [];
+      }
+      
+      // Transform the result to InjectionPoint format
+      const injectionPoint: InjectionPoint = {
+        type: 'button', // Default type, could be enhanced based on element analysis
+        selector: forensicsResult.css_selector,
+        confidence: forensicsResult.confidence,
+        description: forensicsResult.reasoning,
+        boundingBox: {
+          x: 0, // Will be filled by the crawler
+          y: 0,
+          width: 0,
+          height: 0
+        },
+        alternativeSelectors: [], // Simplified - no alternatives needed
+        context: forensicsResult.section_context || 'Element found',
+        reasoning: forensicsResult.reasoning,
+        hypothesis,
+        url,
+        timestamp: new Date().toISOString(),
+        tested: false,
+        originalText: forensicsResult.element_text || undefined
+      };
+      
+      console.log(`[DOM_ANALYZER] Found element: ${forensicsResult.css_selector}`);
+      return [injectionPoint];
+    }
+    
+    // Fallback to regular analysis if no HTML provided
+    console.log(`[DOM_ANALYZER] No HTML content provided, falling back to regular analysis`);
+    return this.analyzeForHypothesis(url, hypothesis, projectId, authentication);
+  }
 
   async analyzeForHypothesis(
     url: string, 
     hypothesis: string,
+    projectId: string,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]> {
     console.log(`[DOM_ANALYZER] Analyzing page for hypothesis: "${hypothesis}"`);
     
-    // Get page HTML and screenshot (optimized for memory)
-    const crawlResult = await this.crawlerService.crawlPage(url, {
-      viewport: { width: 1920, height: 1080 },
-      waitFor: 3000,
-      screenshot: { fullPage: false, quality: 60 }, // Reduced quality and no full page
-      authentication
-    });
+    // Check storage first for both screenshot and HTML
+    const pageType = this.getPageType(url);
+    const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
+      projectId, 
+      pageType, 
+      { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+    );
+    
+    let crawlResult;
+    if (cachedData.screenshot && cachedData.html) {
+      console.log(`[DOM_ANALYZER] Using stored screenshot and HTML for ${pageType} page`);
+      // We have both screenshot and HTML, no need to crawl
+      crawlResult = {
+        url,
+        html: cachedData.html,
+        screenshot: cachedData.screenshot,
+        error: null
+      };
+    } else if (cachedData.screenshot) {
+      console.log(`[DOM_ANALYZER] Using stored screenshot for ${pageType} page, but need to fetch HTML`);
+      // We have screenshot but need HTML, so we need to crawl but without screenshot
+      crawlResult = await this.crawlerService.crawlPage(url, {
+        viewport: { width: 1920, height: 1080 },
+        waitFor: 3000,
+        screenshot: { fullPage: false, quality: 60 },
+        authentication
+      });
+      // Use stored screenshot instead of crawled one
+      crawlResult.screenshot = cachedData.screenshot;
+      
+      // Store the new HTML content
+      if (crawlResult.html) {
+        const simplifiedHtml = simplifyHTML(crawlResult.html);
+        const screenshotId = await this.screenshotStorage.saveScreenshot(
+          projectId, 
+          pageType,
+          url, 
+          { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+          cachedData.screenshot!, // Use the cached screenshot
+          simplifiedHtml
+        );
+        console.log(`[DOM_ANALYZER] HTML content saved with ID: ${screenshotId} (${getHtmlInfo(simplifiedHtml)})`);
+      }
+    } else {
+      console.log(`[DOM_ANALYZER] Taking new screenshot and HTML for ${url}`);
+      crawlResult = await this.crawlerService.crawlPage(url, {
+        viewport: { width: 1920, height: 1080 },
+        waitFor: 3000,
+        screenshot: { fullPage: true, quality: 80 },
+        authentication
+      });
+      
+      // Store the new screenshot and HTML
+      if (crawlResult.screenshot && crawlResult.html) {
+        const simplifiedHtml = simplifyHTML(crawlResult.html);
+        const screenshotId = await this.screenshotStorage.saveScreenshot(
+          projectId, 
+          pageType,
+          url, 
+          { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+          crawlResult.screenshot,
+          simplifiedHtml
+        );
+        console.log(`[DOM_ANALYZER] Screenshot and HTML saved with ID: ${screenshotId} (${getHtmlInfo(simplifiedHtml)})`);
+      }
+    }
 
     if (crawlResult.error) {
       throw new Error(`Failed to crawl page: ${crawlResult.error}`);
     }
 
-    const toDataUrl = (b64: string): string => {
-      if (!b64) return '';
-      if (b64.startsWith('data:')) return b64;
-      return `data:image/png;base64,${b64}`;
-    };
 
     // Optimize HTML for AI analysis (memory efficient)
     const optimizedHTML = this.optimizeHTMLForAnalysis(crawlResult.html, hypothesis);
-    console.log(`[DOM_ANALYZER] Optimized HTML from ${crawlResult.html.length} to ${optimizedHTML.length} characters`);
+    console.log(`[DOM_ANALYZER] Optimized HTML from ${crawlResult.html.length} to ${optimizedHTML.length} characters (${Math.round((1 - optimizedHTML.length / crawlResult.html.length) * 100)}% reduction)`);
 
     // Clear large HTML from memory before AI processing
     crawlResult.html = ''; // Free memory
@@ -124,16 +295,19 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     const aiConfig = getAIConfig();
     const result = await generateObject({
       model: google(aiConfig.model),
-      schema: z.object({
-        injectionPoints: z.array(injectionPointSchema)
-      }),
+      schema: injectionPointSchema,
       messages: [
         {
           role: 'user',
           content: [
-            { type: 'text', text: this.buildHypothesisFocusedPrompt(hypothesis) },
-            { type: 'text', text: `HTML Content:\n${optimizedHTML}` },
-            { type: 'image', image: toDataUrl(crawlResult.screenshot) }
+            { 
+              type: 'text', 
+              text: this.buildHypothesisFocusedPrompt(hypothesis) 
+            },
+            { 
+              type: 'text', 
+              text: `HTML Content:\n${optimizedHTML}` 
+            }
           ]
         }
       ]
@@ -141,46 +315,61 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
 
     // optimizedHTML will be garbage collected after this scope
 
-    // Add metadata to injection points and validate/clean selectors
-    const enrichedInjectionPoints = result.object.injectionPoints.map(point => {
-      // Clean the primary selector
-      const cleanedSelector = cleanCSSSelector(point.selector);
-      
-      // Clean alternative selectors
-      const cleanedAlternatives = point.alternativeSelectors.map(cleanCSSSelector);
-      
-      // Validate selectors and log warnings for invalid ones
-      if (!isValidCSSSelector(cleanedSelector)) {
-        console.warn(`[DOM_ANALYZER] Invalid primary selector detected: "${point.selector}" -> cleaned to: "${cleanedSelector}"`);
-      }
-      
-      cleanedAlternatives.forEach((alt, index) => {
-        if (!isValidCSSSelector(alt)) {
-          console.warn(`[DOM_ANALYZER] Invalid alternative selector ${index + 1}: "${point.alternativeSelectors[index]}" -> cleaned to: "${alt}"`);
-        }
-      });
-      
-      return {
-        ...point,
-        selector: cleanedSelector,
-        alternativeSelectors: cleanedAlternatives,
-        hypothesis,
-        url,
-        timestamp: new Date().toISOString(),
-        tested: false,
-        successRate: undefined
-      };
+    // Process the simplified result
+    const forensicsResult = result.object;
+    
+    // Check if element was found
+    if ('NOT_FOUND' in forensicsResult && forensicsResult.NOT_FOUND === true) {
+      console.log(`[DOM_ANALYZER] Element not found: ${forensicsResult.reason}`);
+      console.log(`[DOM_ANALYZER] Suggestions:`, forensicsResult.suggestions);
+      return []; // Return empty array if not found
+    }
+    
+    // Type guard to ensure we have the success result
+    if (!('css_selector' in forensicsResult)) {
+      console.error(`[DOM_ANALYZER] Invalid response format from AI`);
+      return [];
+    }
+    
+    // Clean the CSS selector
+    const cleanedSelector = cleanCSSSelector(forensicsResult.css_selector);
+    
+    // Validate selector and log warnings for invalid ones
+    if (!isValidCSSSelector(cleanedSelector)) {
+      console.warn(`[DOM_ANALYZER] Invalid CSS selector detected: "${forensicsResult.css_selector}" -> cleaned to: "${cleanedSelector}"`);
+    }
+    
+    // Transform the result to InjectionPoint format
+    const injectionPoint: InjectionPoint = {
+      type: 'button', // Default type, could be enhanced based on element analysis
+      selector: cleanedSelector,
+      confidence: forensicsResult.confidence,
+      description: forensicsResult.reasoning,
+      boundingBox: {
+        x: 0, // Will be filled by the crawler
+        y: 0,
+        width: 0,
+        height: 0
+      },
+      alternativeSelectors: [], // Simplified - no alternatives needed
+      context: forensicsResult.section_context || 'Element found',
+      reasoning: forensicsResult.reasoning,
+      hypothesis,
+      url,
+      timestamp: new Date().toISOString(),
+      tested: false,
+      originalText: forensicsResult.element_text || undefined
+    };
+
+    console.log(`[DOM_ANALYZER] Found element: ${cleanedSelector}`);
+    console.log(`[DOM_ANALYZER] Element details:`, {
+      type: injectionPoint.type,
+      selector: injectionPoint.selector,
+      confidence: injectionPoint.confidence,
+      reasoning: injectionPoint.reasoning.substring(0, 100) + '...'
     });
 
-    console.log(`[DOM_ANALYZER] Found ${enrichedInjectionPoints.length} injection points for hypothesis`);
-    console.log(`[DOM_ANALYZER] Injection points:`, enrichedInjectionPoints.map(p => ({
-      type: p.type,
-      selector: p.selector,
-      confidence: p.confidence,
-      reasoning: p.reasoning.substring(0, 100) + '...'
-    })));
-
-    return enrichedInjectionPoints;
+    return [injectionPoint];
   }
 
   private optimizeHTMLForAnalysis(html: string, hypothesis: string): string {
@@ -226,24 +415,8 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   }
 
   private processHTMLChunk(chunk: string): string {
-    // Process chunk with single-pass operations to minimize memory
-    return chunk
-      // Remove comments (single pass)
-      .replace(/<!--[\s\S]*?-->/g, '')
-      // Remove script tags (single pass)
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      // Remove style tags (single pass)
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      // Remove tracking scripts (single pass)
-      .replace(/<script[^>]*src="[^"]*(?:google-analytics|gtag|facebook|twitter|linkedin|pinterest)[^"]*"[^>]*>[\s\S]*?<\/script>/gi, '')
-      // Remove meta tags (single pass)
-      .replace(/<meta[^>]*(?:property|name)="(?:og:|twitter:|article:|product:)[^"]*"[^>]*>/gi, '')
-      // Remove data attributes (single pass)
-      .replace(/\sdata-[^=]*="[^"]*"/gi, '')
-      // Normalize whitespace (single pass)
-      .replace(/\s+/g, ' ')
-      // Remove empty lines (single pass)
-      .replace(/\n\s*\n/g, '\n');
+    // Use the forensics-specific HTML simplifier that preserves important attributes
+    return simplifyHTMLForForensics(chunk);
   }
 
   private extractKeywordsFromHypothesis(hypothesis: string): string[] {
@@ -311,56 +484,60 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   }
 
   private buildHypothesisFocusedPrompt(hypothesis: string): string {
-    return `
-You are a DOM analysis expert. Your task is to find the specific elements on this webpage that are relevant to testing this hypothesis:
+    return `You are a DOM analysis assistant. Find the exact element mentioned in the hypothesis and return a CSS selector that targets exactly 1 element.
 
 HYPOTHESIS: "${hypothesis}"
 
-ANALYSIS TASK:
-1. Look at the screenshot and HTML to identify the specific elements mentioned in the hypothesis
-2. Find reliable CSS selectors that target those elements
-3. Provide alternative selectors as fallbacks
-4. Estimate confidence levels for each selector
-5. Explain your reasoning for each selector choice
+INSTRUCTIONS:
+1. Find the SPECIFIC element mentioned in the hypothesis (exact text, section, or unique attributes)
+2. If a section is named (e.g., "Stay hydrated"), find that section first, then the element within it
+3. Return a CSS selector that targets exactly 1 element
+4. Prefer stable attributes: data-testid, id, aria-*, role over class names
+5. If using text, match exactly (case-insensitive, trimmed)
+6. Never use generic selectors like .btn, .button unless anchored to a unique parent
 
-SELECTOR REQUIREMENTS:
-- Use the most specific and reliable selectors possible
-- Prefer IDs, data attributes, and semantic selectors over class names
-- Avoid selectors that might change (like generated class names)
-- Provide 2-3 alternative selectors for each element
-- Focus only on elements relevant to the hypothesis
-- NEVER use :contains() pseudo-selector - it's not valid CSS
-- Use only standard CSS selectors that work with querySelectorAll()
-- For text-based selection, use attribute selectors or data attributes instead
+OUTPUT FORMAT:
+- If found: Return JSON with css_selector, element_text (if any), section_context, confidence (0-1), and reasoning
+- If not found: Return JSON with NOT_FOUND: true, reason, and suggestions array
 
-TEXT CONTENT CAPTURE:
-- For text elements (buttons, headings, paragraphs, etc.), capture the original text content
-- Include the originalText field with the exact text that appears in the element
-- This helps with text length considerations when generating variants
-- For buttons, capture the button text (e.g., "Add to Cart", "Learn More")
-- For headings, capture the heading text
-- For paragraphs or descriptions, capture the first 50-100 characters
+EXAMPLE:
+Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
+→ Find section with "Stay hydrated", then button with "Get waxy now" text`;
+  }
 
-CONFIDENCE SCORING:
-- 0.9-1.0: Very reliable (ID, data attributes, semantic elements)
-- 0.7-0.8: Good (stable class names, specific selectors)
-- 0.5-0.6: Moderate (might work but could break)
-- 0.0-0.4: Low (likely to break)
-
-REASONING REQUIREMENTS:
-For each injection point, provide detailed reasoning that explains:
-- Why this specific selector was chosen
-- What makes it reliable (or unreliable)
-- What could cause it to break
-- Why the alternative selectors are good fallbacks
-- Any assumptions made about the page structure
-
-Return only the elements that are directly relevant to testing this hypothesis. Don't include general page elements unless they're specifically mentioned in the hypothesis.
-`;
+  private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
+    const urlLower = url.toLowerCase();
+    
+    // Check for product pages first
+    if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
+      return 'pdp';
+    }
+    
+    // Check for about pages
+    if (urlLower.includes('/about')) {
+      return 'about';
+    }
+    
+    // Check for home page - this should be the most common case
+    // Home page is typically just the domain or domain with trailing slash
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    
+    // If no path or just a trailing slash, it's the home page
+    if (!pathname || pathname === '/' || pathname === '') {
+      return 'home';
+    }
+    
+    // If path is just common home page indicators
+    if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
+      return 'home';
+    }
+    
+    return 'other';
   }
 }
 
 // Factory function
-export function createDOMAnalyzer(crawler: CrawlerService): DOMAnalyzerService {
-  return new DOMAnalyzerServiceImpl(crawler);
+export function createDOMAnalyzer(crawler: CrawlerService, prisma: PrismaClient): DOMAnalyzerService {
+  return new DOMAnalyzerServiceImpl(crawler, prisma);
 }

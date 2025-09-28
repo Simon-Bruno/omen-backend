@@ -17,10 +17,20 @@ export class PlaywrightCrawlerService implements CrawlerService {
   }
 
   async initialize(): Promise<void> {
-    // Always create a fresh browser instance to avoid conflicts
-    if (this.browser) {
-      await this.browser.close();
+    // Only create a new browser if one doesn't exist or is disconnected
+    if (this.browser && this.browser.isConnected()) {
+      return; // Browser is already running and connected
     }
+
+    // Close existing browser if it exists but is disconnected
+    if (this.browser) {
+      try {
+        await this.browser.close();
+      } catch (error) {
+        console.warn('[CRAWLER] Error closing disconnected browser:', error);
+      }
+    }
+
     this.browser = await chromium.launch({
       executablePath: process.env.CHROME_PATH || '/app/.chrome-for-testing/chrome-linux64/chrome',
       headless: this.config.headless,
@@ -238,19 +248,143 @@ export class PlaywrightCrawlerService implements CrawlerService {
   }
 
   async crawlMultiplePages(urls: string[], options: CrawlOptions = {}): Promise<CrawlResult[]> {
+    // Initialize browser once for all pages
+    await this.initialize();
+
+    if (!this.browser) {
+      throw new Error('Browser not initialized');
+    }
+
     const results: CrawlResult[] = [];
 
     for (const url of urls) {
+      // Check if browser is still connected before creating new page
+      if (!this.browser || !this.browser.isConnected()) {
+        console.warn(`[CRAWLER] Browser disconnected, reinitializing for ${url}`);
+        await this.initialize();
+        if (!this.browser) {
+          throw new Error('Failed to reinitialize browser');
+        }
+      }
+
+      let page;
+      let retries = 0;
+      const maxRetries = 2;
+      
+      while (retries <= maxRetries) {
+        try {
+          page = await this.browser.newPage();
+          break; // Success, exit retry loop
+        } catch (error) {
+          retries++;
+          console.warn(`[CRAWLER] Failed to create page for ${url} (attempt ${retries}/${maxRetries + 1}):`, error);
+          
+          if (retries > maxRetries) {
+            console.error(`[CRAWLER] Max retries exceeded for ${url}`);
+            results.push({
+              url,
+              html: '',
+              screenshot: '',
+              error: `Failed to create page after ${maxRetries + 1} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            });
+            break; // Exit retry loop and continue to next URL
+          }
+          
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Try to reinitialize browser
+          try {
+            await this.initialize();
+          } catch (initError) {
+            console.error(`[CRAWLER] Failed to reinitialize browser:`, initError);
+          }
+        }
+      }
+      
+      if (!page) {
+        continue; // Skip this URL if we couldn't create a page
+      }
+
       try {
-        const result = await this.crawlPage(url, options);
-        results.push(result);
+        // Set viewport
+        const viewport = options.viewport || this.config.defaultViewport!;
+        await page.setViewportSize(viewport);
+
+        // Set user agent if provided
+        if (options.userAgent) {
+          await page.setExtraHTTPHeaders({
+            'User-Agent': options.userAgent
+          });
+        }
+
+        // Set timeout
+        const timeout = options.timeout || this.config.defaultTimeout!;
+        page.setDefaultTimeout(timeout);
+
+        // Navigate to page
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.waitForLoadState('load', { timeout: 5000 }).catch(() => { });
+        await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => { });
+
+        // Handle Shopify password authentication if needed
+        if (options.authentication?.type === 'shopify_password') {
+          await this.handleShopifyPasswordAuth(page, options.authentication);
+        }
+
+        const lazyImagesLocator = page.locator('img[loading="lazy"]:visible');
+        const lazyImages = await lazyImagesLocator.all();
+        for (const lazyImage of lazyImages) {
+          await lazyImage.scrollIntoViewIfNeeded();
+        }
+
+        page.evaluate((_) => window.scrollTo(0, 0), 0);
+        await page.evaluate(() => {
+          const selectors = ['.needsClick', '.needsclick'];
+          for (const sel of selectors) {
+            document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
+          }
+        });
+
+        // Handle cookie consent banners and popups
+        await this.dismissCookieBanners(page);
+
+        // Wait additional time if specified
+        const waitFor = options.waitFor || this.config.defaultWaitFor!;
+        if (waitFor > 0) {
+          await page.waitForTimeout(waitFor);
+        }
+
+        // Extract HTML content
+        const html = await page.content();
+        // Take screenshot
+        const screenshot = await page.screenshot({
+          type: 'png',
+          fullPage: options.screenshot?.fullPage ?? true,
+          // quality: options.screenshot?.quality ?? 80,
+        });
+
+        // Extract metadata
+        const title = await page.title();
+        const description = await page.$eval('meta[name="description"]', el => el.getAttribute('content')).catch(() => null);
+
+        results.push({
+          url,
+          html,
+          screenshot: screenshot.toString('base64'),
+          title,
+          description: description || undefined,
+        });
       } catch (error) {
+        console.error(`[CRAWLER] Error crawling ${url}:`, error);
         results.push({
           url,
           html: '',
           screenshot: '',
           error: error instanceof Error ? error.message : 'Unknown error occurred',
         });
+      } finally {
+        await page.close();
       }
     }
 
@@ -351,61 +485,46 @@ export class PlaywrightCrawlerService implements CrawlerService {
       // Wait a bit for any animations or dynamic content to settle
       await page.waitForTimeout(1000);
       
-      // Debug: Check if element exists after applying code and scroll to it
+      // Simple scrolling: Scroll to target element if it exists
       if (variant.target_selector) {
         try {
-          const elementExists = await page.locator(variant.target_selector).count();
-          console.log(`[CRAWLER] Element count for selector '${variant.target_selector}': ${elementExists}`);
+          const element = page.locator(variant.target_selector).first();
+          const elementExists = await element.count();
           
-          // Scroll to the target element to ensure it's visible in the screenshot
           if (elementExists > 0) {
             console.log(`[CRAWLER] Scrolling to target element: ${variant.target_selector}`);
-            await page.locator(variant.target_selector).first().scrollIntoViewIfNeeded();
-            // Wait a bit for scroll to complete
-            await page.waitForTimeout(500);
+            
+            // Simple approach: just scroll to the element
+            await element.scrollIntoViewIfNeeded({ timeout: 5000 });
+            console.log(`[CRAWLER] Successfully scrolled to element`);
+            
+            // Add small padding for better context
+            await page.evaluate(() => {
+              window.scrollBy(0, -100);
+            });
+          } else {
+            console.log(`[CRAWLER] Target element not found: ${variant.target_selector}`);
           }
-        } catch (selectorError) {
-          console.warn(`[CRAWLER] Invalid selector '${variant.target_selector}':`, selectorError);
-          // Try to find a fallback selector by removing problematic parts
-          const fallbackSelector = variant.target_selector
-            .replace(/:contains\([^)]*\)/g, '') // Remove :contains() pseudo-selector
-            .replace(/\s+/g, ' ') // Normalize whitespace
-            .trim();
-          
-          if (fallbackSelector && fallbackSelector !== variant.target_selector) {
-            try {
-              const fallbackCount = await page.locator(fallbackSelector).count();
-              console.log(`[CRAWLER] Fallback selector '${fallbackSelector}' found ${fallbackCount} elements`);
-              
-              // Scroll to fallback element if found
-              if (fallbackCount > 0) {
-                console.log(`[CRAWLER] Scrolling to fallback element: ${fallbackSelector}`);
-                await page.locator(fallbackSelector).first().scrollIntoViewIfNeeded();
-                await page.waitForTimeout(500);
-              }
-            } catch (fallbackError) {
-              console.warn(`[CRAWLER] Fallback selector also failed:`, fallbackError);
-            }
-          }
+        } catch (scrollError) {
+          console.warn(`[CRAWLER] Failed to scroll to element:`, scrollError);
         }
       }
 
-      // Take screenshot - try viewport first, then full page if element might be outside viewport
+      // Take screenshot
       let screenshot;
       try {
-        // First try viewport screenshot (faster and more focused)
         screenshot = await page.screenshot({
           type: 'png',
-          fullPage: false, // Regular browser viewport
-          path: `variant-${Date.now()}.png`
+          fullPage: false, // Use viewport for better focus
+          path: `variant-${Date.now()}-partial.png`
         });
-        console.log(`[CRAWLER] Viewport screenshot taken`);
-      } catch (viewportError) {
-        console.warn(`[CRAWLER] Viewport screenshot failed, trying full page:`, viewportError);
-        // Fallback to full page screenshot
+        console.log(`[CRAWLER] Screenshot taken for variant`);
+      } catch (screenshotError) {
+        console.warn(`[CRAWLER] Screenshot failed:`, screenshotError);
+        // Fallback to full page screenshot if partial fails
         screenshot = await page.screenshot({
           type: 'png',
-          fullPage: true, // Full page to ensure we capture the element
+          fullPage: true,
           path: `variant-${Date.now()}-full.png`
         });
         console.log(`[CRAWLER] Full page screenshot taken as fallback`);

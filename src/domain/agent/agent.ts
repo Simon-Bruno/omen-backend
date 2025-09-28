@@ -121,7 +121,7 @@ export class AgentServiceImpl implements AgentService {
     const streamConfig: any = {
       model: google(this.aiConfig.model),
       messages: aiMessages,
-      stopWhen: stepCountIs(5), // Allow up to 5 steps for multi-step tool calls
+      stopWhen: stepCountIs(3), // Allow up to 3 steps for multi-step tool calls
       ...AI_CONFIGS.STREAMING
     };
 
@@ -129,11 +129,14 @@ export class AgentServiceImpl implements AgentService {
       streamConfig.tools = llmOptions.tools;
     }
 
+    console.log(`[AGENT] Starting stream with ${aiMessages.length} messages and ${llmOptions.tools ? Object.keys(llmOptions.tools).length : 0} tools`);
+    
     const result = streamText(streamConfig);
 
     // Create a message ID for the response
     const messageId = `msg-${Date.now()}`;
 
+    console.log(`[AGENT] Stream created with message ID: ${messageId}`);
     return { stream: result, messageId };
   }
 }
