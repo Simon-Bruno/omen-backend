@@ -73,6 +73,7 @@ const elementNotFoundSchema = z.object({
 const injectionPointSchema = z.union([elementFoundSchema, elementNotFoundSchema]);
 
 // Removed unused schemas - we only need injectionPointSchema for this service
+// Cache check
 
 export interface DOMAnalyzerService {
   analyzeForHypothesis(
