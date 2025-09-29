@@ -32,7 +32,8 @@ const createExperimentSchema = z.object({
     new_element_html: z.string().optional().describe('Complete HTML for new element'),
     implementation_instructions: z.string().describe('Step-by-step implementation instructions'),
     screenshot: z.string().optional().describe('URL to the screenshot of the variant applied to the page')
-  })).optional().describe('The variants to test - if not provided, will use the most recently generated variants from state')
+  })).optional().describe('The variants to test - if not provided, will use the most recently generated variants from state'),
+  jobIds: z.array(z.string()).optional().describe('Specific job IDs to load variants from - if provided, will load variants from these exact jobs instead of searching all project jobs')
 });
 
 //TODO: Remove implementation instructions
@@ -47,7 +48,8 @@ class CreateExperimentExecutor {
   async execute(input: { 
     name?: string; 
     hypothesis?: any; 
-    variants?: any[] 
+    variants?: any[];
+    jobIds?: string[];
   }): Promise<{ experimentId: string; status: string; message: string }> {
     console.log(`[EXPERIMENT_TOOL] ===== EXPERIMENT CREATION INPUT =====`);
     console.log(`[EXPERIMENT_TOOL] Full input received:`, JSON.stringify(input, null, 2));
@@ -83,7 +85,41 @@ class CreateExperimentExecutor {
       console.log(`[EXPERIMENT_TOOL] No variants available in state or input`);
       console.log(`[EXPERIMENT_TOOL] State manager has variants:`, variantStateManager.hasCurrentVariants());
       console.log(`[EXPERIMENT_TOOL] State manager variant count:`, variantStateManager.getCurrentVariantCount());
-      throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
+      
+      // Try to load variants from completed jobs
+      console.log(`[EXPERIMENT_TOOL] Attempting to load variants from completed jobs...`);
+      try {
+        let loadedVariants: any[] = [];
+        
+        // Priority 1: Use jobIds from input (most explicit)
+        if (input.jobIds && input.jobIds.length > 0) {
+          console.log(`[EXPERIMENT_TOOL] Loading variants from input job IDs:`, input.jobIds);
+          loadedVariants = await variantStateManager.loadVariantsFromJobIds(input.jobIds);
+        }
+        // Priority 2: Use jobIds from state manager
+        else {
+          const currentJobIds = variantStateManager.getCurrentJobIds();
+          if (currentJobIds && currentJobIds.length > 0) {
+            console.log(`[EXPERIMENT_TOOL] Loading variants from state manager job IDs:`, currentJobIds);
+            loadedVariants = await variantStateManager.loadVariantsFromJobIds(currentJobIds);
+          } else {
+            console.log(`[EXPERIMENT_TOOL] No specific job IDs found, falling back to all project jobs`);
+            loadedVariants = await variantStateManager.loadVariantsFromJobs(this.projectId);
+          }
+        }
+        
+        if (loadedVariants && loadedVariants.length > 0) {
+          console.log(`[EXPERIMENT_TOOL] Successfully loaded ${loadedVariants.length} variants from completed jobs`);
+          console.log(`[EXPERIMENT_TOOL] Loaded variant labels:`, loadedVariants.map(v => v.variant_label));
+          variants = loadedVariants;
+        } else {
+          console.log(`[EXPERIMENT_TOOL] No completed variant jobs found`);
+          throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
+        }
+      } catch (loadError) {
+        console.error(`[EXPERIMENT_TOOL] Failed to load variants from jobs:`, loadError);
+        throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
+      }
     }
     
     console.log(`[EXPERIMENT_TOOL] ======================================`);
@@ -230,7 +266,7 @@ export function createExperiment(projectId: string) {
   const executor = new CreateExperimentExecutor(projectId);
 
   return tool({
-    description: 'Create an experiment in the database with the given hypothesis and variants',
+    description: 'Create an experiment in the database with the given hypothesis and variants. If you have job IDs from a previous generate_variants call, pass them in the jobIds parameter to load the specific variants from those jobs.',
     inputSchema: createExperimentSchema,
     execute: async (input) => {
       try {
