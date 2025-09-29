@@ -75,6 +75,21 @@ CREATE TABLE "public"."brand_summary_jobs" (
 );
 
 -- CreateTable
+CREATE TABLE "public"."variant_jobs" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "status" "public"."JobStatus" NOT NULL DEFAULT 'PENDING',
+    "progress" INTEGER DEFAULT 0,
+    "result" JSONB,
+    "error" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "startedAt" TIMESTAMP(3),
+    "completedAt" TIMESTAMP(3),
+
+    CONSTRAINT "variant_jobs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "public"."experiment_hypotheses" (
     "id" TEXT NOT NULL,
     "experimentId" TEXT NOT NULL,
@@ -109,6 +124,28 @@ CREATE TABLE "public"."experiment_variants" (
     CONSTRAINT "experiment_variants_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "public"."screenshots" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "pageType" TEXT NOT NULL,
+    "variantId" TEXT,
+    "viewportWidth" INTEGER NOT NULL,
+    "viewportHeight" INTEGER NOT NULL,
+    "fullPage" BOOLEAN NOT NULL,
+    "quality" INTEGER NOT NULL,
+    "data" BYTEA NOT NULL,
+    "htmlContent" TEXT,
+    "fileSize" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "accessedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "accessCount" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "screenshots_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_auth0Id_key" ON "public"."users"("auth0Id");
 
@@ -134,6 +171,12 @@ CREATE INDEX "brand_summary_jobs_projectId_status_createdAt_idx" ON "public"."br
 CREATE INDEX "brand_summary_jobs_status_createdAt_idx" ON "public"."brand_summary_jobs"("status", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "variant_jobs_projectId_status_createdAt_idx" ON "public"."variant_jobs"("projectId", "status", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "variant_jobs_status_createdAt_idx" ON "public"."variant_jobs"("status", "createdAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "experiment_hypotheses_experimentId_key" ON "public"."experiment_hypotheses"("experimentId");
 
 -- CreateIndex
@@ -148,6 +191,21 @@ CREATE INDEX "experiment_variants_experimentId_idx" ON "public"."experiment_vari
 -- CreateIndex
 CREATE UNIQUE INDEX "experiment_variants_experimentId_variantId_key" ON "public"."experiment_variants"("experimentId", "variantId");
 
+-- CreateIndex
+CREATE INDEX "screenshots_projectId_idx" ON "public"."screenshots"("projectId");
+
+-- CreateIndex
+CREATE INDEX "screenshots_expiresAt_idx" ON "public"."screenshots"("expiresAt");
+
+-- CreateIndex
+CREATE INDEX "screenshots_pageType_idx" ON "public"."screenshots"("pageType");
+
+-- CreateIndex
+CREATE INDEX "screenshots_variantId_idx" ON "public"."screenshots"("variantId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "screenshots_projectId_pageType_variantId_viewportWidth_view_key" ON "public"."screenshots"("projectId", "pageType", "variantId", "viewportWidth", "viewportHeight", "fullPage", "quality");
+
 -- AddForeignKey
 ALTER TABLE "public"."projects" ADD CONSTRAINT "projects_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -161,6 +219,9 @@ ALTER TABLE "public"."chat_messages" ADD CONSTRAINT "chat_messages_projectId_fke
 ALTER TABLE "public"."brand_summary_jobs" ADD CONSTRAINT "brand_summary_jobs_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "public"."projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "public"."variant_jobs" ADD CONSTRAINT "variant_jobs_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "public"."projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "public"."experiment_hypotheses" ADD CONSTRAINT "experiment_hypotheses_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "public"."experiments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -168,3 +229,6 @@ ALTER TABLE "public"."experiment_traffic" ADD CONSTRAINT "experiment_traffic_exp
 
 -- AddForeignKey
 ALTER TABLE "public"."experiment_variants" ADD CONSTRAINT "experiment_variants_experimentId_fkey" FOREIGN KEY ("experimentId") REFERENCES "public"."experiments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."screenshots" ADD CONSTRAINT "screenshots_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "public"."projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
