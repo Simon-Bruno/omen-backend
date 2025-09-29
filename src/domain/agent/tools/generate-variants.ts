@@ -6,6 +6,7 @@ import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
+import { variantStateManager } from '../variant-state-manager';
 import { VariantJobDAL } from '@infra/dal';
 import { createVariantJobProcessor } from '@services/variant-job-processor';
 import { prisma } from '@infra/prisma';
@@ -79,6 +80,10 @@ class GenerateVariantsExecutor {
             const result = await this.generateVariantJobs(hypothesis);
             console.log(`[VARIANTS_TOOL] Variant jobs created successfully: ${result.jobIds.length} jobs`);
             
+            // Store the job IDs in the state manager for later retrieval
+            variantStateManager.setCurrentJobIds(result.jobIds);
+            console.log(`[VARIANTS_TOOL] Job IDs stored in state manager:`, result.jobIds);
+            
             return result;
         } catch (error) {
             console.error(`[VARIANTS_TOOL] Failed to generate variant jobs:`, error);
@@ -91,7 +96,7 @@ export function generateVariants(projectId: string) {
     const executor = new GenerateVariantsExecutor(projectId);
 
     return tool({
-        description: 'Generate variants for testing a hypothesis',
+        description: 'Generate variants for testing a hypothesis. Creates variant jobs that process in the background. Returns jobIds that can be passed to create_experiment to load the specific variants from these jobs.',
         inputSchema: createVariantsSchema,
         execute: async (input) => {
             try {

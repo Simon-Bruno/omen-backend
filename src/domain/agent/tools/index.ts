@@ -5,10 +5,11 @@ import { generateHypotheses } from './generate-hypotheses';
 import { generateVariants } from './generate-variants';
 import { createExperiment } from './create-experiment';
 import { createGetBrandAnalysisTool } from './get-brand-analysis';
+import { checkVariants } from './check-variants';
 
 // Function to get available tool names
 export function getAvailableToolNames(): string[] {
-  return ['get_project_info', 'generate_hypotheses', 'generate_variants', 'create_experiment', 'get_brand_analysis'];
+  return ['get_project_info', 'generate_hypotheses', 'generate_variants', 'create_experiment', 'get_brand_analysis', 'check_variants'];
 }
 
 
@@ -29,6 +30,7 @@ export function createEcommerceAgentTools(projectId: string) {
     generate_variants: generateVariants(projectId),
     create_experiment: createExperiment(projectId),
     get_brand_analysis: createGetBrandAnalysisTool(projectId),
+    check_variants: checkVariants(projectId),
   };
   console.log(`[TOOLS_CONFIG] Tools created successfully:`, Object.keys(tools));
   return tools;
