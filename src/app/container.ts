@@ -1,7 +1,7 @@
 // Service Container for Dependency Injection
 import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler';
 import { createAgentService, type AgentService, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
-import { createBrandAnalysisService, type BrandAnalysisService } from '@features/brand_analysis';
+// Brand analysis is now function-based, no service needed
 import { createHypothesesGenerationService, HypothesesGenerationService } from '@features/hypotheses_generation/hypotheses-generation';
 import { createScreenshotStorageService, type ScreenshotStorageService } from '@services/screenshot-storage';
 import { createScreenshotAnalyticsService, type ScreenshotAnalyticsService } from '@services/screenshot-analytics';
@@ -27,15 +27,7 @@ class ServiceContainer {
     return this.services.get('crawler') as CrawlerService;
   }
   
-  //Release
-
-  getBrandAnalysisService(): BrandAnalysisService {
-    if (!this.services.has('brandAnalysis')) {
-      const brandAnalysisService = createBrandAnalysisService(this.prisma);
-      this.services.set('brandAnalysis', brandAnalysisService);
-    }
-    return this.services.get('brandAnalysis') as BrandAnalysisService;
-  }
+  // Brand analysis is now function-based, no service needed
 
 
   getAgentService(): AgentService {

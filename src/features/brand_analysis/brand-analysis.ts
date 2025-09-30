@@ -1,276 +1,195 @@
-// Brand Analysis Service
-import type { CrawlResult } from '@features/crawler';
-import { createPlaywrightCrawler } from '@features/crawler';
-import type { BrandAnalysisResponse } from './types';
-import { ScreenshotAnalyzer } from './screenshot-analyzer';
-import { LanguageAnalyzer } from './language-analyzer';
-import { UrlSelector } from './url-selector';
+// Brand Analysis Functions - Firecrawl Implementation with URL Selection
+import type { BrandIntelligenceData } from './types';
+import { synthesisSchema } from './types';
 import { ProjectDAL } from '@infra/dal';
-import { PrismaClient } from '@prisma/client';
+import { FirecrawlService } from './firecrawl-service';
+import { UrlSelector } from './url-selector';
+import { getSynthesisPrompt, type PageType } from './prompts';
+import { generateObject } from 'ai';
+import { google } from '@ai-sdk/google';
+import { getAIConfig } from '@shared/ai-config';
+import { extractUrlsFromHtml } from '@shared/utils/url-utils';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
-import { getServiceConfig } from '@infra/config/services';
-import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
+import { PrismaClient } from '@prisma/client';
+import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
-export interface BrandAnalysisService {
-  analyzeProject(projectId: string, shopDomain: string): Promise<BrandAnalysisResult>;
+
+export async function analyzeProject(projectId: string, shopDomain: string): Promise<BrandIntelligenceData> {
+  // Initialize Prisma client and screenshot storage service
+  const prisma = new PrismaClient();
+  const screenshotStorage = createScreenshotStorageService(prisma);
+  
+  try {
+    console.log(`[BRAND_ANALYSIS] Starting Firecrawl analysis for project ${projectId}, shop: ${shopDomain}`);
+
+    const baseUrl = `https://${shopDomain}`;
+    const firecrawlService = new FirecrawlService();
+
+    // Step 1: Analyze the homepage
+    console.log(`[BRAND_ANALYSIS] Step 1: Analyzing homepage: ${baseUrl}`);
+    const homeResult = await firecrawlService.analyzePage(baseUrl, 'home');
+
+    if (homeResult.error || !homeResult.data) {
+      console.error(`[BRAND_ANALYSIS] Homepage analysis failed: ${homeResult.error}`);
+      throw new Error(`Homepage analysis failed: ${homeResult.error}`);
+    }
+
+    console.log(`[BRAND_ANALYSIS] Homepage analysis completed successfully`);
+
+    // Store homepage screenshot
+    await storeScreenshot(projectId, 'home', baseUrl, homeResult.screenshot, homeResult.html, screenshotStorage);
+
+    // Step 2: Extract URLs from homepage HTML
+    const candidates = await extractUrlsFromHtml(homeResult.html || '', baseUrl);
+
+    // Step 3: Select URLs for additional analysis
+    console.log(`[BRAND_ANALYSIS] Step 3: Selecting URLs from ${candidates.length} candidates`);
+    const response = await selectUrlsForAnalysis(candidates);
+    const urlSelector = new UrlSelector();
+    const urlsWithTypes = urlSelector.getUrlsWithTypes(response);
+    console.log(`[BRAND_ANALYSIS] Selected URLs to analyze:`, urlsWithTypes);
+
+    // Check if we have additional pages to analyze
+    const hasAdditionalPages = urlsWithTypes.some(url => url.pageType !== 'home');
+    
+    let finalBrandIntelligence: BrandIntelligenceData;
+    
+    if (hasAdditionalPages) {
+      // Step 4: Analyze additional pages
+      const pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homeResult, projectId, screenshotStorage);
+
+      // Step 5: Synthesize results from all pages
+      console.log(`[BRAND_ANALYSIS] Step 5: Synthesizing results from ${pageResults.length} pages`);
+      finalBrandIntelligence = await synthesizePageAnalyses(pageResults);
+    } else {
+      // Only homepage available, use it directly without synthesis
+      console.log(`[BRAND_ANALYSIS] Only homepage available, using homepage data directly`);
+      finalBrandIntelligence = homeResult.data;
+    }
+
+    // Store the analysis results
+    await ProjectDAL.updateProjectBrandAnalysis(projectId, finalBrandIntelligence);
+    console.log(`[BRAND_ANALYSIS] Brand analysis completed successfully for project ${projectId}`);
+
+    return finalBrandIntelligence;
+  } catch (error) {
+    console.error(`[BRAND_ANALYSIS] Brand analysis failed for project ${shopDomain}:`, error);
+    throw error;
+  } finally {
+    // Clean up Prisma client
+    await prisma.$disconnect();
+  }
 }
 
-export interface BrandAnalysisResult {
-  success: boolean;
-  brandSummary?: BrandAnalysisResponse;
-  error?: string;
-}
-
-
-
-export class BrandAnalysisServiceImpl implements BrandAnalysisService {
-  private screenshotAnalyzer: ScreenshotAnalyzer;
-  private languageAnalyzer: LanguageAnalyzer;
-  // private codeAnalyzer: CodeAnalyzer; // Disabled for now
-  private urlSelector: UrlSelector;
-  private screenshotStorage: ScreenshotStorageService;
-
-  constructor(
-    prisma: PrismaClient
-  ) {
-    this.screenshotAnalyzer = new ScreenshotAnalyzer();
-    this.languageAnalyzer = new LanguageAnalyzer();
-    // this.codeAnalyzer = new CodeAnalyzer(); // Disabled for now
-    this.urlSelector = new UrlSelector();
-    this.screenshotStorage = createScreenshotStorageService(prisma);
+// Helper function to store screenshots
+async function storeScreenshot(
+  projectId: string,
+  pageType: 'home' | 'pdp' | 'about',
+  url: string,
+  screenshot: string | undefined,
+  html: string | undefined,
+  screenshotStorage: ScreenshotStorageService
+): Promise<void> {
+  if (!screenshot) {
+    console.log(`[BRAND_ANALYSIS] No screenshot available for ${pageType} page: ${url}`);
+    return;
   }
 
-
-  async analyzeProject(projectId: string, shopDomain: string): Promise<BrandAnalysisResult> {
-    // Create a new crawler instance for this analysis to avoid conflicts
-    const config = getServiceConfig();
-    const crawler = createPlaywrightCrawler(config.crawler);
-    
-    try {
-      console.log(`[BRAND_ANALYSIS] Starting analysis for project ${projectId}, shop: ${shopDomain}`);
-      const baseUrl = `https://${shopDomain}`;
-
-      // 1) Crawl homepage
-      console.log(`[BRAND_ANALYSIS] Crawling homepage: ${baseUrl}`);
-      const homeResult = await crawler.crawlPage(baseUrl, {
-        viewport: { width: 1920, height: 1080 },
-        waitFor: 3000,
-        screenshot: { fullPage: true, quality: 80 },
-        authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
-          type: 'shopify_password',
-          password: 'reitri',
-          shopDomain: shopDomain
-        } : undefined
-      });
-
-      if (homeResult.error) {
-        console.error(`[BRAND_ANALYSIS] Homepage crawl failed: ${homeResult.error}`);
-        throw new Error(`Homepage crawl failed: ${homeResult.error}`);
-      }
-
-      let candidates = [baseUrl];
-      try {
-        // Determine URLs to crawl
-        const regex = /href="((?:\/[a-zA-Z0-9?\-=]+)+)\/*"/g;
-        let m: RegExpExecArray | null;
-        while ((m = regex.exec(homeResult.html)) !== null) {
-          const path = m[1];
-          candidates.push(`${baseUrl}${path}`);
-        }
-        console.log("Candidates:", candidates);
-      } catch {
-        candidates = this.buildCrawlUrls(shopDomain);
-      }
-
-      console.log(`[BRAND_ANALYSIS] Selecting URLs from ${candidates.length} candidates`);
-      let response;
-      try {
-        response = await this.urlSelector.selectUrls(candidates);
-        console.log(`[BRAND_ANALYSIS] URL selection completed:`, response);
-      } catch (error) {
-        console.error(`[BRAND_ANALYSIS] URL selection failed:`, error);
-        throw new Error(`URL selection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-
-      const urlsWithTypes = this.urlSelector.getUrlsWithTypes(response);
-      console.log(`[BRAND_ANALYSIS] Selected URLs to crawl:`, urlsWithTypes);
-
-      // Check storage first for each URL
-      const cachedScreenshots = new Map<string, string>();
-      const urlsToCapture: Array<{ url: string, pageType: 'home' | 'pdp' | 'about' }> = [];
-
-      for (const { url, pageType } of urlsWithTypes) {
-        const cached = await this.screenshotStorage.getScreenshot(
+  try {
+    await screenshotStorage.saveScreenshot(
           projectId,
           pageType,
-          { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
-        );
+      url,
+      HIGH_QUALITY_SCREENSHOT_OPTIONS,
+      screenshot,
+      html
+    );
+    console.log(`[BRAND_ANALYSIS] ${pageType} page screenshot saved successfully`);
+  } catch (error) {
+    console.error(`[BRAND_ANALYSIS] Failed to save ${pageType} page screenshot:`, error);
+  }
+}
 
-        if (cached) {
-          cachedScreenshots.set(url, cached);
-          console.log(`[BRAND_ANALYSIS] Using stored screenshot for ${pageType} page`);
-        } else {
-          urlsToCapture.push({ url, pageType });
-        }
-      }
+// ********************************************************
+// HELPER FUNCTIONS
+// ********************************************************
+async function selectUrlsForAnalysis(candidates: string[]): Promise<{ home: string; pdp: string; about: string }> {
+  const urlSelector = new UrlSelector();
+  try {
+    const response = await urlSelector.selectUrls(candidates);
+    console.log(`[BRAND_ANALYSIS] URL selection completed:`, response);
+    return response;
+  } catch (error) {
+    console.error(`[BRAND_ANALYSIS] URL selection failed:`, error);
+    // Fallback to homepage-only if URL selection fails and we have candidates
+    if (candidates.length > 0) {
+      console.log(`[BRAND_ANALYSIS] Falling back to homepage-only analysis: ${candidates[0]}`);
+      return { home: candidates[0], pdp: '', about: '' };
+    }
+    throw new Error('No URLs available for analysis');
+  }
+}
 
-      // Only capture screenshots for URLs not in cache
-      let crawlResults: CrawlResult[] = [];
-      if (urlsToCapture.length > 0) {
-        console.log(`[BRAND_ANALYSIS] Capturing ${urlsToCapture.length} new screenshots`);
-        try {
-          crawlResults = await crawler.crawlMultiplePages(urlsToCapture.map(u => u.url), {
-            viewport: { width: 1920, height: 1080 },
-            waitFor: 3000, // Wait 3 seconds for dynamic content
-            screenshot: {
-              fullPage: true,
-              quality: 80
-            },
-            authentication: shopDomain === 'omen-mvp.myshopify.com' ? {
-              type: 'shopify_password',
-              password: 'reitri',
-              shopDomain: shopDomain
-            } : undefined
-          });
-        } catch (crawlError) {
-          console.error(`[BRAND_ANALYSIS] Error during screenshot capture:`, crawlError);
-          // Continue with empty results - we'll still have the home page screenshot
-          crawlResults = [];
-        }
+// Helper function to analyze additional pages
+async function analyzeAdditionalPages(
+  urlsWithTypes: Array<{ url: string; pageType: PageType }>,
+  baseUrl: string,
+  firecrawlService: FirecrawlService,
+  homeResult: { pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string },
+  projectId: string,
+  screenshotStorage: ScreenshotStorageService
+): Promise<Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string }>> {
+  const pageResults = [homeResult]; // Start with homepage
 
-        // Store the new screenshots
-        for (let i = 0; i < crawlResults.length; i++) {
-          const result = crawlResults[i];
-          const urlInfo = urlsToCapture[i];
-          if (result.screenshot && urlInfo) {
-            // Simplify HTML content before saving
-            const simplifiedHtml = result.html ? simplifyHTML(result.html) : undefined;
-            
-            const screenshotId = await this.screenshotStorage.saveScreenshot(
-              projectId,
-              urlInfo.pageType,
-              result.url,
-              { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
-              result.screenshot,
-              simplifiedHtml
-            );
-            console.log(`[BRAND_ANALYSIS] Screenshot and HTML saved with ID: ${screenshotId} (${getHtmlInfo(simplifiedHtml)})`);
-          }
-        }
-      }
+  for (const { url, pageType } of urlsWithTypes) {
+    if (url === baseUrl) continue; // Skip homepage as we already have it
 
-      // Check for errors
-      const errors = crawlResults.filter((result: CrawlResult) => result.error);
-      if (errors.length > 0) {
-        console.warn(`[BRAND_ANALYSIS] Crawl errors for project ${shopDomain}:`, errors.map((e: CrawlResult) => e.error));
-      }
+    console.log(`[BRAND_ANALYSIS] Analyzing ${pageType} page: ${url}`);
 
-      console.log(`[BRAND_ANALYSIS] Crawl completed. ${crawlResults.length} pages crawled, ${errors.length} errors`);
+    try {
+      const pageResult = await firecrawlService.analyzePage(url, pageType);
+      pageResults.push(pageResult);
+      console.log(`[BRAND_ANALYSIS] ${pageType} page analysis completed for: ${url}`);
 
-      // Prepare data for analysis - combine cached and new screenshots
-      const htmlContent = crawlResults.map((result: CrawlResult) => result.html);
-      const screenshots = [
-        ...cachedScreenshots.values(),
-        ...crawlResults.map((result: CrawlResult) => result.screenshot).filter(s => s)
-      ];
-      // const urls = crawlResults.map((result: CrawlResult) => result.url);
-
-      // Filter out empty screenshots and log the issue
-      const validScreenshots = screenshots.filter(screenshot => screenshot && screenshot.trim() !== '');
-      if (validScreenshots.length !== screenshots.length) {
-        console.warn(`[BRAND_ANALYSIS] ${screenshots.length - validScreenshots.length} screenshots are empty or corrupted`);
-      }
-
-      // Run separate analyses in parallel
-      console.log(`[BRAND_ANALYSIS] Starting analysis of ${validScreenshots.length} screenshots and ${htmlContent.length} HTML pages`);
-
-      // Only add screenshot analysis if we have valid screenshots
-      let screenshotAnalysis;
-      if (validScreenshots.length > 0) {
-        screenshotAnalysis = await this.screenshotAnalyzer.analyzeScreenshots(validScreenshots);
-      } else {
-        console.warn('[BRAND_ANALYSIS] No valid screenshots available, skipping screenshot analysis');
-        // Add a placeholder for screenshot analysis
-        screenshotAnalysis = {
-          visualStyle: {
-            overallAesthetic: 'Unable to analyze - no valid screenshots available',
-            colorPalette: [],
-            typography: 'Unable to analyze - no valid screenshots available',
-            imagery: 'Unable to analyze - no valid screenshots available',
-          },
-          brandElements: {
-            logo: 'Unable to analyze - no valid screenshots available',
-            keyComponents: [],
-            layout: 'Unable to analyze - no valid screenshots available',
-          },
-          brandPersonality: {
-            adjectives: ['unknown'],
-            targetAudience: 'Unable to analyze - no valid screenshots available',
-          }
-        };
-      }
-
-      // Run language analysis
-      const languageAnalysis = await this.languageAnalyzer.analyzeLanguage(htmlContent);
-
-      console.log(`[BRAND_ANALYSIS] Analysis completed, saving results...`);
-
-      // Simply combine the three analyzer results
-      const detailedAnalysis = {
-        screenshot: screenshotAnalysis,
-        language: languageAnalysis,
-        // code: codeAnalysis,
-      };
-
-      await ProjectDAL.updateProjectBrandAnalysis(projectId, detailedAnalysis);
-      console.log(`[BRAND_ANALYSIS] Brand analysis completed successfully for project ${projectId}`);
-
-      return {
-        success: true,
-        brandSummary: detailedAnalysis,
-      };
-    } catch (error) {
-      console.error(`Detailed brand analysis failed for project ${shopDomain}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      };
-    } finally {
-      // Clean up the crawler instance
-      try {
-        await crawler.close();
-      } catch (cleanupError) {
-        console.warn(`[BRAND_ANALYSIS] Error closing crawler:`, cleanupError);
-      }
+      // Store screenshot for additional pages
+      await storeScreenshot(projectId, pageType, url, pageResult.screenshot, pageResult.html, screenshotStorage);
+    } catch (urlError) {
+      console.warn(`[BRAND_ANALYSIS] Error analyzing ${pageType} page ${url}:`, urlError);
     }
   }
 
-  private buildCrawlUrls(shopDomain: string): string[] {
-    const baseUrl = `https://${shopDomain}`;
-    const urls = [baseUrl]; // Home page
-
-    // For MVP, we'll try to find a product page by common patterns
-    // In a real implementation, you might use Shopify API to get actual product URLs
-    const commonProductPaths = [
-      '/products',
-      '/collections',
-      '/collections/all',
-      '/collections/featured'
-    ];
-
-    // Add common product page patterns
-    commonProductPaths.forEach(path => {
-      urls.push(`${baseUrl}${path}`);
-    });
-
-    return urls;
-  }
-
+  return pageResults;
 }
 
-// Factory function
-export function createBrandAnalysisService(
-  prisma: PrismaClient
-): BrandAnalysisService {
-  return new BrandAnalysisServiceImpl(prisma);
+// Helper function to synthesize page analyses
+async function synthesizePageAnalyses(pageResults: Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string }>): Promise<BrandIntelligenceData> {
+  try {
+    console.log(`[BRAND_ANALYSIS] Synthesizing results from ${pageResults.length} pages`);
+
+    const synthesisPrompt = getSynthesisPrompt(pageResults);
+    const aiConfig = getAIConfig();
+
+    const result = await generateObject({
+      model: google(aiConfig.model),
+      schema: synthesisSchema,
+      messages: [
+        {
+          role: 'system',
+          content: synthesisPrompt
+        }
+      ]
+    });
+
+    console.log(`[BRAND_ANALYSIS] Synthesis completed successfully`);
+    return result.object as BrandIntelligenceData;
+  } catch (error) {
+    console.error(`[BRAND_ANALYSIS] Synthesis failed:`, error);
+    // Fallback to homepage data if synthesis fails
+    const homePageResult = pageResults.find(result => result.pageType === 'home' && result.data);
+    if (homePageResult?.data) {
+      console.log(`[BRAND_ANALYSIS] Using homepage data as fallback`);
+      return homePageResult.data;
+    }
+    throw new Error(`Synthesis failed and no fallback data available: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }

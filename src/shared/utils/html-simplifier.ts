@@ -22,8 +22,9 @@ export function simplifyHTML(html: string): string {
     .replace(/<meta[^>]*(?:property|name)="(?:og:|twitter:|article:|product:)[^"]*"[^>]*>/gi, '')
     // Remove non-essential data attributes but keep important ones for element selection
     .replace(/\sdata-(?!(?:testid|omen-id|id|role|label|name|value|type|state|selected|checked|disabled|hidden|aria-))[^=]*="[^"]*"/gi, '')
-    // Remove common non-essential attributes that don't help with element selection
-    .replace(/\s(?:class|style|onclick|onload|onmouseover|onmouseout|onfocus|onblur|onchange|onsubmit)="[^"]*"/gi, '')
+    // Remove only style attributes and event handlers, but KEEP class attributes for element selection
+    .replace(/\sstyle="[^"]*"/gi, '')
+    .replace(/\s(?:onclick|onload|onmouseover|onmouseout|onfocus|onblur|onchange|onsubmit)="[^"]*"/gi, '')
     // Normalize whitespace (single pass)
     .replace(/\s+/g, ' ')
     // Remove empty lines (single pass)

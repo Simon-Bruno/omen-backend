@@ -1,10 +1,10 @@
 import { FastifyInstance } from 'fastify';
-import { serviceContainer } from '@app/container';
 import { ProjectDAL } from '@infra/dal';
 import { authMiddleware } from '../middleware/auth';
 import { requireAuth } from '../middleware/authorization';
 import { prisma } from '@infra/prisma';
 import { JobStatus } from '@prisma/client';
+import { analyzeProject } from '@features/brand_analysis';
 
 export async function brandSummaryRoutes(fastify: FastifyInstance) {
     // Start brand summary generation
@@ -85,17 +85,12 @@ async function processBrandSummary(jobId: string, projectId: string, fastify: Fa
         fastify.log.info({ jobId, shopDomain: project.shopDomain }, 'Running brand analysis');
 
         // Run brand analysis
-        const brandAnalysisService = serviceContainer.getBrandAnalysisService();
-        const result = await brandAnalysisService.analyzeProject(projectId, project.shopDomain);
-
-        if (!result.success) {
-            throw new Error(result.error || 'Brand analysis failed');
-        }
+        const brandIntelligence = await analyzeProject(projectId, project.shopDomain);
 
         fastify.log.info({ jobId }, 'Brand analysis completed successfully');
 
         // Complete job
-        await updateJobStatus(jobId, 'COMPLETED', 100, result.brandSummary ? { ...result.brandSummary } : undefined);
+        await updateJobStatus(jobId, 'COMPLETED', 100, brandIntelligence);
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

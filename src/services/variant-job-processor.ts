@@ -5,6 +5,7 @@ import { createPlaywrightCrawler } from '@features/crawler';
 import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { PrismaClient } from '@prisma/client';
+import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
@@ -52,7 +53,7 @@ export class VariantJobProcessor {
             const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
                 projectId, 
                 pageType, 
-                { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+                STANDARD_SCREENSHOT_OPTIONS
             );
             
             let screenshot: string;
