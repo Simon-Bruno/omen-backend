@@ -1,4 +1,4 @@
-// @ts-nocheck 
+// @ts-nocheck
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ExperimentDAL } from '@infra/dal';
@@ -8,6 +8,7 @@ import { prisma } from '@infra/prisma';
 import { createExperimentPublisherService } from '@services/experiment-publisher';
 import { createCloudflarePublisher } from '@infra/external/cloudflare';
 import { getServiceConfig } from '@infra/config/services';
+import { findConflicts, ConflictError } from '@features/conflict_guard';
 
 const createExperimentSchema = z.object({
   name: z.string().optional().describe('The name of the experiment - if not provided, will be auto-generated from the hypothesis'),
@@ -163,6 +164,49 @@ class CreateExperimentExecutor {
     const projectId = this.projectId;
 
     try {
+      // Final conflict check before creating experiment
+      console.log(`[EXPERIMENT_TOOL] Performing final conflict check...`);
+      const activeTargets = await ExperimentDAL.getActiveTargets(projectId);
+
+      // Check conflicts for each variant
+      for (const variant of variants) {
+        const conflicts = findConflicts(activeTargets, {
+          url: '/', // Default URL, can be enhanced with actual target URL
+          selector: variant.target_selector,
+          role: undefined // Role can be extracted from variant metadata
+        });
+
+        if (conflicts.length > 0) {
+          const onConflictQueue = process.env.ON_CONFLICT_QUEUE === 'true';
+
+          if (onConflictQueue) {
+            console.log(`[EXPERIMENT_TOOL] Conflict detected, queuing experiment...`);
+            // Create experiment in queued status
+            const experiment = await ExperimentDAL.createExperiment({
+              projectId,
+              name: experimentName + ' (Queued due to conflict)',
+              oec: hypothesis.oec || 'Improve conversion rate',
+              minDays: 7,
+              minSessionsPerVariant: 1000,
+              status: 'DRAFT' // Keep as draft when conflicted
+            });
+
+            return {
+              experimentId: experiment.id,
+              status: 'QUEUED',
+              message: `Experiment "${experimentName}" has been queued due to conflicts with experiment ${conflicts[0].experimentId}. It will be activated once the conflicting experiment completes.`
+            };
+          } else {
+            // Throw error with conflict details
+            throw new ConflictError('CONFLICT_OVERLAP', conflicts,
+              `Cannot create experiment: conflicts with active experiment ${conflicts[0].experimentId} targeting "${conflicts[0].label}"`
+            );
+          }
+        }
+      }
+
+      console.log(`[EXPERIMENT_TOOL] No conflicts detected, proceeding with experiment creation`);
+
       const experiment = await ExperimentDAL.createExperiment({
         projectId,
         name: experimentName,

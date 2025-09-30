@@ -3,11 +3,13 @@ import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
-import { ProjectDAL } from '@infra/dal'
+import { ProjectDAL, ExperimentDAL } from '@infra/dal'
 import { getAIConfig } from '@shared/ai-config'
 import { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
+import { toReservedPayload } from '@features/conflict_guard';
+import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
@@ -60,7 +62,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         const cachedScreenshot = await this.screenshotStorage.getScreenshot(
             projectId, 
             pageType, 
-            { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+            STANDARD_SCREENSHOT_OPTIONS
         );
         
         let screenshot: string;
@@ -85,7 +87,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                     projectId, 
                     pageType,
                     url, 
-                    { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+                    STANDARD_SCREENSHOT_OPTIONS,
                     screenshot,
                     simplifiedHtml
                 );
@@ -95,7 +97,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                     projectId, 
                     pageType,
                     url, 
-                    { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+                    STANDARD_SCREENSHOT_OPTIONS,
                     screenshot
                 );
                 console.log(`[HYPOTHESES] Screenshot saved with ID: ${screenshotId}`);
@@ -107,11 +109,17 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         console.log(`[HYPOTHESES] Fetching brand analysis for project: ${projectId}`);
         const brandAnalysis = await ProjectDAL.getProjectBrandAnalysis(projectId);
         console.log(`[HYPOTHESES] Brand analysis result:`, brandAnalysis ? `length: ${brandAnalysis.length}` : 'null');
-        
+
         if (!brandAnalysis) {
             console.warn(`[HYPOTHESES] No brand analysis found for project: ${projectId}`);
             throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
         }
+
+        // Get active experiment targets for conflict avoidance
+        console.log(`[HYPOTHESES] Fetching active experiment targets for conflict checking`);
+        const activeTargets = await ExperimentDAL.getActiveTargets(projectId);
+        const reservedPayload = toReservedPayload(url, activeTargets);
+        console.log(`[HYPOTHESES] Found ${activeTargets.length} active targets to avoid`);
 
         console.log(`[HYPOTHESES] Generating AI response with Google Gemini`);
         const aiConfig = getAIConfig();
@@ -122,7 +130,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 {
                     role: 'user',
                     content: [
-                        { type: "text", text: this.buildHypothesesGenerationPrompt() },
+                        { type: "text", text: this.buildHypothesesGenerationPrompt(reservedPayload) },
                         { type: "text", text: brandAnalysis },
                         { type: "image", image: toDataUrl(screenshot) }
                     ]
@@ -137,11 +145,26 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 
     }
 
-    private buildHypothesesGenerationPrompt(): string {
+    private buildHypothesesGenerationPrompt(reservedPayload?: any): string {
+        const hasReservedTargets = reservedPayload?.reserved_targets?.length > 0;
+
+        const conflictSection = hasReservedTargets ? `
+
+**IMPORTANT - ACTIVE EXPERIMENTS TO AVOID:**
+The following elements are currently being tested in active experiments. DO NOT propose changes to these elements:
+${JSON.stringify(reservedPayload.reserved_targets, null, 2)}
+
+When generating hypotheses:
+- Avoid any changes to the reserved targets listed above
+- Focus on different page elements or sections
+- If a primary CTA is reserved, suggest testing secondary elements
+` : '';
+
         return `
 You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze one or two screenshots of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
 
 Your analysis must prioritize **clarity, testability, and accessibility**. You are not writing vague advice—you are producing **hypotheses that can be tested in A/B experiments** without requiring advanced CRO expertise.
+${conflictSection}
 
 ---
 

@@ -1,6 +1,10 @@
-// Brand Analysis Feature Exports
-export { BrandAnalysisService, BrandAnalysisServiceImpl, createBrandAnalysisService } from './brand-analysis';
+// Brand Analysis Feature Exports - Firecrawl Implementation
+export { analyzeProject } from './brand-analysis';
+export { FirecrawlService } from './firecrawl-service';
+export { UrlSelector } from './url-selector';
+export { getPageSpecificPrompt, getSynthesisPrompt } from './prompts';
 export type {
-  BrandAnalysisRequest,
-  BrandAnalysisResponse
+  BrandIntelligenceData
 } from './types';
+export { brandIntelligenceSchema, synthesisSchema } from './types';
+export type { PageType } from './prompts';

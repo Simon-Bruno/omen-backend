@@ -7,6 +7,8 @@ import { getAIConfig } from '@shared/ai-config';
 import { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { simplifyHTML, simplifyHTMLForForensics, getHtmlInfo } from '@shared/utils/html-simplifier';
+import * as cheerio from 'cheerio';
+import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 // CSS selector validation utility
 function isValidCSSSelector(selector: string): boolean {
@@ -17,6 +19,34 @@ function isValidCSSSelector(selector: string): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+
+// Get detailed information about selector matches for debugging
+function getSelectorMatchInfo(selector: string, html: string): { found: boolean; count: number; elements: string[] } {
+  try {
+    const $ = cheerio.load(html);
+    const elements = $(selector);
+    
+    const elementInfo = elements.map((_, el) => {
+      const tagName = el.type === 'tag' ? el.name : 'unknown';
+      const classes = $(el).attr('class') || '';
+      const id = $(el).attr('id') || '';
+      return `${tagName}${id ? `#${id}` : ''}${classes ? `.${classes.split(' ').join('.')}` : ''}`;
+    }).get();
+    
+    return {
+      found: elements.length > 0,
+      count: elements.length,
+      elements: elementInfo
+    };
+  } catch (error) {
+    return {
+      found: false,
+      count: 0,
+      elements: []
+    };
   }
 }
 
@@ -134,13 +164,20 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
 
 HYPOTHESIS: "${hypothesis}"
 
-INSTRUCTIONS:
-1. Look for the SPECIFIC element mentioned in the hypothesis (e.g., "Get waxy now" button, "Stay hydrated" section)
-2. Find the exact CSS selector for that specific element
-3. Do NOT select generic buttons or CTAs that are not mentioned in the hypothesis
-4. Look for text content that matches what's described in the hypothesis
-5. If the hypothesis mentions a specific section (like "Stay hydrated"), look within that section
-6. Prioritize elements with the exact text mentioned in the hypothesis
+CRITICAL RULES:
+1. ONLY use CSS selectors that exist in the provided HTML - DO NOT invent or hallucinate class names
+2. Find the SPECIFIC element mentioned in the hypothesis by matching text content or existing attributes
+3. If a section is named (e.g., "Stay hydrated"), find the actual section containing that text, then the element within it
+4. Use ONLY the classes, IDs, and attributes that are present in the HTML
+5. Prefer stable attributes: data-testid, id, aria-*, role over class names
+6. If using text content, match exactly (case-insensitive, trimmed)
+7. Never create fictional class names like ".stay-hydrated-section" - use the actual classes from the HTML
+8. If you can't find a unique selector, use a combination of existing classes and text content
+
+SELECTOR VALIDATION:
+- The selector MUST exist in the provided HTML
+- The selector MUST target exactly 1 element
+- The selector MUST be based on real attributes, not invented ones
 
 Find the most specific and accurate selector for the element that needs to be modified according to the hypothesis.`
               },
@@ -167,6 +204,23 @@ Find the most specific and accurate selector for the element that needs to be mo
       if (!('css_selector' in forensicsResult)) {
         console.error(`[DOM_ANALYZER] Invalid response format from AI`);
         return [];
+      }
+      
+      // Validate that the selector exists in the HTML
+      const selector = forensicsResult.css_selector;
+      console.log(`[DOM_ANALYZER] Validating selector: "${selector}"`);
+      console.log(`[DOM_ANALYZER] HTML length for validation: ${optimizedHTML.length}`);
+      
+      const matchInfo = getSelectorMatchInfo(selector, optimizedHTML);
+      
+      if (!matchInfo.found) {
+        console.warn(`[DOM_ANALYZER] Generated selector "${selector}" does not match any elements in HTML.`);
+        console.warn(`[DOM_ANALYZER] Available classes in HTML:`, this.extractAvailableClasses(optimizedHTML).slice(0, 10));
+        console.warn(`[DOM_ANALYZER] HTML sample:`, optimizedHTML.substring(0, 500));
+        // Still return the result but with lower confidence
+        forensicsResult.confidence = Math.min(forensicsResult.confidence || 0.5, 0.3);
+      } else {
+        console.log(`[DOM_ANALYZER] Selector validation passed: "${selector}" found ${matchInfo.count} element(s):`, matchInfo.elements);
       }
       
       // Transform the result to InjectionPoint format
@@ -213,7 +267,7 @@ Find the most specific and accurate selector for the element that needs to be mo
     const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
       projectId, 
       pageType, 
-      { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 }
+      STANDARD_SCREENSHOT_OPTIONS
     );
     
     let crawlResult;
@@ -245,7 +299,7 @@ Find the most specific and accurate selector for the element that needs to be mo
           projectId, 
           pageType,
           url, 
-          { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+          STANDARD_SCREENSHOT_OPTIONS,
           cachedData.screenshot!, // Use the cached screenshot
           simplifiedHtml
         );
@@ -267,7 +321,7 @@ Find the most specific and accurate selector for the element that needs to be mo
           projectId, 
           pageType,
           url, 
-          { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 80 },
+          STANDARD_SCREENSHOT_OPTIONS,
           crawlResult.screenshot,
           simplifiedHtml
         );
@@ -332,6 +386,19 @@ Find the most specific and accurate selector for the element that needs to be mo
       return [];
     }
     
+    // Validate that the selector exists in the HTML
+    const selector = forensicsResult.css_selector;
+    const matchInfo = getSelectorMatchInfo(selector, optimizedHTML);
+    
+    if (!matchInfo.found) {
+      console.warn(`[DOM_ANALYZER] Generated selector "${selector}" does not match any elements in HTML.`);
+      console.warn(`[DOM_ANALYZER] Available classes in HTML:`, this.extractAvailableClasses(optimizedHTML).slice(0, 10));
+      // Still return the result but with lower confidence
+      forensicsResult.confidence = Math.min(forensicsResult.confidence || 0.5, 0.3);
+    } else {
+      console.log(`[DOM_ANALYZER] Selector validation passed: "${selector}" found ${matchInfo.count} element(s):`, matchInfo.elements);
+    }
+    
     // Clean the CSS selector
     const cleanedSelector = cleanCSSSelector(forensicsResult.css_selector);
     
@@ -373,10 +440,7 @@ Find the most specific and accurate selector for the element that needs to be mo
     return [injectionPoint];
   }
 
-  private optimizeHTMLForAnalysis(html: string, hypothesis: string): string {
-    // Extract key elements based on hypothesis keywords
-    const hypothesisKeywords = this.extractKeywordsFromHypothesis(hypothesis);
-    
+  private optimizeHTMLForAnalysis(html: string, _hypothesis: string): string {
     // Process HTML in chunks to reduce memory usage
     const chunkSize = 10000; // Process 10KB at a time
     const chunks = this.splitIntoChunks(html, chunkSize);
@@ -395,16 +459,20 @@ Find the most specific and accurate selector for the element that needs to be mo
       }
     }
     
-    // Extract relevant sections based on hypothesis (memory efficient)
-    const relevantSections = this.extractRelevantSectionsEfficient(optimized, hypothesisKeywords);
-    
-    // Limit total size to prevent token overflow - further reduced for memory
-    const maxLength = 15000; // ~3.5k tokens (reduced from 30k)
-    if (relevantSections.length > maxLength) {
-      return relevantSections.substring(0, maxLength) + '\n\n... [HTML truncated for analysis]';
+    // Use the full HTML with intelligent truncation if needed
+    const maxLength = 50000; // ~12k tokens (increased significantly)
+    if (optimized.length > maxLength) {
+      // Simple truncation that preserves HTML structure
+      const truncated = optimized.substring(0, maxLength);
+      // Try to end at a reasonable point (end of tag)
+      const lastTagEnd = truncated.lastIndexOf('>');
+      if (lastTagEnd > maxLength * 0.9) {
+        return truncated.substring(0, lastTagEnd + 1) + '\n\n... [HTML truncated for analysis]';
+      }
+      return truncated + '\n\n... [HTML truncated for analysis]';
     }
     
-    return relevantSections;
+    return optimized;
   }
 
   private splitIntoChunks(str: string, chunkSize: number): string[] {
@@ -420,68 +488,32 @@ Find the most specific and accurate selector for the element that needs to be mo
     return simplifyHTMLForForensics(chunk);
   }
 
-  private extractKeywordsFromHypothesis(hypothesis: string): string[] {
-    const keywords = [];
-    const text = hypothesis.toLowerCase();
-    
-    // Common e-commerce elements
-    if (text.includes('button') || text.includes('cta') || text.includes('click')) {
-      keywords.push('button', 'cta', 'click', 'submit', 'add to cart', 'buy now');
-    }
-    if (text.includes('price') || text.includes('cost') || text.includes('money')) {
-      keywords.push('price', 'cost', 'money', 'dollar', 'euro', 'currency');
-    }
-    if (text.includes('title') || text.includes('heading') || text.includes('headline')) {
-      keywords.push('title', 'heading', 'headline', 'h1', 'h2', 'h3');
-    }
-    if (text.includes('image') || text.includes('photo') || text.includes('picture')) {
-      keywords.push('image', 'photo', 'picture', 'img', 'gallery');
-    }
-    if (text.includes('form') || text.includes('input') || text.includes('field')) {
-      keywords.push('form', 'input', 'field', 'email', 'name', 'address');
-    }
-    if (text.includes('navigation') || text.includes('menu') || text.includes('nav')) {
-      keywords.push('navigation', 'menu', 'nav', 'header', 'footer');
-    }
-    
-    return keywords;
-  }
 
-  private extractRelevantSectionsEfficient(html: string, keywords: string[]): string {
-    // Use a more memory-efficient approach with streaming
-    const sections = new Set<string>(); // Use Set to avoid duplicates automatically
-    
-    // Always include the main structure (single regex)
-    const mainMatch = html.match(/<main[^>]*>[\s\S]*?<\/main>/i);
-    if (mainMatch) sections.add(mainMatch[0]);
-    
-    // Process keywords one at a time to avoid memory spikes
-    for (const keyword of keywords) {
-      // Use a more targeted regex that's less memory intensive
-      const regex = new RegExp(`<[^>]*${this.escapeRegex(keyword)}[^>]*>[\s\S]{0,2000}?<\/[^>]*>`, 'gi');
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        sections.add(match[0]);
-        // Limit matches per keyword to prevent memory overflow
-        if (sections.size > 20) break;
-      }
-      // Clear regex state
-      regex.lastIndex = 0;
-    }
-    
-    // Include header and footer for context (single regex each)
-    const headerMatch = html.match(/<header[^>]*>[\s\S]*?<\/header>/i);
-    if (headerMatch) sections.add(headerMatch[0]);
-    
-    const footerMatch = html.match(/<footer[^>]*>[\s\S]*?<\/footer>/i);
-    if (footerMatch) sections.add(footerMatch[0]);
-    
-    // Convert Set to Array and join (memory efficient)
-    return Array.from(sections).join('\n\n');
-  }
 
-  private escapeRegex(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  private extractAvailableClasses(html: string): string[] {
+    try {
+      const $ = cheerio.load(html);
+      const classes = new Set<string>();
+      
+      // Extract all class attributes from all elements
+      $('[class]').each((_, element) => {
+        const classAttr = $(element).attr('class');
+        if (classAttr) {
+          const classList = classAttr.split(/\s+/);
+          classList.forEach(cls => {
+            if (cls.trim()) {
+              classes.add(cls.trim());
+            }
+          });
+        }
+      });
+      
+      return Array.from(classes);
+    } catch (error) {
+      console.warn(`[DOM_ANALYZER] Error extracting classes:`, error);
+      return [];
+    }
   }
 
   private buildHypothesisFocusedPrompt(hypothesis: string): string {
@@ -489,13 +521,20 @@ Find the most specific and accurate selector for the element that needs to be mo
 
 HYPOTHESIS: "${hypothesis}"
 
-INSTRUCTIONS:
-1. Find the SPECIFIC element mentioned in the hypothesis (exact text, section, or unique attributes)
-2. If a section is named (e.g., "Stay hydrated"), find that section first, then the element within it
-3. Return a CSS selector that targets exactly 1 element
-4. Prefer stable attributes: data-testid, id, aria-*, role over class names
-5. If using text, match exactly (case-insensitive, trimmed)
-6. Never use generic selectors like .btn, .button unless anchored to a unique parent
+CRITICAL RULES:
+1. ONLY use CSS selectors that exist in the provided HTML - DO NOT invent or hallucinate class names
+2. Find the SPECIFIC element mentioned in the hypothesis by matching text content or existing attributes
+3. If a section is named (e.g., "Stay hydrated"), find the actual section containing that text, then the element within it
+4. Use ONLY the classes, IDs, and attributes that are present in the HTML
+5. Prefer stable attributes: data-testid, id, aria-*, role over class names
+6. If using text content, match exactly (case-insensitive, trimmed)
+7. Never create fictional class names like ".stay-hydrated-section" - use the actual classes from the HTML
+8. If you can't find a unique selector, use a combination of existing classes and text content
+
+SELECTOR VALIDATION:
+- The selector MUST exist in the provided HTML
+- The selector MUST target exactly 1 element
+- The selector MUST be based on real attributes, not invented ones
 
 OUTPUT FORMAT:
 - If found: Return JSON with css_selector, element_text (if any), section_context, confidence (0-1), and reasoning
@@ -503,7 +542,8 @@ OUTPUT FORMAT:
 
 EXAMPLE:
 Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
-→ Find section with "Stay hydrated", then button with "Get waxy now" text`;
+→ Look for actual HTML containing "Stay hydrated" text, then find the button with "Get waxy now" text
+→ Use the real classes from the HTML, not invented ones like ".stay-hydrated-section"`;
   }
 
   private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {

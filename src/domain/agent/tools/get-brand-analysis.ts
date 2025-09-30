@@ -35,7 +35,7 @@ class GetBrandAnalysisExecutor {
       return {
         success: true,
         data: brandAnalysis,
-        summary: `Brand analysis retrieved successfully. Contains detailed visual style analysis, brand elements, personality insights, and language/messaging analysis.`
+        message: `Here's your brand analysis! Feel free to ask any questions about the insights, or let's start generating experiments to optimize your store.`
       };
     } catch (error) {
       console.error('Error getting brand analysis:', error);

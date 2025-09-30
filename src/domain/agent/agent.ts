@@ -100,7 +100,7 @@ export class AgentServiceImpl implements AgentService {
           has_variants: tr.content && tr.content.includes('variantsSchema') ? 'Yes' : 'No'
         })));
       }
-      
+
       // Log tool calls for debugging
       if (msg.tool_calls && msg.tool_calls.length > 0) {
         console.log(`[AGENT] AI Message has tool calls:`, msg.tool_calls.map(tc => tc.function.name).join(', '));
@@ -111,6 +111,11 @@ export class AgentServiceImpl implements AgentService {
 
     // Add system prompt if provided
     if (systemPrompt) {
+      // Validate system prompt length (Google has limits)
+      if (systemPrompt.length > 100000) {
+        console.warn(`[AGENT] System prompt is very long (${systemPrompt.length} chars), this might cause issues`);
+      }
+      
       aiMessages.unshift({
         role: 'system',
         content: systemPrompt,
@@ -121,7 +126,7 @@ export class AgentServiceImpl implements AgentService {
     const streamConfig: any = {
       model: google(this.aiConfig.model),
       messages: aiMessages,
-      stopWhen: stepCountIs(3), // Allow up to 3 steps for multi-step tool calls
+      stopWhen: stepCountIs(5), // Allow up to 5 steps for multi-step tool calls
       ...AI_CONFIGS.STREAMING
     };
 
@@ -130,14 +135,21 @@ export class AgentServiceImpl implements AgentService {
     }
 
     console.log(`[AGENT] Starting stream with ${aiMessages.length} messages and ${llmOptions.tools ? Object.keys(llmOptions.tools).length : 0} tools`);
-    
-    const result = streamText(streamConfig);
+    console.log(`[AGENT] System prompt length: ${systemPrompt ? systemPrompt.length : 0} characters`);
+    console.log(`[AGENT] AI Config: model=${this.aiConfig.model}, temperature=${this.aiConfig.temperature}, maxTokens=${this.aiConfig.maxTokens}`);
 
-    // Create a message ID for the response
-    const messageId = `msg-${Date.now()}`;
+    try {
+      const result = streamText(streamConfig);
 
-    console.log(`[AGENT] Stream created with message ID: ${messageId}`);
-    return { stream: result, messageId };
+      // Create a message ID for the response
+      const messageId = `msg-${Date.now()}`;
+
+      console.log(`[AGENT] Stream created successfully with message ID: ${messageId}`);
+      return { stream: result, messageId };
+    } catch (error) {
+      console.error(`[AGENT] Error creating stream:`, error);
+      throw new Error(`Failed to create AI stream: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

@@ -1,6 +1,8 @@
 // Experiment Data Access Layer
 import { prisma } from '@infra/prisma';
 import type { Experiment, ExperimentWithProject, CreateExperimentData, UpdateExperimentStatusData } from './types';
+import type { ActiveTarget } from '@features/conflict_guard';
+import { sha256, canonicalizeSelector } from '@features/conflict_guard';
 
 export class ExperimentDAL {
   /**
@@ -126,4 +128,46 @@ export class ExperimentDAL {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  /**
+   * Get active experiment targets for conflict detection
+   * Returns simplified target information for all running/ramping experiments
+   */
+  static async getActiveTargets(projectId: string): Promise<ActiveTarget[]> {
+    // Get all active experiments with their variants
+    const experiments = await prisma.experiment.findMany({
+      where: {
+        projectId,
+        status: {
+          in: ['RUNNING', 'PAUSED'] // Include paused if variants still live
+        }
+      },
+      include: {
+        variants: true,
+        hypothesis: true
+      }
+    });
+
+    // Transform to ActiveTarget format
+    const activeTargets: ActiveTarget[] = [];
+
+    for (const exp of experiments) {
+      // For each experiment, extract target information from variants
+      for (const variant of exp.variants) {
+        // Create a target entry for each variant's selector
+        if (variant.selector && variant.selector !== 'body') {
+          activeTargets.push({
+            experimentId: exp.id,
+            urlPattern: '/*', // Default to all pages for now, can be enhanced
+            targetKey: variant.selector ? sha256(canonicalizeSelector(variant.selector)) : undefined,
+            roleKey: undefined, // Role extraction can be enhanced based on variant metadata
+            label: exp.hypothesis?.hypothesis.substring(0, 50) || exp.name
+          });
+        }
+      }
+    }
+
+    return activeTargets;
+  }
 }
+
