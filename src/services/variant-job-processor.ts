@@ -6,6 +6,7 @@ import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { PrismaClient } from '@prisma/client';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { getVariantGenerationAIConfig } from '@shared/ai-config';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
@@ -93,8 +94,8 @@ export class VariantJobProcessor {
             });
 
             // Generate the variant description using AI
-            console.log(`[VARIANT_JOB] Generating AI response for job ${jobId}`);
-            const aiConfig = this.variantGenerationService.getAIConfig();
+            console.log(`[VARIANT_JOB] Generating AI response for job ${jobId} with Gemini 2.5 Pro`);
+            const aiConfig = getVariantGenerationAIConfig();
             const { generateObject } = await import('ai');
             const { google } = await import('@ai-sdk/google');
             
