@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify/types/instance.js';
 import '@shared/fastify.d';
 import { ExperimentDAL } from '@infra/dal/experiment';
 import { VariantJobDAL } from '@infra/dal/variant-job';
+import { variantStateManager } from '@domain/agent/variant-state-manager';
 
 export async function experimentRoutes(fastify: FastifyInstance) {
     // GET /v1/experiments/:experimentId/preview
@@ -9,27 +10,25 @@ export async function experimentRoutes(fastify: FastifyInstance) {
         try {
             const { experimentId } = request.params as { experimentId: string };
             const { variantIds } = request.query as { variantIds?: string[] };
-            // For testing - use the project ID from our database check
-            const projectId = 'cmg4z4udd0001mrm1ncenbuaf';
 
-            // Scope Resolution: Verify experiment belongs to the project
+            // Scope Resolution: Verify experiment exists and get project info
             const experiment = await ExperimentDAL.getExperimentWithProject(experimentId);
             if (!experiment) {
+                fastify.log.warn({ experimentId }, 'Experiment not found');
                 return reply.status(404).send({
                     error: 'NOT_FOUND',
                     message: 'Experiment not found'
                 });
             }
 
-            if (experiment.projectId !== projectId) {
-                return reply.status(403).send({
-                    error: 'FORBIDDEN',
-                    message: 'Access denied. Experiment does not belong to this project.'
-                });
-            }
+            fastify.log.info({
+                experimentId,
+                projectId: experiment.projectId,
+                experimentName: experiment.name
+            }, 'Found experiment');
 
-            // Load variants from completed jobs via state manager
-            const variants = await loadVariantsFromCompletedJobs(projectId);
+            // Load variants from completed jobs for this project
+            const variants = await loadVariantsFromCompletedJobs(experiment.projectId);
 
             if (variants.length === 0) {
                 return reply.status(404).send({
