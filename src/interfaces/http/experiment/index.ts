@@ -42,13 +42,13 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             // Filter by variantIds if provided
             if (variantIds && variantIds.length > 0) {
                 const requestedLabels = new Set(variantIds);
-                variants = variants.filter(v => requestedLabels.has(v.variant_label));
+                variants = variants.filter((v: any) => requestedLabels.has(v.variant_label));
             }
 
             fastify.log.info({
                 jobId,
                 variantCount: variants.length,
-                variantLabels: variants.map(v => v.variant_label)
+                variantLabels: variants.map((v: any) => v.variant_label)
             }, 'Returning job preview');
 
             return {
