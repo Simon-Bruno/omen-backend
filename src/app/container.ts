@@ -1,6 +1,7 @@
 // Service Container for Dependency Injection
 import { createPlaywrightCrawler, type CrawlerService } from '@features/crawler';
-import { createAgentService, type AgentService, ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent';
+import { createAgentService, type AgentService } from '@domain/agent';
+import { ECOMMERCE_AGENT_SYSTEM_PROMPT } from '@domain/agent/prompts';
 // Brand analysis is now function-based, no service needed
 import { createHypothesesGenerationService, HypothesesGenerationService } from '@features/hypotheses_generation/hypotheses-generation';
 import { createScreenshotStorageService, type ScreenshotStorageService } from '@services/screenshot-storage';
@@ -26,7 +27,7 @@ class ServiceContainer {
     }
     return this.services.get('crawler') as CrawlerService;
   }
-  
+
   // Brand analysis is now function-based, no service needed
 
 
@@ -83,10 +84,10 @@ class ServiceContainer {
     if (crawler && typeof crawler.close === 'function') {
       await crawler.close();
     }
-    
+
     // Close Prisma client
     await this.prisma.$disconnect();
-    
+
     this.services.clear();
   }
 }
