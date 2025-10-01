@@ -32,4 +32,19 @@ export const AI_CONFIGS = {
     temperature: 0.5,
     maxTokens: 1500,
   },
+  VARIANT_GENERATION: {
+    temperature: 0.7,
+    maxTokens: 3000,
+  },
 } as const;
+
+// Get AI config for variant generation (uses Gemini 2.5 Pro)
+export function getVariantGenerationAIConfig(): AIConfig {
+  const config = getServiceConfig();
+  return {
+    model: 'gemini-2.5-pro', // Use Gemini 2.5 Pro for variant generation
+    temperature: config.google?.temperature || 0.3,
+    maxTokens: config.google?.maxTokens || 3000,
+    apiKey: config.google?.apiKey || '',
+  };
+}

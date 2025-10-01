@@ -9,7 +9,7 @@ import { Hypothesis } from '@features/hypotheses_generation/types';
 import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
 import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
-import { getAIConfig } from '@shared/ai-config';
+import { getAIConfig, getVariantGenerationAIConfig } from '@shared/ai-config';
 import { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
@@ -332,8 +332,8 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
         }
 
-        console.log(`[VARIANTS] Generating AI response with Google Gemini`);
-        const aiConfig = getAIConfig();
+        console.log(`[VARIANTS] Generating AI response with Google Gemini 2.5 Pro`);
+        const aiConfig = getVariantGenerationAIConfig();
         
         // Use button-specific prompt when using hardcoded selector (targeting button/link)
         const prompt = this.HARDCODE_ELEMENT_FOCUS 
