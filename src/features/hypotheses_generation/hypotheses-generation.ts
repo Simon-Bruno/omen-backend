@@ -1,4 +1,9 @@
 // Hypotheses Generation Service
+// 
+// HARDCODED ELEMENT FOCUS:
+// To enable/disable hardcoded element focus, change the HARDCODE_ELEMENT_FOCUS flag in HypothesesGenerationServiceImpl
+// When enabled, hypotheses will focus specifically on the TARGET_ELEMENT defined in the class
+//
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
@@ -50,6 +55,14 @@ const hypothesesResponseSchema = z.object({
 export class HypothesesGenerationServiceImpl implements HypothesesGenerationService {
     private crawlerService: CrawlerService;
     private screenshotStorage: ScreenshotStorageService;
+    
+    // Hardcoded element focus configuration - can be easily toggled
+    private readonly HARDCODE_ELEMENT_FOCUS = true;
+    private readonly TARGET_ELEMENT = {
+        selector: 'a[href="/collections/all"].size-style.link',
+        description: 'Shop all → button/link',
+        html: '<a href="/collections/all" class="size-style link link--ARGpDamJzVW9Gd2JMa__button_nazDaa" style="--size-style-width: fit-content;--size-style-height: ;--size-style-width-mobile: fit-content; --size-style-width-mobile-min: fit-content;">Shop all →</a>'
+    };
 
     constructor(crawler: CrawlerService, prisma: PrismaClient) {
         this.crawlerService = crawler;
@@ -58,6 +71,11 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 
     async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
         console.log(`[HYPOTHESES] Starting generation for URL: ${url}, Project: ${projectId}`);
+        
+        if (this.HARDCODE_ELEMENT_FOCUS) {
+            console.log(`[HYPOTHESES] HARDCODED ELEMENT FOCUS ENABLED - Targeting: ${this.TARGET_ELEMENT.description}`);
+            console.log(`[HYPOTHESES] Target selector: ${this.TARGET_ELEMENT.selector}`);
+        }
 
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
@@ -168,11 +186,22 @@ When generating hypotheses:
 - If a primary CTA is reserved, suggest testing secondary elements
 ` : '';
 
+        const hardcodedElementSection = this.HARDCODE_ELEMENT_FOCUS ? `
+
+**SPECIFIC ELEMENT FOCUS (HARDCODED):**
+You MUST focus your hypothesis on this specific element:
+- Element: ${this.TARGET_ELEMENT.description}
+- CSS Selector: ${this.TARGET_ELEMENT.selector}
+- HTML: ${this.TARGET_ELEMENT.html}
+
+Your hypothesis should specifically address this element and suggest improvements to it. Look for this element in the screenshot and base your hypothesis on what you observe about its current state, visibility, styling, or positioning.
+` : '';
+
         return `
 You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze one or two screenshots of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
 
 Your analysis must prioritize **clarity, testability, and accessibility**. You are not writing vague advice—you are producing **hypotheses that can be tested in A/B experiments** without requiring advanced CRO expertise.
-${conflictSection}
+${conflictSection}${hardcodedElementSection}
 
 ---
 

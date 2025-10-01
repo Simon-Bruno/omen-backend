@@ -341,6 +341,15 @@ export interface DOMAnalyzerService {
     htmlContent: string | null,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]>;
+  
+  analyzeWithHardcodedSelector(
+    url: string,
+    hypothesis: string,
+    projectId: string,
+    hardcodedSelector: string,
+    htmlContent: string | null,
+    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
+  ): Promise<InjectionPoint[]>;
 }
 
 export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
@@ -871,6 +880,103 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     }
     
     return 'other';
+  }
+
+  async analyzeWithHardcodedSelector(
+    url: string,
+    hypothesis: string,
+    _projectId: string,
+    hardcodedSelector: string,
+    htmlContent: string | null,
+    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
+  ): Promise<InjectionPoint[]> {
+    console.log(`[DOM_ANALYZER] Using hardcoded selector: ${hardcodedSelector}`);
+    
+    let html: string;
+    
+    if (htmlContent) {
+      console.log(`[DOM_ANALYZER] Using provided HTML content (${htmlContent.length} chars)`);
+      html = htmlContent;
+    } else {
+      console.log(`[DOM_ANALYZER] Crawling page for HTML content`);
+      const crawlResult = await this.crawlerService.crawlPage(url, {
+        viewport: { width: 1920, height: 1080 },
+        waitFor: 3000,
+        authentication
+      });
+      
+      if (crawlResult.error) {
+        throw new Error(`Failed to crawl page: ${crawlResult.error}`);
+      }
+      
+      html = crawlResult.html || '';
+    }
+    
+    // Validate the hardcoded selector exists in the HTML
+    const matchInfo = getSelectorMatchInfo(hardcodedSelector, html);
+    console.log(`[DOM_ANALYZER] Hardcoded selector validation:`, matchInfo);
+    
+    if (!matchInfo.found) {
+      console.warn(`[DOM_ANALYZER] Hardcoded selector not found in HTML: ${hardcodedSelector}`);
+      return [];
+    }
+    
+    if (matchInfo.count > 1) {
+      console.warn(`[DOM_ANALYZER] Hardcoded selector matches ${matchInfo.count} elements, using first one`);
+    }
+    
+    // Create injection point from hardcoded selector
+    const $ = cheerio.load(html);
+    const element = $(hardcodedSelector).first();
+    
+    if (element.length === 0) {
+      console.warn(`[DOM_ANALYZER] Element not found with hardcoded selector: ${hardcodedSelector}`);
+      return [];
+    }
+    
+    const elementText = element.text()?.trim() || '';
+    const elementNode = element[0];
+    const elementType = this.determineElementType(
+      elementNode && elementNode.type === 'tag' ? elementNode.name : 'div', 
+      element.attr() || {}
+    );
+    
+    // Generate alternative selectors for fallback
+    const alternativeSelectors = generateFallbackSelectors(element, $);
+    
+    // Get bounding box (simplified - just use 0,0,100,50 as placeholder)
+    const boundingBox = {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 50
+    };
+    
+    const injectionPoint: InjectionPoint = {
+      type: elementType,
+      selector: hardcodedSelector,
+      confidence: 1.0, // High confidence since it's hardcoded
+      description: `Hardcoded selector targeting ${elementType} element: ${elementText}`,
+      boundingBox,
+      alternativeSelectors: alternativeSelectors.slice(0, 3), // Limit to top 3 alternatives
+      context: `Hardcoded element: ${elementText}`,
+      reasoning: `Hardcoded selector targeting ${elementType} element`,
+      hypothesis: hypothesis,
+      url: url,
+      timestamp: new Date().toISOString(),
+      tested: false,
+      originalText: elementText
+    };
+    
+    console.log(`[DOM_ANALYZER] Created injection point from hardcoded selector:`, {
+      selector: injectionPoint.selector,
+      confidence: injectionPoint.confidence,
+      type: injectionPoint.type,
+      description: injectionPoint.description?.substring(0, 50) + '...',
+      context: injectionPoint.context
+    });
+    
+    return [injectionPoint];
   }
 }
 
