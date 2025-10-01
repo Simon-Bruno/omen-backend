@@ -9,6 +9,7 @@ import { createScreenshotStorageService, ScreenshotStorageService } from '@servi
 import { simplifyHTML, simplifyHTMLForForensics, getHtmlInfo } from '@shared/utils/html-simplifier';
 import * as cheerio from 'cheerio';
 import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { createElementDetector } from './element-detector';
 
 // CSS selector validation utility
 function isValidCSSSelector(selector: string): boolean {
@@ -50,6 +51,220 @@ function getSelectorMatchInfo(selector: string, html: string): { found: boolean;
   }
 }
 
+// Check if an ID is generated/unstable (contains numbers, hyphens, or template patterns)
+function isGeneratedId(id: string): boolean {
+  // Check for common patterns that indicate generated IDs
+  const generatedPatterns = [
+    /template--\d+/, // Shopify template IDs like "template--25767798276440"
+    /slide-\d+/, // Slide IDs like "slide-123"
+    /section-\d+/, // Section IDs like "section-123"
+    /block-\d+/, // Block IDs like "block-123"
+    /shopify-section-\w+/, // Shopify section IDs
+    /^\d+$/, // Pure numbers
+    /^[a-f0-9]{8,}$/i, // Long hex strings
+    /^[a-z0-9]{20,}$/i, // Long alphanumeric strings
+    /-\d{10,}$/, // Ends with long numbers
+    /^[a-z]+-\d+-\d+/, // Pattern like "slide-123-456"
+  ];
+  
+  return generatedPatterns.some(pattern => pattern.test(id));
+}
+
+// Check if a class is likely to be stable (not generated)
+function isStableClass(className: string): boolean {
+  // Stable class patterns (semantic, not generated)
+  const stablePatterns = [
+    /^[a-z]+-[a-z]+$/, // kebab-case like "card-wrapper"
+    /^[a-z]+__[a-z]+$/, // BEM like "card__heading"
+    /^[a-z]+--[a-z]+$/, // BEM modifier like "button--primary"
+    /^[a-z]+$/, // simple words like "button", "card"
+    /^[a-z]+-[a-z]+-[a-z]+$/, // triple kebab like "cart-drawer-form"
+  ];
+  
+  // Avoid generated patterns
+  const generatedPatterns = [
+    /^\d+$/, // Pure numbers
+    /^[a-f0-9]{8,}$/i, // Long hex strings
+    /^[a-z0-9]{20,}$/i, // Long alphanumeric strings
+    /-\d{10,}$/, // Ends with long numbers
+    /^[a-z]+-\d+/, // Pattern like "card-123"
+    /template--\d+/, // Template patterns
+  ];
+  
+  return stablePatterns.some(pattern => pattern.test(className)) && 
+         !generatedPatterns.some(pattern => pattern.test(className));
+}
+
+// Generate multiple fallback selectors for better reliability
+function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string[] {
+  const selectors: string[] = [];
+  const el = element[0];
+  
+  if (!el || el.type !== 'tag') return selectors;
+  
+  const tagName = el.name;
+  const id = $(el).attr('id');
+  const classes = $(el).attr('class');
+  const dataTestId = $(el).attr('data-testid');
+  const role = $(el).attr('role');
+  const ariaLabel = $(el).attr('aria-label');
+  const textContent = $(el).text?.()?.trim();
+  
+  // Strategy 1: Data attributes (most reliable - never generated)
+  if (dataTestId) {
+    selectors.push(`[data-testid="${dataTestId}"]`);
+  }
+  
+  // Strategy 2: Role attribute (very reliable - semantic)
+  if (role) {
+    selectors.push(`${tagName}[role="${role}"]`);
+  }
+  
+  // Strategy 3: Aria-label (very reliable - semantic)
+  if (ariaLabel) {
+    selectors.push(`${tagName}[aria-label="${ariaLabel}"]`);
+  }
+  
+  // Strategy 4: ID selector (only if not generated)
+  if (id && !isGeneratedId(id)) {
+    selectors.push(`#${id}`);
+  }
+  
+  // Strategy 5: Stable class-based selectors (prioritize semantic classes)
+  if (classes) {
+    const classList = classes.split(' ').filter(c => c.trim());
+    const stableClasses = classList.filter(isStableClass);
+    
+    // Use only stable classes
+    if (stableClasses.length > 0) {
+      // Single most stable class
+      selectors.push(`${tagName}.${stableClasses[0]}`);
+      
+      // Two most stable classes
+      if (stableClasses.length > 1) {
+        selectors.push(`${tagName}.${stableClasses.slice(0, 2).join('.')}`);
+      }
+      
+      // All stable classes (if not too many)
+      if (stableClasses.length <= 3) {
+        selectors.push(`${tagName}.${stableClasses.join('.')}`);
+      }
+    }
+  }
+  
+  // Strategy 6: Text content with tag (for unique text)
+  if (textContent && textContent.length < 50 && textContent.length > 3) {
+    selectors.push(`${tagName}:contains("${textContent}")`);
+  }
+  
+  // Strategy 7: Parent-child relationships with stable classes
+  const parent = $(el).parent();
+  if (parent.length > 0) {
+    const parentClasses = parent.attr('class');
+    if (parentClasses) {
+      const parentClassList = parentClasses.split(' ').filter(c => c.trim());
+      const stableParentClasses = parentClassList.filter(isStableClass);
+      
+      if (stableParentClasses.length > 0) {
+        // Use most stable parent class
+        selectors.push(`.${stableParentClasses[0]} ${tagName}`);
+        selectors.push(`.${stableParentClasses[0]} > ${tagName}`);
+        
+        // Add current element's stable class if available
+        if (classes) {
+          const stableClasses = classes.split(' ').filter(c => c.trim()).filter(isStableClass);
+          if (stableClasses.length > 0) {
+            selectors.push(`.${stableParentClasses[0]} ${tagName}.${stableClasses[0]}`);
+          }
+        }
+      }
+    }
+  }
+  
+  // Strategy 8: Grandparent relationships (more stable than direct parent)
+  const grandparent = $(el).parent().parent();
+  if (grandparent.length > 0) {
+    const grandparentClasses = grandparent.attr('class');
+    if (grandparentClasses) {
+      const grandparentClassList = grandparentClasses.split(' ').filter(c => c.trim());
+      const stableGrandparentClasses = grandparentClassList.filter(isStableClass);
+      
+      if (stableGrandparentClasses.length > 0) {
+        selectors.push(`.${stableGrandparentClasses[0]} ${tagName}`);
+      }
+    }
+  }
+  
+  // Strategy 9: Sibling relationships (avoid position-based)
+  const siblings = $(el).siblings(tagName);
+  if (siblings.length === 0) {
+    // If it's the only element of its type, use tag alone
+    selectors.push(tagName);
+  }
+  
+  // Remove duplicates and invalid selectors
+  return [...new Set(selectors)].filter(selector => {
+    try {
+      $(selector);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+// Test selector reliability by checking if it still works
+function testSelectorReliability(selector: string, html: string): { works: boolean; confidence: number; reason: string } {
+  const matchInfo = getSelectorMatchInfo(selector, html);
+  
+  if (!matchInfo.found) {
+    return { works: false, confidence: 0, reason: 'Selector does not match any elements' };
+  }
+  
+  if (matchInfo.count > 1) {
+    return { works: false, confidence: 0.3, reason: `Selector matches ${matchInfo.count} elements, should match exactly 1` };
+  }
+  
+  // Check for generated/unstable patterns
+  const hasGeneratedId = /#.*template--\d+|#.*slide-\d+|#.*section-\d+|#.*block-\d+|#.*shopify-section/.test(selector);
+  const hasGeneratedClass = /\.\d+\.|\.\w+\d{10,}\.|\.\w+-\d{10,}\./.test(selector);
+  const hasComplexChain = selector.split('.').length > 3 || selector.split(' ').length > 4;
+  
+  if (hasGeneratedId || hasGeneratedClass) {
+    return { works: false, confidence: 0.1, reason: 'Selector contains generated/unstable patterns' };
+  }
+  
+  // Check selector stability
+  let confidence = 0.8; // Base confidence
+  let reason = 'Selector works and matches exactly 1 element';
+  
+  // Prefer more stable selectors
+  if (selector.includes('[data-testid=')) {
+    confidence = 0.95;
+    reason += ' (data-testid - most stable)';
+  } else if (selector.includes('[role=') || selector.includes('[aria-label=')) {
+    confidence = 0.9;
+    reason += ' (ARIA attribute - very stable)';
+  } else if (selector.startsWith('#') && !hasGeneratedId) {
+    confidence = 0.85;
+    reason += ' (ID selector - stable)';
+  } else if (selector.match(/^[a-z]+\.[a-z-]+$/) || selector.match(/^[a-z]+\.[a-z]+__[a-z]+$/)) {
+    confidence = 0.8;
+    reason += ' (semantic class - stable)';
+  } else if (selector.includes(':contains(')) {
+    confidence = 0.6;
+    reason += ' (text-based - less stable)';
+  } else if (hasComplexChain) {
+    confidence = 0.4;
+    reason += ' (complex chain - fragile)';
+  } else if (selector.includes(':nth-child(')) {
+    confidence = 0.3;
+    reason += ' (position-based - very fragile)';
+  }
+  
+  return { works: true, confidence, reason };
+}
+
 // Clean selector by removing invalid parts like :contains()
 function cleanCSSSelector(selector: string): string {
   // Remove :contains() pseudo-selector and similar invalid selectors
@@ -72,7 +287,7 @@ export interface InjectionPoint {
     width: number;
     height: number;
   };
-  alternativeSelectors: string[]; // Fallback selectors
+  alternativeSelectors: string[]; // Fallback selectors with reliability scores
   context: string; // What this element is used for (e.g., "main call-to-action button")
   reasoning: string; // Why this selector was chosen
   hypothesis: string; // The hypothesis this was found for
@@ -81,6 +296,11 @@ export interface InjectionPoint {
   tested: boolean; // Whether this selector has been tested
   successRate?: number; // Success rate if tested multiple times
   originalText?: string; // Original text content of the element (for text length considerations)
+  selectorReliability?: {
+    works: boolean;
+    confidence: number;
+    reason: string;
+  };
 }
 
 // Removed unused PageStructure interface
@@ -91,7 +311,8 @@ const elementFoundSchema = z.object({
   element_text: z.string().optional().describe('Text content of the element if any'),
   section_context: z.string().optional().describe('Section or context where element was found'),
   confidence: z.number().min(0).max(1).describe('Confidence this selector will work (0-1)'),
-  reasoning: z.string().describe('Why this selector was chosen')
+  reasoning: z.string().describe('Why this selector was chosen'),
+  alternative_selectors: z.array(z.string()).optional().describe('Alternative fallback selectors')
 });
 
 const elementNotFoundSchema = z.object({
@@ -141,112 +362,61 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   ): Promise<InjectionPoint[]> {
     console.log(`[DOM_ANALYZER] Starting analysis with provided HTML for hypothesis: ${hypothesis}`);
     
-    // If we have HTML content, use it directly without crawling
+    // If we have HTML content, use the new multi-strategy approach
     if (htmlContent) {
-      console.log(`[DOM_ANALYZER] Using provided HTML content (${htmlContent.length} chars)`);
+      console.log(`[DOM_ANALYZER] Using multi-strategy element detection (${htmlContent.length} chars)`);
       
-      // Optimize HTML for AI analysis (memory efficient)
-      const optimizedHTML = this.optimizeHTMLForAnalysis(htmlContent, hypothesis);
-      console.log(`[DOM_ANALYZER] Optimized HTML from ${htmlContent.length} to ${optimizedHTML.length} characters (${Math.round((1 - optimizedHTML.length / htmlContent.length) * 100)}% reduction)`);
-
-      // Use AI to find specific injection points for this hypothesis
-      const aiConfig = getAIConfig();
-      const result = await generateObject({
-        model: google(aiConfig.model),
-        schema: injectionPointSchema,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Analyze this HTML to find the EXACT element mentioned in the hypothesis for variant injection.
-
-HYPOTHESIS: "${hypothesis}"
-
-CRITICAL RULES:
-1. ONLY use CSS selectors that exist in the provided HTML - DO NOT invent or hallucinate class names
-2. Find the SPECIFIC element mentioned in the hypothesis by matching text content or existing attributes
-3. If a section is named (e.g., "Stay hydrated"), find the actual section containing that text, then the element within it
-4. Use ONLY the classes, IDs, and attributes that are present in the HTML
-5. Prefer stable attributes: data-testid, id, aria-*, role over class names
-6. If using text content, match exactly (case-insensitive, trimmed)
-7. Never create fictional class names like ".stay-hydrated-section" - use the actual classes from the HTML
-8. If you can't find a unique selector, use a combination of existing classes and text content
-
-SELECTOR VALIDATION:
-- The selector MUST exist in the provided HTML
-- The selector MUST target exactly 1 element
-- The selector MUST be based on real attributes, not invented ones
-
-Find the most specific and accurate selector for the element that needs to be modified according to the hypothesis.`
-              },
-              {
-                type: 'text',
-                text: `HTML Content:\n${optimizedHTML}`
-              }
-            ]
-          }
-        ]
-      });
-
-      // Process the simplified result
-      const forensicsResult = result.object;
+      // Use raw HTML for better element detection - minimal processing
+      const rawHTML = this.minimalHTMLProcessing(htmlContent);
+      console.log(`[DOM_ANALYZER] Raw HTML processed: ${rawHTML.length} chars (${Math.round((1 - rawHTML.length / htmlContent.length) * 100)}% reduction)`);
       
-      // Check if element was found
-      if ('NOT_FOUND' in forensicsResult && forensicsResult.NOT_FOUND === true) {
-        console.log(`[DOM_ANALYZER] Element not found: ${forensicsResult.reason}`);
-        console.log(`[DOM_ANALYZER] Suggestions:`, forensicsResult.suggestions);
-        return []; // Return empty array if not found
-      }
+      // Use the new element detector with raw HTML
+      const elementDetector = createElementDetector(rawHTML);
+      const detectionResult = await elementDetector.detectElement(hypothesis);
       
-      // Type guard to ensure we have the success result
-      if (!('css_selector' in forensicsResult)) {
-        console.error(`[DOM_ANALYZER] Invalid response format from AI`);
+      if (!detectionResult.found) {
+        console.log(`[DOM_ANALYZER] No elements found using multi-strategy approach`);
+        console.log(`[DOM_ANALYZER] Suggestions:`, detectionResult.suggestions);
         return [];
       }
       
-      // Validate that the selector exists in the HTML
-      const selector = forensicsResult.css_selector;
-      console.log(`[DOM_ANALYZER] Validating selector: "${selector}"`);
-      console.log(`[DOM_ANALYZER] HTML length for validation: ${optimizedHTML.length}`);
+      console.log(`[DOM_ANALYZER] Found ${detectionResult.candidates.length} element candidates`);
       
-      const matchInfo = getSelectorMatchInfo(selector, optimizedHTML);
+      // Convert candidates to injection points
+      const injectionPoints: InjectionPoint[] = detectionResult.candidates.map((candidate, index) => {
+        const type = this.determineElementType(candidate.element.tagName, candidate.element.attributes);
+        
+        return {
+          type,
+          selector: candidate.selector,
+          confidence: candidate.confidence,
+          description: candidate.reasoning,
+          boundingBox: {
+            x: 0, // Will be filled by the crawler
+            y: 0,
+            width: 0,
+            height: 0
+          },
+          alternativeSelectors: detectionResult.candidates
+            .filter((_, i) => i !== index)
+            .map(c => c.selector),
+          context: `${candidate.strategy} strategy`,
+          reasoning: candidate.reasoning,
+          hypothesis,
+          url,
+          timestamp: new Date().toISOString(),
+          tested: false,
+          originalText: candidate.element.text,
+          selectorReliability: {
+            works: true,
+            confidence: candidate.confidence,
+            reason: `${candidate.strategy} strategy - ${candidate.reasoning}`
+          }
+        };
+      });
       
-      if (!matchInfo.found) {
-        console.warn(`[DOM_ANALYZER] Generated selector "${selector}" does not match any elements in HTML.`);
-        console.warn(`[DOM_ANALYZER] Available classes in HTML:`, this.extractAvailableClasses(optimizedHTML).slice(0, 10));
-        console.warn(`[DOM_ANALYZER] HTML sample:`, optimizedHTML.substring(0, 500));
-        // Still return the result but with lower confidence
-        forensicsResult.confidence = Math.min(forensicsResult.confidence || 0.5, 0.3);
-      } else {
-        console.log(`[DOM_ANALYZER] Selector validation passed: "${selector}" found ${matchInfo.count} element(s):`, matchInfo.elements);
-      }
-      
-      // Transform the result to InjectionPoint format
-      const injectionPoint: InjectionPoint = {
-        type: 'button', // Default type, could be enhanced based on element analysis
-        selector: forensicsResult.css_selector,
-        confidence: forensicsResult.confidence,
-        description: forensicsResult.reasoning,
-        boundingBox: {
-          x: 0, // Will be filled by the crawler
-          y: 0,
-          width: 0,
-          height: 0
-        },
-        alternativeSelectors: [], // Simplified - no alternatives needed
-        context: forensicsResult.section_context || 'Element found',
-        reasoning: forensicsResult.reasoning,
-        hypothesis,
-        url,
-        timestamp: new Date().toISOString(),
-        tested: false,
-        originalText: forensicsResult.element_text || undefined
-      };
-      
-      console.log(`[DOM_ANALYZER] Found element: ${forensicsResult.css_selector}`);
-      return [injectionPoint];
+      console.log(`[DOM_ANALYZER] Generated ${injectionPoints.length} injection points`);
+      return injectionPoints;
     }
     
     // Fallback to regular analysis if no HTML provided
@@ -389,29 +559,70 @@ Find the most specific and accurate selector for the element that needs to be mo
     // Validate that the selector exists in the HTML
     const selector = forensicsResult.css_selector;
     const matchInfo = getSelectorMatchInfo(selector, optimizedHTML);
+    let finalSelector = selector;
+    let alternativeSelectors: string[] = [];
+    let reliability = testSelectorReliability(selector, optimizedHTML);
     
     if (!matchInfo.found) {
       console.warn(`[DOM_ANALYZER] Generated selector "${selector}" does not match any elements in HTML.`);
       console.warn(`[DOM_ANALYZER] Available classes in HTML:`, this.extractAvailableClasses(optimizedHTML).slice(0, 10));
+      
+      // Try to find the element using text content or other methods
+      console.log(`[DOM_ANALYZER] Attempting to find element using fallback methods...`);
+      const $ = cheerio.load(optimizedHTML);
+      const elementText = forensicsResult.element_text;
+      
+      if (elementText) {
+        // Try to find by text content
+        const textElements = $(`*:contains("${elementText}")`).filter((_, el) => {
+          return $(el).text().trim() === elementText.trim();
+        });
+        
+        if (textElements.length > 0) {
+          const targetElement = textElements.first();
+          alternativeSelectors = generateFallbackSelectors(targetElement, $);
+          
+          // Find the best working selector
+          for (const altSelector of alternativeSelectors) {
+            const altMatchInfo = getSelectorMatchInfo(altSelector, optimizedHTML);
+            if (altMatchInfo.found && altMatchInfo.count === 1) {
+              finalSelector = altSelector;
+              reliability = testSelectorReliability(altSelector, optimizedHTML);
+              console.log(`[DOM_ANALYZER] Found working fallback selector: "${altSelector}"`);
+              break;
+            }
+          }
+        }
+      }
+      
       // Still return the result but with lower confidence
       forensicsResult.confidence = Math.min(forensicsResult.confidence || 0.5, 0.3);
     } else {
       console.log(`[DOM_ANALYZER] Selector validation passed: "${selector}" found ${matchInfo.count} element(s):`, matchInfo.elements);
+      
+      // Generate fallback selectors for the working selector
+      const $ = cheerio.load(optimizedHTML);
+      const elements = $(selector);
+      if (elements.length > 0) {
+        alternativeSelectors = generateFallbackSelectors(elements.first(), $);
+        // Remove the primary selector from alternatives
+        alternativeSelectors = alternativeSelectors.filter(s => s !== selector);
+      }
     }
     
     // Clean the CSS selector
-    const cleanedSelector = cleanCSSSelector(forensicsResult.css_selector);
+    const cleanedSelector = cleanCSSSelector(finalSelector);
     
     // Validate selector and log warnings for invalid ones
     if (!isValidCSSSelector(cleanedSelector)) {
-      console.warn(`[DOM_ANALYZER] Invalid CSS selector detected: "${forensicsResult.css_selector}" -> cleaned to: "${cleanedSelector}"`);
+      console.warn(`[DOM_ANALYZER] Invalid CSS selector detected: "${finalSelector}" -> cleaned to: "${cleanedSelector}"`);
     }
     
     // Transform the result to InjectionPoint format
     const injectionPoint: InjectionPoint = {
       type: 'button', // Default type, could be enhanced based on element analysis
       selector: cleanedSelector,
-      confidence: forensicsResult.confidence,
+      confidence: reliability.works ? reliability.confidence : Math.min(forensicsResult.confidence || 0.5, 0.3),
       description: forensicsResult.reasoning,
       boundingBox: {
         x: 0, // Will be filled by the crawler
@@ -419,14 +630,15 @@ Find the most specific and accurate selector for the element that needs to be mo
         width: 0,
         height: 0
       },
-      alternativeSelectors: [], // Simplified - no alternatives needed
+      alternativeSelectors: alternativeSelectors,
       context: forensicsResult.section_context || 'Element found',
       reasoning: forensicsResult.reasoning,
       hypothesis,
       url,
       timestamp: new Date().toISOString(),
       tested: false,
-      originalText: forensicsResult.element_text || undefined
+      originalText: forensicsResult.element_text || undefined,
+      selectorReliability: reliability
     };
 
     console.log(`[DOM_ANALYZER] Found element: ${cleanedSelector}`);
@@ -488,6 +700,20 @@ Find the most specific and accurate selector for the element that needs to be mo
     return simplifyHTMLForForensics(chunk);
   }
 
+  // Minimal HTML processing for the new multi-strategy detector
+  private minimalHTMLProcessing(html: string): string {
+    // Only remove the most unnecessary elements, keep everything else
+    return html
+      // Remove only script and style tags (keep everything else)
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      // Remove comments
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Normalize whitespace but keep structure
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
 
 
 
@@ -526,24 +752,94 @@ CRITICAL RULES:
 2. Find the SPECIFIC element mentioned in the hypothesis by matching text content or existing attributes
 3. If a section is named (e.g., "Stay hydrated"), find the actual section containing that text, then the element within it
 4. Use ONLY the classes, IDs, and attributes that are present in the HTML
-5. Prefer stable attributes: data-testid, id, aria-*, role over class names
-6. If using text content, match exactly (case-insensitive, trimmed)
-7. Never create fictional class names like ".stay-hydrated-section" - use the actual classes from the HTML
-8. If you can't find a unique selector, use a combination of existing classes and text content
+5. AVOID GENERATED/UNSTABLE SELECTORS - Never use IDs or classes with these patterns:
+   - template--123456789 (Shopify template IDs)
+   - slide-123456789 (generated slide IDs)
+   - section-123456789 (generated section IDs)
+   - Any ID/class with long numbers or hex strings
+   - Complex nested class chains with generated patterns
+6. Prefer stable attributes in this order: data-testid, role, aria-*, semantic class names, then simple IDs
+7. If using text content, match exactly (case-insensitive, trimmed)
+8. Never create fictional class names like ".stay-hydrated-section" - use the actual classes from the HTML
+9. Use simple, semantic selectors like ".card__heading" or "button[role='button']" instead of complex chains
+10. Generate alternative_selectors array with fallback options using different strategies
 
 SELECTOR VALIDATION:
 - The selector MUST exist in the provided HTML
 - The selector MUST target exactly 1 element
 - The selector MUST be based on real attributes, not invented ones
+- The selector MUST avoid generated/unstable patterns
+- Provide alternative_selectors for better reliability
+
+STABLE SELECTOR EXAMPLES:
+✅ Good: ".card__heading" (semantic class)
+✅ Good: "button[role='button']" (role attribute)
+✅ Good: "[data-testid='product-title']" (data attribute)
+✅ Good: "h3.card__heading" (tag + semantic class)
+❌ Bad: "#Slide-template--25767798276440__featured_collection-1" (generated ID)
+❌ Bad: ".card-wrapper.product-card-wrapper > div.card__content" (complex chain)
+❌ Bad: "#shopify-section-sections--25767798538584__header" (generated ID)
 
 OUTPUT FORMAT:
-- If found: Return JSON with css_selector, element_text (if any), section_context, confidence (0-1), and reasoning
+- If found: Return JSON with css_selector, element_text (if any), section_context, confidence (0-1), reasoning, and alternative_selectors array
 - If not found: Return JSON with NOT_FOUND: true, reason, and suggestions array
 
 EXAMPLE:
 Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
 → Look for actual HTML containing "Stay hydrated" text, then find the button with "Get waxy now" text
-→ Use the real classes from the HTML, not invented ones like ".stay-hydrated-section"`;
+→ Use simple selectors like "button:contains('Get waxy now')" or ".button--primary"
+→ Avoid complex chains with generated IDs or classes`;
+  }
+
+  private determineElementType(tagName: string, attributes: Record<string, string>): 'button' | 'text' | 'image' | 'container' | 'form' | 'navigation' | 'price' | 'title' | 'description' {
+    // Check for explicit role
+    const role = attributes.role?.toLowerCase();
+    if (role) {
+      if (role.includes('button')) return 'button';
+      if (role.includes('navigation')) return 'navigation';
+      if (role.includes('form')) return 'form';
+    }
+    
+    // Check tag name
+    if (tagName === 'button' || tagName === 'input' && attributes.type === 'button') {
+      return 'button';
+    }
+    
+    if (tagName === 'img') {
+      return 'image';
+    }
+    
+    if (tagName === 'form') {
+      return 'form';
+    }
+    
+    if (tagName === 'nav') {
+      return 'navigation';
+    }
+    
+    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+      return 'title';
+    }
+    
+    // Check for price-related classes or attributes
+    const classList = attributes.class?.toLowerCase() || '';
+    const text = attributes.text?.toLowerCase() || '';
+    
+    if (classList.includes('price') || classList.includes('cost') || text.includes('$') || text.includes('€') || text.includes('£')) {
+      return 'price';
+    }
+    
+    if (classList.includes('description') || classList.includes('content') || classList.includes('text')) {
+      return 'description';
+    }
+    
+    // Default to container for divs, spans, etc.
+    if (['div', 'span', 'section', 'article', 'aside'].includes(tagName)) {
+      return 'container';
+    }
+    
+    // Default to text for other elements
+    return 'text';
   }
 
   private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {

@@ -59,10 +59,10 @@ class CreateExperimentExecutor {
     // Get hypothesis from state manager (preferred) or input
     let hypothesis = hypothesisStateManager.getCurrentHypothesis();
     
-    if (hypothesis) {
-      console.log(`[EXPERIMENT_TOOL] Using hypothesis from state manager: "${hypothesis.hypothesis.substring(0, 50)}..."`);
-    } else if (input.hypothesis) {
-      console.log(`[EXPERIMENT_TOOL] Using hypothesis from input: "${input.hypothesis.hypothesis.substring(0, 50)}..."`);
+        if (hypothesis) {
+            console.log(`[EXPERIMENT_TOOL] Using hypothesis from state manager: "${hypothesis.title}"`);
+        } else if (input.hypothesis) {
+            console.log(`[EXPERIMENT_TOOL] Using hypothesis from input: "${input.hypothesis.title}"`);
       hypothesis = input.hypothesis;
     } else {
       console.log(`[EXPERIMENT_TOOL] No hypothesis available in state or input`);
@@ -129,7 +129,7 @@ class CreateExperimentExecutor {
     let experimentName = input.name;
     if (!experimentName) {
       // Extract key words from hypothesis to create a meaningful name
-      const hypothesisText = hypothesis.hypothesis.toLowerCase();
+      const hypothesisText = hypothesis.description.toLowerCase();
       let name = 'Button Optimization';
       
       if (hypothesisText.includes('button')) {
@@ -219,7 +219,7 @@ class CreateExperimentExecutor {
       await prisma.experimentHypothesis.create({
         data: {
           experimentId: experiment.id,
-          hypothesis: hypothesis.hypothesis,
+          hypothesis: hypothesis.description,
           rationale: hypothesis.rationale,
           primaryKpi: hypothesis.success_metrics || 'conversion_rate'
         }

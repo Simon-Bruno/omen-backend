@@ -9,10 +9,10 @@ class HypothesisStateManager {
    * Set the current hypothesis (from generate_hypotheses tool)
    */
   setCurrentHypothesis(hypothesis: Hypothesis): void {
-    console.log(`[STATE_MANAGER] Setting hypothesis: "${hypothesis.hypothesis.substring(0, 50)}..."`);
+    console.log(`[STATE_MANAGER] Setting hypothesis: "${hypothesis.title}"`);
     this.currentHypothesis = hypothesis;
     this.hypothesisHistory.push(hypothesis);
-    console.log(`[STATE_MANAGER] Hypothesis set: "${hypothesis.hypothesis.substring(0, 50)}..."`);
+    console.log(`[STATE_MANAGER] Hypothesis set: "${hypothesis.title}"`);
     console.log(`[STATE_MANAGER] Current hypothesis count: ${this.hypothesisHistory.length}`);
   }
 

@@ -130,6 +130,14 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             return `data:image/png;base64,${b64}`;
         };
 
+        // Compress screenshot to reduce token usage
+        const compressScreenshot = (b64: string): string => {
+            if (!b64) return '';
+            // For now, just return the original - compression would require image processing
+            // TODO: Implement actual image compression (resize to smaller dimensions, reduce quality)
+            return b64;
+        };
+
         // Get project data for shop domain
         const project = await this._getCachedProject(projectId);
         if (!project) {
@@ -216,7 +224,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     }
 
     async generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult> {
-        console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.hypothesis}`);
+        console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.title}`);
         console.log(`[VARIANTS] Using project ID: ${projectId}`);
         
         // Get project data to fetch shop domain (with caching)
@@ -282,7 +290,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             // Pass the HTML content we already have to avoid re-crawling
             this.domAnalyzer.analyzeForHypothesisWithHtml(
                 url, 
-                hypothesis.hypothesis,
+                hypothesis.description,
                 projectId,
                 htmlContent, // Pass the HTML we already have
                 { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }

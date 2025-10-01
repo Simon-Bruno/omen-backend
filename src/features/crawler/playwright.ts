@@ -1,6 +1,7 @@
 // Playwright Web Crawler Service Implementation
 import { chromium, Browser, Page } from 'playwright';
 import type { CrawlerService, CrawlResult, CrawlOptions, CrawlerConfig } from './types';
+import { createSmartScreenshotStrategy } from '@features/variant_generation/smart-screenshot-strategy';
 
 export class PlaywrightCrawlerService implements CrawlerService {
   private browser: Browser | null = null;
@@ -485,47 +486,83 @@ export class PlaywrightCrawlerService implements CrawlerService {
       // Wait a bit for any animations or dynamic content to settle
       await page.waitForTimeout(1000);
       
-      // Simple scrolling: Scroll to target element if it exists
-      if (variant.target_selector) {
+      // Simulate hover states only if the variant code includes hover CSS
+      if (this.hasHoverStates(variant.css_code)) {
+        await this.simulateHoverStates(page, variant.css_code);
+      }
+      
+      // Smart screenshot strategy: Determine the best area to screenshot
+      const html = await page.content();
+      const screenshotStrategy = createSmartScreenshotStrategy(html, 'variant screenshot');
+      const strategies = await screenshotStrategy.determineScreenshotStrategy(variant.target_selector);
+      
+      console.log(`[CRAWLER] Screenshot strategies:`, strategies.map(s => ({ type: s.type, confidence: s.confidence, description: s.description })));
+      
+      // Try each strategy until one works
+      let screenshotTaken = false;
+      for (const strategy of strategies) {
         try {
-          const element = page.locator(variant.target_selector).first();
-          const elementExists = await element.count();
+          console.log(`[CRAWLER] Trying strategy: ${strategy.type} (${strategy.confidence} confidence)`);
           
-          if (elementExists > 0) {
-            console.log(`[CRAWLER] Scrolling to target element: ${variant.target_selector}`);
-            
-            // Simple approach: just scroll to the element
-            await element.scrollIntoViewIfNeeded({ timeout: 5000 });
-            console.log(`[CRAWLER] Successfully scrolled to element`);
-            
-            // Add small padding for better context
-            await page.evaluate(() => {
-              window.scrollBy(0, -100);
-            });
-          } else {
-            console.log(`[CRAWLER] Target element not found: ${variant.target_selector}`);
+          switch (strategy.type) {
+            case 'element':
+              if (strategy.selector) {
+                await this.scrollToElement(page, strategy.selector);
+                screenshotTaken = true;
+              }
+              break;
+              
+            case 'section':
+              if (strategy.selector) {
+                await this.scrollToElement(page, strategy.selector);
+                screenshotTaken = true;
+              }
+              break;
+              
+            case 'viewport':
+              // Already at viewport, no scrolling needed
+              screenshotTaken = true;
+              break;
+              
+            case 'fullpage':
+              // Will be handled by fullPage: true in screenshot options
+              screenshotTaken = true;
+              break;
           }
-        } catch (scrollError) {
-          console.warn(`[CRAWLER] Failed to scroll to element:`, scrollError);
+          
+          if (screenshotTaken) {
+            console.log(`[CRAWLER] Successfully applied strategy: ${strategy.type}`);
+            break;
+          }
+        } catch (error) {
+          console.warn(`[CRAWLER] Strategy ${strategy.type} failed:`, error);
+          continue;
         }
       }
+      
+      if (!screenshotTaken) {
+        console.warn(`[CRAWLER] All screenshot strategies failed, using default viewport`);
+      }
 
-      // Take screenshot
+      // Take screenshot based on the strategy
       let screenshot;
+      const bestStrategy = strategies[0]; // Highest confidence strategy
+      const useFullPage = bestStrategy?.type === 'fullpage';
+      
       try {
         screenshot = await page.screenshot({
           type: 'png',
-          fullPage: false, // Use viewport for better focus
-          path: `variant-${Date.now()}-partial.png`
+          fullPage: useFullPage,
+          path: `variant-${Date.now()}-${useFullPage ? 'full' : 'partial'}.png`
         });
-        console.log(`[CRAWLER] Screenshot taken for variant`);
+        console.log(`[CRAWLER] Screenshot taken for variant (${useFullPage ? 'full page' : 'viewport'}) using ${bestStrategy?.type} strategy`);
       } catch (screenshotError) {
         console.warn(`[CRAWLER] Screenshot failed:`, screenshotError);
         // Fallback to full page screenshot if partial fails
         screenshot = await page.screenshot({
           type: 'png',
           fullPage: true,
-          path: `variant-${Date.now()}-full.png`
+          path: `variant-${Date.now()}-fallback.png`
         });
         console.log(`[CRAWLER] Full page screenshot taken as fallback`);
       }
@@ -574,6 +611,149 @@ export class PlaywrightCrawlerService implements CrawlerService {
         });
       }
     });
+  }
+
+  /**
+   * Check if the CSS code contains hover states
+   */
+  private hasHoverStates(cssCode: string): boolean {
+    if (!cssCode || cssCode.trim().length === 0) {
+      return false;
+    }
+    
+    // Look for hover pseudo-classes in the CSS
+    const hoverPatterns = [
+      /:hover\s*\{/g,
+      /:hover\s*>/g,
+      /:hover\s*\+/g,
+      /:hover\s*~/g,
+      /:hover\s*\[/g
+    ];
+    
+    return hoverPatterns.some(pattern => pattern.test(cssCode));
+  }
+
+  /**
+   * Simulate hover states on specific elements that have hover CSS
+   */
+  private async simulateHoverStates(page: Page, cssCode: string): Promise<void> {
+    try {
+      console.log(`[CRAWLER] Simulating hover states for elements with hover CSS`);
+      
+      // Extract selectors that have hover states from the CSS
+      const hoverSelectors = this.extractHoverSelectors(cssCode);
+      
+      if (hoverSelectors.length === 0) {
+        console.log(`[CRAWLER] No hover selectors found in CSS, skipping hover simulation`);
+        return;
+      }
+      
+      console.log(`[CRAWLER] Found hover selectors:`, hoverSelectors);
+      
+      for (const selector of hoverSelectors) {
+        try {
+          const elements = page.locator(selector);
+          const count = await elements.count();
+          
+          if (count > 0) {
+            console.log(`[CRAWLER] Found ${count} elements matching ${selector}, simulating hover`);
+            
+            // Hover over the first few elements to trigger hover states
+            const elementsToHover = Math.min(count, 3);
+            for (let i = 0; i < elementsToHover; i++) {
+              try {
+                const element = elements.nth(i);
+                await element.hover({ timeout: 2000 });
+                await page.waitForTimeout(200); // Brief pause between hovers
+              } catch (hoverError) {
+                console.warn(`[CRAWLER] Failed to hover element ${i}:`, hoverError);
+              }
+            }
+          } else {
+            console.log(`[CRAWLER] No elements found for hover selector: ${selector}`);
+          }
+        } catch (error) {
+          console.warn(`[CRAWLER] Failed to process hover selector ${selector}:`, error);
+        }
+      }
+      
+      // Wait for any hover animations to complete
+      await page.waitForTimeout(500);
+      console.log(`[CRAWLER] Hover simulation completed`);
+      
+    } catch (error) {
+      console.warn(`[CRAWLER] Failed to simulate hover states:`, error);
+    }
+  }
+
+  /**
+   * Extract selectors that have hover states from CSS code
+   */
+  private extractHoverSelectors(cssCode: string): string[] {
+    const selectors: string[] = [];
+    
+    // Find all CSS rules that contain :hover
+    const hoverRulePattern = /([^{}]+):hover\s*\{[^{}]*\}/g;
+    let match;
+    
+    while ((match = hoverRulePattern.exec(cssCode)) !== null) {
+      const selectorText = match[1].trim();
+      
+      // Clean up the selector (remove :hover, whitespace, etc.)
+      const cleanSelector = selectorText
+        .replace(/:hover\s*$/, '') // Remove :hover at the end
+        .replace(/\s*:hover\s*/, ' ') // Remove :hover in the middle
+        .trim();
+      
+      if (cleanSelector && !selectors.includes(cleanSelector)) {
+        selectors.push(cleanSelector);
+      }
+    }
+    
+    // Also look for nested hover selectors (e.g., .parent:hover .child)
+    const nestedHoverPattern = /([^{}]+):hover\s+([^{}]+)\s*\{[^{}]*\}/g;
+    while ((match = nestedHoverPattern.exec(cssCode)) !== null) {
+      const parentSelector = match[1].trim();
+      
+      if (parentSelector && !selectors.includes(parentSelector)) {
+        selectors.push(parentSelector);
+      }
+    }
+    
+    return selectors;
+  }
+
+  /**
+   * Scroll to a specific element with smart positioning
+   */
+  private async scrollToElement(page: Page, selector: string): Promise<void> {
+    try {
+      const element = page.locator(selector).first();
+      const elementExists = await element.count();
+      
+      if (elementExists > 0) {
+        console.log(`[CRAWLER] Scrolling to element: ${selector}`);
+        
+        // Scroll to the element
+        await element.scrollIntoViewIfNeeded({ timeout: 5000 });
+        
+        // Add padding for better context (scroll up a bit)
+        await page.evaluate(() => {
+          window.scrollBy(0, -100);
+        });
+        
+        // Wait for any animations to settle
+        await page.waitForTimeout(500);
+        
+        console.log(`[CRAWLER] Successfully scrolled to element`);
+      } else {
+        console.log(`[CRAWLER] Element not found: ${selector}`);
+        throw new Error(`Element not found: ${selector}`);
+      }
+    } catch (error) {
+      console.warn(`[CRAWLER] Failed to scroll to element ${selector}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -949,3 +1129,4 @@ export class PlaywrightCrawlerService implements CrawlerService {
 export function createPlaywrightCrawler(config?: CrawlerConfig): PlaywrightCrawlerService {
   return new PlaywrightCrawlerService(config);
 }
+

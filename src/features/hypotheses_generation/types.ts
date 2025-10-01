@@ -1,9 +1,15 @@
 // Types for hypotheses generation
 export interface Hypothesis {
-  hypothesis: string;
-  rationale: string;
-  measurable_tests: string;
-  success_metrics: string;
-  oec: string;
-  accessibility_check: string;
+  title: string;
+  description: string;
+  primary_outcome: string;
+  current_problem: string;
+  why_it_works: Array<{
+    reason: string;
+  }>;
+  baseline_performance: number;
+  predicted_lift_range: {
+    min: number;
+    max: number;
+  };
 }

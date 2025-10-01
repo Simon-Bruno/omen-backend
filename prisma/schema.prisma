@@ -144,23 +144,24 @@ model ExperimentVariant {
 }
 
 model Screenshot {
-  id             String   @id @default(cuid())
-  projectId      String
-  url            String
-  pageType       String
-  variantId      String?  // Optional variant identifier for variant screenshots
-  viewportWidth  Int
-  viewportHeight Int
-  fullPage       Boolean
-  quality        Int
-  data           Bytes
-  htmlContent    String?  @db.Text
-  fileSize       Int
-  createdAt      DateTime @default(now())
-  expiresAt      DateTime
-  accessedAt     DateTime @default(now())
-  accessCount    Int      @default(0)
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  projectId       String
+  url             String
+  pageType        String
+  variantId       String?  // Optional variant identifier for variant screenshots
+  viewportWidth   Int
+  viewportHeight  Int
+  fullPage        Boolean
+  quality         Int
+  data            Bytes
+  htmlContent     String?  @db.Text
+  markdownContent String?  @db.Text
+  fileSize        Int
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  accessedAt      DateTime @default(now())
+  accessCount     Int      @default(0)
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, pageType, variantId, viewportWidth, viewportHeight, fullPage, quality])
   @@index([projectId])

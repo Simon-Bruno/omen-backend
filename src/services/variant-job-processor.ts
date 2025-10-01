@@ -73,14 +73,14 @@ export class VariantJobProcessor {
                 htmlContent 
                     ? this.variantGenerationService.domAnalyzer.analyzeForHypothesisWithHtml(
                         url, 
-                        hypothesis.hypothesis,
+                        hypothesis.description,
                         projectId,
                         htmlContent,
                         { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                     )
                     : this.variantGenerationService.domAnalyzer.analyzeForHypothesis(
                         url, 
-                        hypothesis.hypothesis,
+                        hypothesis.description,
                         projectId,
                         { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                     ),

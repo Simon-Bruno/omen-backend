@@ -2,7 +2,7 @@
 // Brand Analysis Tool
 import { tool } from 'ai';
 import { ProjectDAL } from '@infra/dal/project';
-import type { BrandAnalysisResponse } from '@features/brand_analysis/types';
+import type { BrandIntelligenceData } from '@features/brand_analysis/types';
 import { getBrandAnalysisSchema } from './schemas';
 
 class GetBrandAnalysisExecutor {
@@ -30,7 +30,7 @@ class GetBrandAnalysisExecutor {
       }
 
       // Parse the JSON data and return it directly for the LLM to interpret
-      const brandAnalysis: BrandAnalysisResponse = JSON.parse(brandAnalysisJson);
+      const brandAnalysis: BrandIntelligenceData = JSON.parse(brandAnalysisJson);
       
       return {
         success: true,

@@ -30,6 +30,7 @@ export interface ScreenshotStorageService {
     options: ScreenshotOptions,
     screenshotData: string,
     htmlContent?: string,
+    markdownContent?: string,
     variantId?: string
   ): Promise<string>; // Return screenshot ID
   
@@ -148,6 +149,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
     options: ScreenshotOptions,
     screenshotData: string,
     htmlContent?: string,
+    markdownContent?: string,
     variantId?: string
   ): Promise<string> {
     try {
@@ -177,12 +179,14 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
           quality: options.quality,
           data: buffer,
           htmlContent: htmlContent || null,
+          markdownContent: markdownContent || null,
           fileSize: buffer.length,
           expiresAt
         },
         update: {
           data: buffer,
           htmlContent: htmlContent || undefined,
+          markdownContent: markdownContent || undefined,
           fileSize: buffer.length,
           expiresAt,
           accessedAt: new Date()
@@ -190,7 +194,8 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
       });
 
       const htmlSize = htmlContent ? htmlContent.length : 0;
-      console.log(`[SCREENSHOT_STORAGE] Saved ${pageType} screenshot (${buffer.length} bytes, HTML: ${htmlSize} chars) with ID: ${result.id}`);
+      const markdownSize = markdownContent ? markdownContent.length : 0;
+      console.log(`[SCREENSHOT_STORAGE] Saved ${pageType} screenshot (${buffer.length} bytes, HTML: ${htmlSize} chars, Markdown: ${markdownSize} chars) with ID: ${result.id}`);
       return result.id;
     } catch (error) {
       console.error('[SCREENSHOT_STORAGE] Error saving screenshot:', error);

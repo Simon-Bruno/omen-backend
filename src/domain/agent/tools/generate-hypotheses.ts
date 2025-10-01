@@ -50,7 +50,7 @@ class GenerateHypothesesExecutor {
         
         // Store the first hypothesis in state manager for use by other tools
         if (hypotheses && hypotheses.length > 0) {
-            console.log(`[HYPOTHESES_TOOL] Storing hypothesis: "${hypotheses[0].hypothesis.substring(0, 50)}..."`);
+            console.log(`[HYPOTHESES_TOOL] Storing hypothesis: "${hypotheses[0].title}"`);
             hypothesisStateManager.setCurrentHypothesis(hypotheses[0]);
             console.log(`[HYPOTHESES_TOOL] Hypothesis stored successfully`);
         } else {

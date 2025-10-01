@@ -27,22 +27,30 @@ export function createHypothesesGenerationService(
     return new HypothesesGenerationServiceImpl(crawler, prisma);
 }
 
+const hypothesisSchema = z.object({
+    title: z.string(),
+    description: z.string(), // 1 Sentence clear breakdown of the hypothesis
+    primary_outcome: z.string(), // This is the OEC, later add KPIs
+    current_problem: z.string(), // 1 Sentence clear breakdown of the current problem
+    why_it_works: z.array(z.object({
+        reason: z.string() // Sentence of 5/7 words why this reason works
+    })),
+    baseline_performance: z.number(), // Baseline performance in percentage
+    predicted_lift_range: z.object({
+        min: z.number(), // Decimal
+        max: z.number() // Decimal
+    })
+})
+
 const hypothesesResponseSchema = z.object({
-    hypotheses: z.array(z.object({
-        hypothesis: z.string(),
-        rationale: z.string(),
-        measurable_tests: z.string(),
-        success_metrics: z.string(),
-        oec: z.string(),
-        accessibility_check: z.string()
-    }))
+    hypotheses: z.array(hypothesisSchema)
 });
 
 
 export class HypothesesGenerationServiceImpl implements HypothesesGenerationService {
     private crawlerService: CrawlerService;
     private screenshotStorage: ScreenshotStorageService;
-    
+
     constructor(crawler: CrawlerService, prisma: PrismaClient) {
         this.crawlerService = crawler;
         this.screenshotStorage = createScreenshotStorageService(prisma);
@@ -50,7 +58,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 
     async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
         console.log(`[HYPOTHESES] Starting generation for URL: ${url}, Project: ${projectId}`);
-        
+
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
             if (b64.startsWith('data:')) return b64;
@@ -60,11 +68,11 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         // Check storage first
         const pageType = this.getPageType(url);
         const cachedScreenshot = await this.screenshotStorage.getScreenshot(
-            projectId, 
-            pageType, 
+            projectId,
+            pageType,
             STANDARD_SCREENSHOT_OPTIONS
         );
-        
+
         let screenshot: string;
         if (cachedScreenshot) {
             console.log(`[HYPOTHESES] Using stored screenshot for ${pageType} page`);
@@ -77,16 +85,16 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 screenshot: { fullPage: true, quality: 80 },
                 authentication: { type: 'shopify_password', password: 'reitri', shopDomain: 'omen-mvp.myshopify.com' }
             });
-            
+
             screenshot = crawlResult.screenshot || '';
-            
+
             // Store the new screenshot and HTML
             if (crawlResult.html) {
                 const simplifiedHtml = simplifyHTML(crawlResult.html);
                 const screenshotId = await this.screenshotStorage.saveScreenshot(
-                    projectId, 
+                    projectId,
                     pageType,
-                    url, 
+                    url,
                     STANDARD_SCREENSHOT_OPTIONS,
                     screenshot,
                     simplifiedHtml
@@ -94,16 +102,16 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 console.log(`[HYPOTHESES] Screenshot and HTML saved with ID: ${screenshotId} (${getHtmlInfo(simplifiedHtml)})`);
             } else {
                 const screenshotId = await this.screenshotStorage.saveScreenshot(
-                    projectId, 
+                    projectId,
                     pageType,
-                    url, 
+                    url,
                     STANDARD_SCREENSHOT_OPTIONS,
                     screenshot
                 );
                 console.log(`[HYPOTHESES] Screenshot saved with ID: ${screenshotId}`);
             }
         }
-        
+
         console.log(`[HYPOTHESES] Screenshot ready, length: ${screenshot.length}`);
 
         console.log(`[HYPOTHESES] Fetching brand analysis for project: ${projectId}`);
@@ -179,12 +187,13 @@ ${conflictSection}
 2. **Output:**
    For each hypothesis, return a structured object with:
 
-   * **Hypothesis (plain language, evidence-based):** A short statement identifying the UI issue and suggesting a testable change.
-   * **Rationale (why it matters):** A clear explanation of the UX or CRO principle being applied (e.g., visual hierarchy, CTA prominence, contrast, spacing, imagery clarity).
-   * **Measurable Test:** Define what to test (e.g., “Move primary CTA higher above the fold”).
-   * **Success Metrics (KPIs):** At least one quantifiable outcome, such as: CTR on CTA, Add-to-Cart rate, Conversion rate, Scroll depth, Engagement with product images.
-   * **OEC (Overall Evaluation Criterion):** The primary metric that determines success (usually conversion rate or add-to-cart).
-   * **Accessibility Check:** Flag issues like low color contrast, unreadable text, small tap targets, missing alt text, or hidden CTAs.
+   * **title:** A concise, descriptive title for the hypothesis (e.g., "Improve CTA Button Visibility")
+   * **description:** One clear sentence explaining the hypothesis and what change to test
+   * **primary_outcome:** The main metric that determines success (e.g., "Increase conversion rate", "Improve add-to-cart rate")
+   * **current_problem:** One sentence describing the current UI issue or opportunity
+   * **why_it_works:** Array of 2-3 reasons (5-7 words each) explaining why this change should work
+   * **baseline_performance:** Current performance as a percentage (estimate based on typical e-commerce metrics)
+   * **predicted_lift_range:** Expected improvement range with min and max values as decimals (e.g., 0.05 to 0.15 for 5-15% lift)
 
 3. **Constraints:**
 
@@ -194,43 +203,45 @@ ${conflictSection}
 
      * If no CTA is visible, suggest adding one.
      * If multiple CTAs compete, suggest hierarchy improvements.
-     * If screenshot quality is too poor to assess, return a fallback message: *“Unable to reliably analyze this screenshot.”*
+     * If screenshot quality is too poor to assess, return a fallback message: *"Unable to reliably analyze this screenshot."*
 
 4. **Style Guidelines:**
 
    * Use plain, non-jargon language understandable to merchants.
    * Be concise but specific—merchants should see exactly what they could test.
-   * Avoid over-promising; these are hypotheses, not guarantees.`;
+   * Avoid over-promising; these are hypotheses, not guarantees.
+   * For baseline_performance, use realistic e-commerce benchmarks (e.g., 2-5% for conversion rate)
+   * For predicted_lift_range, be conservative but optimistic (typically 5-25% improvement)`;
     }
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
         const urlLower = url.toLowerCase();
-        
+
         // Check for product pages first
         if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
             return 'pdp';
         }
-        
+
         // Check for about pages
         if (urlLower.includes('/about')) {
             return 'about';
         }
-        
+
         // Check for home page - this should be the most common case
         // Home page is typically just the domain or domain with trailing slash
         const urlObj = new URL(url);
         const pathname = urlObj.pathname;
-        
+
         // If no path or just a trailing slash, it's the home page
         if (!pathname || pathname === '/' || pathname === '') {
             return 'home';
         }
-        
+
         // If path is just common home page indicators
         if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
             return 'home';
         }
-        
+
         return 'other';
     }
 }
