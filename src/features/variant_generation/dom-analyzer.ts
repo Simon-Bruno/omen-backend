@@ -30,11 +30,15 @@ function getSelectorMatchInfo(selector: string, html: string): { found: boolean;
     const $ = cheerio.load(html);
     let elements = $(selector);
     
-    // If selector targets a[href="/collections/all"], filter by text content
+    // If selector targets a[href="/collections/all"], filter by text content to be more precise
     if (selector === 'a[href="/collections/all"]') {
       elements = elements.filter((_, el) => {
         const text = $(el).text().trim().toLowerCase();
-        return text.includes('shop all') || text.includes('shopall');
+        // More precise matching - must contain "shop all" as a phrase
+        return text === 'shop all' || 
+               text === 'shop all →' || 
+               text === 'shop all>' ||
+               text.includes('shop all') && text.length < 20; // Short text containing "shop all"
       });
     }
     
@@ -938,11 +942,15 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     const $ = cheerio.load(html);
     let element = $(hardcodedSelector);
     
-    // If selector targets a[href="/collections/all"], filter by text content
+    // If selector targets a[href="/collections/all"], filter by text content to be more precise
     if (hardcodedSelector === 'a[href="/collections/all"]') {
       element = element.filter((_, el) => {
         const text = $(el).text().trim().toLowerCase();
-        return text.includes('shop all') || text.includes('shopall');
+        // More precise matching - must contain "shop all" as a phrase
+        return text === 'shop all' || 
+               text === 'shop all →' || 
+               text === 'shop all>' ||
+               text.includes('shop all') && text.length < 20; // Short text containing "shop all"
       });
     }
     
