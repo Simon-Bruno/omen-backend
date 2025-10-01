@@ -35,12 +35,12 @@ export function createHypothesesGenerationService(
 const hypothesisSchema = z.object({
     title: z.string(),
     description: z.string(), // 1 Sentence clear breakdown of the hypothesis
-    primary_outcome: z.string(), // This is the OEC, later add KPIs
+    primary_outcome: z.string().max(3, "Primary outcome must be max 3 words"), // This is the OEC, max 3 words
     current_problem: z.string(), // 1 Sentence clear breakdown of the current problem
     why_it_works: z.array(z.object({
         reason: z.string() // Sentence of 5/7 words why this reason works
     })),
-    baseline_performance: z.number(), // Baseline performance in percentage
+    baseline_performance: z.number(), // Baseline performance in percentage (realistic approximation)
     predicted_lift_range: z.object({
         min: z.number(), // Decimal
         max: z.number() // Decimal
@@ -218,10 +218,10 @@ ${conflictSection}${hardcodedElementSection}
 
    * **title:** A concise, descriptive title for the hypothesis (e.g., "Improve CTA Button Visibility")
    * **description:** One clear sentence explaining the hypothesis and what change to test
-   * **primary_outcome:** The main metric that determines success (e.g., "Increase conversion rate", "Improve add-to-cart rate")
+   * **primary_outcome:** The main metric that determines success - MUST be exactly 3 words or less (e.g., "Click-through rate", "Conversion rate", "Add-to-cart rate")
    * **current_problem:** One sentence describing the current UI issue or opportunity
    * **why_it_works:** Array of 2-3 reasons (5-7 words each) explaining why this change should work
-   * **baseline_performance:** Current performance as a percentage (estimate based on typical e-commerce metrics)
+   * **baseline_performance:** Current performance as a percentage - use realistic e-commerce benchmarks based on the specific metric (e.g., 2-5% for conversion rate, 15-25% for click-through rate, 8-15% for add-to-cart rate)
    * **predicted_lift_range:** Expected improvement range with min and max values as decimals (e.g., 0.05 to 0.15 for 5-15% lift)
 
 3. **Constraints:**
@@ -239,8 +239,14 @@ ${conflictSection}${hardcodedElementSection}
    * Use plain, non-jargon language understandable to merchants.
    * Be concise but specific—merchants should see exactly what they could test.
    * Avoid over-promising; these are hypotheses, not guarantees.
-   * For baseline_performance, use realistic e-commerce benchmarks (e.g., 2-5% for conversion rate)
-   * For predicted_lift_range, be conservative but optimistic (typically 5-25% improvement)`;
+   * For baseline_performance, use realistic e-commerce benchmarks based on the specific metric:
+     - Conversion rate: 2-5% (typical e-commerce range)
+     - Click-through rate: 15-25% (for buttons/links)
+     - Add-to-cart rate: 8-15% (for product pages)
+     - Email signup rate: 1-3% (for newsletter forms)
+     - Bounce rate: 40-60% (higher is worse)
+   * For predicted_lift_range, be conservative but optimistic (typically 5-25% improvement)
+   * Primary outcome MUST be exactly 3 words or less - use concise metric names like "Click-through rate", "Conversion rate", "Add-to-cart rate"`;
     }
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {

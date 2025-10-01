@@ -4,7 +4,7 @@ import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
 import { ProjectDAL } from '@infra/dal';
-import { buildVariantGenerationPrompt } from './prompts';
+import { buildVariantGenerationPrompt, buildButtonVariantGenerationPrompt } from './prompts';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
@@ -107,7 +107,9 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     }
 
     buildVariantGenerationPrompt(hypothesis: Hypothesis): string {
-        return buildVariantGenerationPrompt(hypothesis);
+        return this.HARDCODE_ELEMENT_FOCUS 
+            ? buildButtonVariantGenerationPrompt(hypothesis)
+            : buildVariantGenerationPrompt(hypothesis);
     }
 
     get basicVariantsResponseSchema() {
@@ -332,6 +334,14 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
         console.log(`[VARIANTS] Generating AI response with Google Gemini`);
         const aiConfig = getAIConfig();
+        
+        // Use button-specific prompt when using hardcoded selector (targeting button/link)
+        const prompt = this.HARDCODE_ELEMENT_FOCUS 
+            ? buildButtonVariantGenerationPrompt(hypothesis)
+            : buildVariantGenerationPrompt(hypothesis);
+            
+        console.log(`[VARIANTS] Using ${this.HARDCODE_ELEMENT_FOCUS ? 'button-specific' : 'general'} prompt`);
+        
         const object = await generateObject({
             model: google(aiConfig.model, {
                 apiKey: aiConfig.apiKey,
@@ -341,7 +351,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                 {
                     role: 'user',
                     content: [
-                        { type: "text", text: buildVariantGenerationPrompt(hypothesis) },
+                        { type: "text", text: prompt },
                         { type: "text", text: brandAnalysis },
                         { type: "image", image: toDataUrl(screenshot) }
                     ]
