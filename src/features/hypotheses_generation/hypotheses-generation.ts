@@ -14,7 +14,7 @@ import { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
 import { toReservedPayload } from '@features/conflict_guard';
-import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
@@ -35,7 +35,7 @@ export function createHypothesesGenerationService(
 const hypothesisSchema = z.object({
     title: z.string(),
     description: z.string(), // 1 Sentence clear breakdown of the hypothesis
-    primary_outcome: z.string().max(3, "Primary outcome must be max 3 words"), // This is the OEC, max 3 words
+    primary_outcome: z.string().max(20, "Primary outcome must be concise"), // This is the OEC, keep it concise
     current_problem: z.string(), // 1 Sentence clear breakdown of the current problem
     why_it_works: z.array(z.object({
         reason: z.string() // Sentence of 5/7 words why this reason works
@@ -88,7 +88,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         const cachedScreenshot = await this.screenshotStorage.getScreenshot(
             projectId,
             pageType,
-            STANDARD_SCREENSHOT_OPTIONS
+            HIGH_QUALITY_SCREENSHOT_OPTIONS
         );
 
         let screenshot: string;
@@ -113,7 +113,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                     projectId,
                     pageType,
                     url,
-                    STANDARD_SCREENSHOT_OPTIONS,
+                    HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot,
                     simplifiedHtml
                 );
@@ -123,7 +123,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                     projectId,
                     pageType,
                     url,
-                    STANDARD_SCREENSHOT_OPTIONS,
+                    HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot
                 );
                 console.log(`[HYPOTHESES] Screenshot saved with ID: ${screenshotId}`);
@@ -218,7 +218,7 @@ ${conflictSection}${hardcodedElementSection}
 
    * **title:** A concise, descriptive title for the hypothesis (e.g., "Improve CTA Button Visibility")
    * **description:** One clear sentence explaining the hypothesis and what change to test
-   * **primary_outcome:** The main metric that determines success - MUST be exactly 3 words or less (e.g., "Click-through rate", "Conversion rate", "Add-to-cart rate")
+   * **primary_outcome:** The main metric that determines success - keep it concise (e.g., "Click-through rate", "Conversion rate", "Add-to-cart rate")
    * **current_problem:** One sentence describing the current UI issue or opportunity
    * **why_it_works:** Array of 2-3 reasons (5-7 words each) explaining why this change should work
    * **baseline_performance:** Current performance as a percentage - use realistic e-commerce benchmarks based on the specific metric (e.g., 2-5% for conversion rate, 15-25% for click-through rate, 8-15% for add-to-cart rate)
@@ -246,7 +246,7 @@ ${conflictSection}${hardcodedElementSection}
      - Email signup rate: 1-3% (for newsletter forms)
      - Bounce rate: 40-60% (higher is worse)
    * For predicted_lift_range, be conservative but optimistic (typically 5-25% improvement)
-   * Primary outcome MUST be exactly 3 words or less - use concise metric names like "Click-through rate", "Conversion rate", "Add-to-cart rate"
+   * Primary outcome should be concise - use clear metric names like "Click-through rate", "Conversion rate", "Add-to-cart rate"
 
 **IMPORTANT JSON FORMAT:**
 Return your response as a JSON object with a "hypotheses" array containing exactly 1 hypothesis object. The structure should be:
