@@ -28,13 +28,22 @@ function isValidCSSSelector(selector: string): boolean {
 function getSelectorMatchInfo(selector: string, html: string): { found: boolean; count: number; elements: string[] } {
   try {
     const $ = cheerio.load(html);
-    const elements = $(selector);
+    let elements = $(selector);
+    
+    // If selector targets a[href="/collections/all"], filter by text content
+    if (selector === 'a[href="/collections/all"]') {
+      elements = elements.filter((_, el) => {
+        const text = $(el).text().trim().toLowerCase();
+        return text.includes('shop all') || text.includes('shopall');
+      });
+    }
     
     const elementInfo = elements.map((_, el) => {
       const tagName = el.type === 'tag' ? el.name : 'unknown';
       const classes = $(el).attr('class') || '';
       const id = $(el).attr('id') || '';
-      return `${tagName}${id ? `#${id}` : ''}${classes ? `.${classes.split(' ').join('.')}` : ''}`;
+      const text = $(el).text().trim();
+      return `${tagName}${id ? `#${id}` : ''}${classes ? `.${classes.split(' ').join('.')}` : ''} "${text}"`;
     }).get();
     
     return {
@@ -927,22 +936,32 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     
     // Create injection point from hardcoded selector
     const $ = cheerio.load(html);
-    const element = $(hardcodedSelector).first();
+    let element = $(hardcodedSelector);
     
-    if (element.length === 0) {
+    // If selector targets a[href="/collections/all"], filter by text content
+    if (hardcodedSelector === 'a[href="/collections/all"]') {
+      element = element.filter((_, el) => {
+        const text = $(el).text().trim().toLowerCase();
+        return text.includes('shop all') || text.includes('shopall');
+      });
+    }
+    
+    const targetElement = element.first();
+    
+    if (targetElement.length === 0) {
       console.warn(`[DOM_ANALYZER] Element not found with hardcoded selector: ${hardcodedSelector}`);
       return [];
     }
     
-    const elementText = element.text()?.trim() || '';
-    const elementNode = element[0];
+    const elementText = targetElement.text()?.trim() || '';
+    const elementNode = targetElement[0];
     const elementType = this.determineElementType(
       elementNode && elementNode.type === 'tag' ? elementNode.name : 'div', 
-      element.attr() || {}
+      targetElement.attr() || {}
     );
     
     // Generate alternative selectors for fallback
-    const alternativeSelectors = generateFallbackSelectors(element, $);
+    const alternativeSelectors = generateFallbackSelectors(targetElement, $);
     
     // Get bounding box (simplified - just use 0,0,100,50 as placeholder)
     const boundingBox = {

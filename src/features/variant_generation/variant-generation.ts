@@ -51,9 +51,9 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     // Hardcoded element focus configuration - matches hypothesis generation
     private readonly HARDCODE_ELEMENT_FOCUS = true;
     private readonly TARGET_ELEMENT = {
-        selector: 'a[href="/collections/all"].size-style.link',
-        description: 'Shop all → button/link',
-        html: '<a href="/collections/all" class="size-style link link--ARGpDamJzVW9Gd2JMa__button_nazDaa" style="--size-style-width: fit-content;--size-style-height: ;--size-style-width-mobile: fit-content; --size-style-width-mobile-min: fit-content;">Shop all →</a>'
+        selector: 'a[href="/collections/all"]',
+        description: 'Shop all button/link',
+        html: '<a href="/collections/all">Shop all</a>'
     };
     
     constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService, prisma: PrismaClient) {
