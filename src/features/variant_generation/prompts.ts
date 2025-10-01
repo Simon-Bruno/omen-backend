@@ -1,7 +1,7 @@
 // Prompts for variant generation service
 import { Hypothesis } from '@features/hypotheses_generation/types';
 
-export function buildButtonVariantGenerationPrompt(hypothesis: Hypothesis): string {
+export function buildButtonVariantGenerationPrompt(hypothesis: Hypothesis, variantIndex?: number): string {
     return `
 You are a CRO-focused UX/UI design assistant specializing in button optimization. Your task is to take a structured hypothesis and generate 1 practical, testable button variant for A/B testing.
 
@@ -16,6 +16,11 @@ TARGET ELEMENT: Button/Link (specifically targeting "Shop all" button)
 
 YOUR TASK:
 Generate 1 button variant that focuses on improving conversion through better button design, states, and UX.
+
+VARIANT FOCUS (based on variant index):
+${variantIndex === 0 ? 'Variant 1: Focus on COLOR and CONTRAST - Use bold, high-contrast colors to make the button stand out' : 
+  variantIndex === 1 ? 'Variant 2: Focus on SIZE and TYPOGRAPHY - Use larger sizes and bold typography to increase prominence' : 
+  'Variant 3: Focus on SHAPE and STYLE - Use unique shapes, outlines, or visual styles to differentiate the button'}
 
 BUTTON DESIGN PRINCIPLES TO CONSIDER:
 - Visual hierarchy and prominence
@@ -73,7 +78,15 @@ CONSTRAINTS:
 VARIANT NAMING RULES:
 - Use a UNIQUE, descriptive name that clearly differentiates this variant
 - Include specific visual characteristics (color, style, size, shape)
+- Each variant must have a COMPLETELY DIFFERENT name - no similar words
 - Examples: "Solid Turquoise Button", "Outlined White Button", "Large Bold CTA", "Rounded Green Button"
+- AVOID: "Primary Action Button", "High-Contrast Button", "CTA Button" - these are too generic
+- REQUIRE: Specific colors, sizes, styles, or shapes in every name
+
+SPECIFIC NAMING FOR THIS VARIANT:
+${variantIndex === 0 ? 'Variant 1 (COLOR focus): Include specific color names and contrast terms (e.g., "Solid Turquoise Button", "Dark Navy CTA", "Bright Orange Button")' : 
+  variantIndex === 1 ? 'Variant 2 (SIZE focus): Include specific size and typography terms (e.g., "Large Bold CTA", "Compact Uppercase Button", "Jumbo Text Button")' : 
+  'Variant 3 (SHAPE focus): Include specific shape and style terms (e.g., "Rounded Green Button", "Outlined White CTA", "Pill-Shaped Button")'}
 
 IMPORTANT: Return your response as a JSON object with a "variants" array containing exactly 1 variant object. The variant must have the fields: variant_label, description, rationale, accessibility_consideration, and implementation_notes.
 
@@ -101,18 +114,37 @@ Step 1 - Translate Hypothesis to DOM Target:
 - If no reliable target can be inferred, output a fallback: "Unable to map hypothesis to a specific DOM object"
 
 Step 2 - Generate Variants:
-For the identified element(s), create 3 variant ideas with:
-- Variant Label - UNIQUE, descriptive name that clearly differentiates this variant (e.g., "Solid Turquoise Button", "Outlined White Button", "Large Bold CTA")
+For the identified element(s), create 3 variant ideas with COMPLETELY DIFFERENT approaches:
+
+Variant 1: Focus on COLOR and CONTRAST
+- Variant Label - Include specific color name and style (e.g., "Solid Turquoise Button", "Dark Navy CTA")
+- Description - what visually or structurally changes
+- Rationale - why this might improve performance (CRO/UX principle)
+- Accessibility Consideration - check for WCAG compliance (contrast, tap size, ARIA roles, etc.)
+- Implementation Notes - specific technical details for implementation
+
+Variant 2: Focus on SIZE and TYPOGRAPHY
+- Variant Label - Include specific size and text style (e.g., "Large Bold CTA", "Compact Uppercase Button")
+- Description - what visually or structurally changes
+- Rationale - why this might improve performance (CRO/UX principle)
+- Accessibility Consideration - check for WCAG compliance (contrast, tap size, ARIA roles, etc.)
+- Implementation Notes - specific technical details for implementation
+
+Variant 3: Focus on SHAPE and STYLE
+- Variant Label - Include specific shape and visual style (e.g., "Rounded Green Button", "Outlined White CTA")
 - Description - what visually or structurally changes
 - Rationale - why this might improve performance (CRO/UX principle)
 - Accessibility Consideration - check for WCAG compliance (contrast, tap size, ARIA roles, etc.)
 - Implementation Notes - specific technical details for implementation
 
 VARIANT NAMING RULES:
-- Each variant must have a UNIQUE, descriptive name
-- Include specific visual characteristics (color, style, size, shape)
-- Avoid generic terms like "Primary Action Button" for multiple variants
+- Each variant must have a COMPLETELY UNIQUE, descriptive name
+- Include specific visual characteristics (color, style, size, shape) in EVERY name
+- Avoid generic terms like "Primary Action Button", "High-Contrast Button", "CTA Button"
+- Each name must be visually distinct and memorable
 - Examples: "Solid Turquoise Button", "Outlined White Button", "Large Bold CTA", "Rounded Green Button"
+- REQUIRE: Different colors, sizes, styles, or shapes for each variant
+- NO REPEATING: If one variant is "Solid Turquoise", the next can't be "Solid Blue" - use completely different approaches
 
 CONSTRAINTS:
 - Keep all suggestions UI-focused (no backend, pricing, or copywriting strategy beyond short CTA tweaks)
@@ -120,6 +152,13 @@ CONSTRAINTS:
 - Stay general enough to apply to ~80% of Shopify stores
 - Build upon the existing hypothesis rationale and success metrics
 - Consider the accessibility issues already identified in the hypothesis
+
+CRITICAL NAMING REQUIREMENT:
+- Variant 1: Must focus on COLOR (e.g., "Solid Turquoise Button", "Dark Navy CTA")
+- Variant 2: Must focus on SIZE/TYPOGRAPHY (e.g., "Large Bold CTA", "Compact Uppercase Button")  
+- Variant 3: Must focus on SHAPE/STYLE (e.g., "Rounded Green Button", "Outlined White CTA")
+- NO TWO VARIANTS can have similar names or approaches
+- Each name must be visually distinct and memorable
 
 IMPORTANT: Return your response as a JSON object with a "variants" array containing exactly 3 variant objects. Each variant must have the fields: variant_label, description, rationale, accessibility_consideration, and implementation_notes. 
 

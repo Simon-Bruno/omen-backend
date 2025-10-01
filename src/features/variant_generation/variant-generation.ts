@@ -106,9 +106,9 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         return getAIConfig();
     }
 
-    buildVariantGenerationPrompt(hypothesis: Hypothesis): string {
+    buildVariantGenerationPrompt(hypothesis: Hypothesis, variantIndex?: number): string {
         return this.HARDCODE_ELEMENT_FOCUS 
-            ? buildButtonVariantGenerationPrompt(hypothesis)
+            ? buildButtonVariantGenerationPrompt(hypothesis, variantIndex)
             : buildVariantGenerationPrompt(hypothesis);
     }
 

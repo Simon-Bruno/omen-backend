@@ -99,6 +99,9 @@ export class VariantJobProcessor {
             const { generateObject } = await import('ai');
             const { google } = await import('@ai-sdk/google');
             
+            // Get job index to determine which variant to generate
+            const jobIndex = await this.getJobIndex(jobId, projectId);
+            
             const response = await generateObject({
                 model: google(aiConfig.model, {
                     apiKey: aiConfig.apiKey,
@@ -108,7 +111,7 @@ export class VariantJobProcessor {
                     {
                         role: 'user',
                         content: [
-                            { type: "text", text: this.variantGenerationService.buildVariantGenerationPrompt(hypothesis) },
+                            { type: "text", text: this.variantGenerationService.buildVariantGenerationPrompt(hypothesis, jobIndex) },
                             { type: "text", text: brandAnalysis },
                             { type: "image", image: `data:image/png;base64,${screenshot}` }
                         ]
@@ -116,12 +119,10 @@ export class VariantJobProcessor {
                 ]
             });
 
-            // Pick a random variant from the 3 generated (or use a specific one based on job index)
-            const jobIndex = await this.getJobIndex(jobId, projectId);
-            const variants = response.object.variants;
-            const variant = variants[jobIndex % variants.length];
+            // Generate a single variant based on the job index
+            const variant = response.object.variants[0]; // Since we're generating 1 variant per job now
             
-            console.log(`[VARIANT_JOB] Selected variant ${variant.variant_label} for job ${jobId}`);
+            console.log(`[VARIANT_JOB] Generated variant ${variant.variant_label} for job ${jobId} (index: ${jobIndex})`);
 
             // Update progress
             await VariantJobDAL.updateJob(jobId, {

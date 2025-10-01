@@ -132,11 +132,28 @@ export class AgentServiceImpl implements AgentService {
 
     if (llmOptions.tools) {
       streamConfig.tools = llmOptions.tools;
+      console.log(`[AGENT] ===== TOOLS CONFIGURATION =====`);
+      console.log(`[AGENT] Available tools:`, Object.keys(llmOptions.tools));
+      console.log(`[AGENT] ===== END TOOLS CONFIGURATION =====`);
     }
 
     console.log(`[AGENT] Starting stream with ${aiMessages.length} messages and ${llmOptions.tools ? Object.keys(llmOptions.tools).length : 0} tools`);
     console.log(`[AGENT] System prompt length: ${systemPrompt ? systemPrompt.length : 0} characters`);
     console.log(`[AGENT] AI Config: model=${this.aiConfig.model}, temperature=${this.aiConfig.temperature}, maxTokens=${this.aiConfig.maxTokens}`);
+    
+    // Log the full system prompt for debugging
+    if (systemPrompt) {
+      console.log(`[AGENT] ===== FULL SYSTEM PROMPT =====`);
+      console.log(systemPrompt);
+      console.log(`[AGENT] ===== END SYSTEM PROMPT =====`);
+    }
+    
+    // Log all messages being sent to AI
+    console.log(`[AGENT] ===== ALL MESSAGES TO AI =====`);
+    aiMessages.forEach((msg, index) => {
+      console.log(`[AGENT] Message ${index + 1} (${msg.role}):`, JSON.stringify(msg, null, 2));
+    });
+    console.log(`[AGENT] ===== END MESSAGES =====`);
 
     try {
       const result = streamText(streamConfig);
