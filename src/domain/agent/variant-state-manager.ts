@@ -6,7 +6,6 @@ class VariantStateManager {
   private currentVariants: Variant[] | null = null;
   private variantHistory: Variant[][] = [];
   private currentJobIds: string[] | null = null;
-  private currentExperimentId: string | null = null;
 
   /**
    * Set the current variants (from generate_variants tool)
@@ -36,15 +35,6 @@ class VariantStateManager {
     console.log(`[STATE_MANAGER] ==========================`);
   }
 
-  /**
-   * Set the current experiment ID (from variant job processor)
-   */
-  setCurrentExperimentId(experimentId: string): void {
-    console.log(`[STATE_MANAGER] ===== SETTING EXPERIMENT ID =====`);
-    console.log(`[STATE_MANAGER] Experiment ID:`, experimentId);
-    this.currentExperimentId = experimentId;
-    console.log(`[STATE_MANAGER] ================================`);
-  }
 
   /**
    * Get the current job IDs
@@ -56,15 +46,6 @@ class VariantStateManager {
     return this.currentJobIds;
   }
 
-  /**
-   * Get the current experiment ID
-   */
-  getCurrentExperimentId(): string | null {
-    console.log(`[STATE_MANAGER] ===== GETTING EXPERIMENT ID =====`);
-    console.log(`[STATE_MANAGER] Current experiment ID:`, this.currentExperimentId);
-    console.log(`[STATE_MANAGER] ================================`);
-    return this.currentExperimentId;
-  }
 
   /**
    * Get the current variants (for create_experiment tool)
@@ -104,13 +85,6 @@ class VariantStateManager {
     this.currentJobIds = null;
   }
 
-  /**
-   * Clear the current experiment ID
-   */
-  clearCurrentExperimentId(): void {
-    console.log(`[STATE_MANAGER] Clearing current experiment ID`);
-    this.currentExperimentId = null;
-  }
 
   /**
    * Clear all variant history
@@ -120,7 +94,6 @@ class VariantStateManager {
     this.currentVariants = null;
     this.variantHistory = [];
     this.currentJobIds = null;
-    this.currentExperimentId = null;
   }
 
   /**

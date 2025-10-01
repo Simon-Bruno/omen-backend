@@ -188,9 +188,6 @@ export class VariantJobProcessor {
         try {
             await Promise.all(promises);
             console.log(`[VARIANT_JOB] Completed processing all ${jobIds.length} variant jobs`);
-            
-            // Create a draft experiment after all jobs are completed
-            await this.createDraftExperiment(jobIds, projectId, hypothesis);
         } catch (error) {
             console.error(`[VARIANT_JOB] Some variant jobs failed:`, error);
         }
@@ -229,66 +226,6 @@ export class VariantJobProcessor {
         }
     }
 
-    private async createDraftExperiment(jobIds: string[], projectId: string, hypothesis: any): Promise<void> {
-        console.log(`[VARIANT_JOB] Creating draft experiment for ${jobIds.length} completed jobs`);
-        
-        try {
-            // Get all completed jobs and their variants
-            const completedJobs = await this.prisma.variantJob.findMany({
-                where: {
-                    id: { in: jobIds },
-                    status: 'COMPLETED',
-                    result: { not: null }
-                }
-            });
-
-            if (completedJobs.length === 0) {
-                console.log(`[VARIANT_JOB] No completed jobs found, skipping experiment creation`);
-                return;
-            }
-
-            // Extract all variants from completed jobs
-            const allVariants = [];
-            for (const job of completedJobs) {
-                if (job.result?.variantsSchema?.variants) {
-                    allVariants.push(...job.result.variantsSchema.variants);
-                }
-            }
-
-            if (allVariants.length === 0) {
-                console.log(`[VARIANT_JOB] No variants found in completed jobs, skipping experiment creation`);
-                return;
-            }
-
-            // Create a draft experiment
-            const experiment = await this.prisma.experiment.create({
-                data: {
-                    projectId,
-                    name: `Draft Experiment - ${hypothesis.title || 'Generated Variants'}`,
-                    status: 'DRAFT',
-                    oec: hypothesis.description || 'Generated from variant jobs',
-                    minDays: 7,
-                    minSessionsPerVariant: 100,
-                    hypothesis: {
-                        create: {
-                            title: hypothesis.title || 'Generated Hypothesis',
-                            description: hypothesis.description || 'Generated from variant jobs',
-                            hypothesis: hypothesis.hypothesis || hypothesis.description || 'Generated hypothesis'
-                        }
-                    }
-                }
-            });
-
-            console.log(`[VARIANT_JOB] Created draft experiment: ${experiment.id}`);
-
-            // Store the experiment ID in the state manager for easy access
-            const { variantStateManager } = await import('@domain/agent/variant-state-manager');
-            variantStateManager.setCurrentExperimentId(experiment.id);
-
-        } catch (error) {
-            console.error(`[VARIANT_JOB] Failed to create draft experiment:`, error);
-        }
-    }
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
         const urlLower = url.toLowerCase();
