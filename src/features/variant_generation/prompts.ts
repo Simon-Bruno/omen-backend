@@ -70,6 +70,11 @@ CONSTRAINTS:
 - Consider the brand analysis context
 - Make variants implementable with CSS/HTML
 
+VARIANT NAMING RULES:
+- Use a UNIQUE, descriptive name that clearly differentiates this variant
+- Include specific visual characteristics (color, style, size, shape)
+- Examples: "Solid Turquoise Button", "Outlined White Button", "Large Bold CTA", "Rounded Green Button"
+
 IMPORTANT: Return your response as a JSON object with a "variants" array containing exactly 1 variant object. The variant must have the fields: variant_label, description, rationale, accessibility_consideration, and implementation_notes.
 
 Note: The system will automatically generate the actual CSS and HTML code for this variant, so focus on clear, specific descriptions that can be easily translated into code.`;
@@ -97,11 +102,17 @@ Step 1 - Translate Hypothesis to DOM Target:
 
 Step 2 - Generate Variants:
 For the identified element(s), create 3 variant ideas with:
-- Variant Label - short name
+- Variant Label - UNIQUE, descriptive name that clearly differentiates this variant (e.g., "Solid Turquoise Button", "Outlined White Button", "Large Bold CTA")
 - Description - what visually or structurally changes
 - Rationale - why this might improve performance (CRO/UX principle)
 - Accessibility Consideration - check for WCAG compliance (contrast, tap size, ARIA roles, etc.)
 - Implementation Notes - specific technical details for implementation
+
+VARIANT NAMING RULES:
+- Each variant must have a UNIQUE, descriptive name
+- Include specific visual characteristics (color, style, size, shape)
+- Avoid generic terms like "Primary Action Button" for multiple variants
+- Examples: "Solid Turquoise Button", "Outlined White Button", "Large Bold CTA", "Rounded Green Button"
 
 CONSTRAINTS:
 - Keep all suggestions UI-focused (no backend, pricing, or copywriting strategy beyond short CTA tweaks)

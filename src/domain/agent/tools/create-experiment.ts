@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ExperimentDAL } from '@infra/dal';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
 import { variantStateManager } from '../variant-state-manager';
+import { experimentStateManager } from '../experiment-state-manager';
 import { prisma } from '@infra/prisma';
 import { createExperimentPublisherService } from '@services/experiment-publisher';
 import { createCloudflarePublisher } from '@infra/external/cloudflare';
@@ -210,7 +211,7 @@ class CreateExperimentExecutor {
       const experiment = await ExperimentDAL.createExperiment({
         projectId,
         name: experimentName,
-        oec: hypothesis.oec || 'Improve conversion rate', // Default OEC
+        oec: hypothesis.primary_outcome || 'Improve conversion rate', // Use primary_outcome as OEC
         minDays: 7, // Default minimum days
         minSessionsPerVariant: 1000 // Default minimum sessions
       });
@@ -220,8 +221,8 @@ class CreateExperimentExecutor {
         data: {
           experimentId: experiment.id,
           hypothesis: hypothesis.description,
-          rationale: hypothesis.rationale,
-          primaryKpi: hypothesis.success_metrics || 'conversion_rate'
+          rationale: hypothesis.current_problem, // Use current_problem as rationale
+          primaryKpi: hypothesis.primary_outcome || 'conversion_rate'
         }
       });
 
@@ -267,8 +268,11 @@ class CreateExperimentExecutor {
 
       console.log(`[EXPERIMENT_TOOL] Experiment created successfully: ${experiment.id}`);
 
-      // Publish to Cloudflare
-      console.log(`[EXPERIMENT_TOOL] Publishing experiment to Cloudflare...`);
+      // Store experiment in state manager for future reference
+      experimentStateManager.setCurrentExperiment(experiment);
+
+      // Automatically publish the experiment after creation
+      console.log(`[EXPERIMENT_TOOL] Auto-publishing experiment: ${experiment.id}`);
       try {
         const config = getServiceConfig();
         const cloudflarePublisher = createCloudflarePublisher(config.cloudflare);
@@ -277,26 +281,26 @@ class CreateExperimentExecutor {
         const publishResult = await experimentPublisher.publishExperiment(experiment.id);
         
         if (publishResult.success) {
-          console.log(`[EXPERIMENT_TOOL] Experiment published to Cloudflare successfully`);
+          console.log(`[EXPERIMENT_TOOL] Experiment published successfully`);
           return {
             experimentId: experiment.id,
             status: 'RUNNING',
-            message: `Experiment "${experimentName}" has been created, saved to the database, and published to Cloudflare. It's now live and the SDK can load the variants.`
+            message: `Experiment "${experimentName}" has been created and published to Cloudflare! It's now live and the SDK can load the variants for testing.`
           };
         } else {
-          console.error(`[EXPERIMENT_TOOL] Failed to publish to Cloudflare:`, publishResult.error);
+          console.error(`[EXPERIMENT_TOOL] Failed to publish:`, publishResult.error);
           return {
             experimentId: experiment.id,
-            status: experiment.status,
-            message: `Experiment "${experimentName}" has been created and saved to the database, but failed to publish to Cloudflare: ${publishResult.error}. The experiment is in DRAFT status.`
+            status: 'DRAFT',
+            message: `Experiment "${experimentName}" has been created but failed to publish to Cloudflare: ${publishResult.error}. The experiment remains in DRAFT status.`
           };
         }
       } catch (publishError) {
-        console.error(`[EXPERIMENT_TOOL] Error publishing to Cloudflare:`, publishError);
+        console.error(`[EXPERIMENT_TOOL] Error publishing experiment:`, publishError);
         return {
           experimentId: experiment.id,
-          status: experiment.status,
-          message: `Experiment "${experimentName}" has been created and saved to the database, but failed to publish to Cloudflare: ${publishError instanceof Error ? publishError.message : 'Unknown error'}. The experiment is in DRAFT status.`
+          status: 'DRAFT',
+          message: `Experiment "${experimentName}" has been created but failed to publish: ${publishError instanceof Error ? publishError.message : 'Unknown error'}. The experiment remains in DRAFT status.`
         };
       }
     } catch (error) {
