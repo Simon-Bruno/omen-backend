@@ -24,7 +24,7 @@ class GenerateVariantsExecutor {
     }
 
     private async generateVariantJobs(hypothesis: Hypothesis): Promise<{ jobIds: string[]; projectId: string }> {
-        console.log(`[VARIANTS_TOOL] Starting job-based variant generation for hypothesis: ${hypothesis.hypothesis}`);
+        console.log(`[VARIANTS_TOOL] Starting job-based variant generation for hypothesis: ${hypothesis.title}`);
         
         // Verify project exists
         const project = await this.variantGenerationService.getCachedProject(this.projectId);
@@ -65,9 +65,9 @@ class GenerateVariantsExecutor {
         let hypothesis = hypothesisStateManager.getCurrentHypothesis();
         
         if (hypothesis) {
-            console.log(`[VARIANTS_TOOL] Using hypothesis from state manager: "${hypothesis.hypothesis.substring(0, 50)}..."`);
+            console.log(`[VARIANTS_TOOL] Using hypothesis from state manager: "${hypothesis.title}"`);
         } else if (input.hypothesis) {
-            console.log(`[VARIANTS_TOOL] Using hypothesis from input: "${input.hypothesis.hypothesis.substring(0, 50)}..."`);
+            console.log(`[VARIANTS_TOOL] Using hypothesis from input: "${input.hypothesis.title}"`);
             hypothesis = input.hypothesis;
         } else {
             console.log(`[VARIANTS_TOOL] No hypothesis available in state or input`);

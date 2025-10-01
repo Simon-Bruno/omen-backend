@@ -36,8 +36,8 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
 
     console.log(`[BRAND_ANALYSIS] Homepage analysis completed successfully`);
 
-    // Store homepage screenshot
-    await storeScreenshot(projectId, 'home', baseUrl, homeResult.screenshot, homeResult.html, screenshotStorage);
+    // Store homepage screenshot (with HTML and markdown)
+    await storeScreenshot(projectId, 'home', baseUrl, homeResult.screenshot, homeResult.html, homeResult.markdown, screenshotStorage);
 
     // Step 2: Extract URLs from homepage HTML
     const candidates = await extractUrlsFromHtml(homeResult.html || '', baseUrl);
@@ -54,9 +54,10 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
     
     let finalBrandIntelligence: BrandIntelligenceData;
     
+    let pageResults: Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string; html?: string; markdown?: string }> = [homeResult];
     if (hasAdditionalPages) {
       // Step 4: Analyze additional pages
-      const pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homeResult, projectId, screenshotStorage);
+      pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homeResult, projectId, screenshotStorage);
 
       // Step 5: Synthesize results from all pages
       console.log(`[BRAND_ANALYSIS] Step 5: Synthesizing results from ${pageResults.length} pages`);
@@ -67,7 +68,7 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
       finalBrandIntelligence = homeResult.data;
     }
 
-    // Store the analysis results
+    // Store the analysis results without sources (sources are now in screenshots table)
     await ProjectDAL.updateProjectBrandAnalysis(projectId, finalBrandIntelligence);
     console.log(`[BRAND_ANALYSIS] Brand analysis completed successfully for project ${projectId}`);
 
@@ -88,6 +89,7 @@ async function storeScreenshot(
   url: string,
   screenshot: string | undefined,
   html: string | undefined,
+  markdown: string | undefined,
   screenshotStorage: ScreenshotStorageService
 ): Promise<void> {
   if (!screenshot) {
@@ -102,7 +104,8 @@ async function storeScreenshot(
       url,
       HIGH_QUALITY_SCREENSHOT_OPTIONS,
       screenshot,
-      html
+      html,
+      markdown
     );
     console.log(`[BRAND_ANALYSIS] ${pageType} page screenshot saved successfully`);
   } catch (error) {
@@ -151,8 +154,8 @@ async function analyzeAdditionalPages(
       pageResults.push(pageResult);
       console.log(`[BRAND_ANALYSIS] ${pageType} page analysis completed for: ${url}`);
 
-      // Store screenshot for additional pages
-      await storeScreenshot(projectId, pageType, url, pageResult.screenshot, pageResult.html, screenshotStorage);
+      // Store screenshot for additional pages (with HTML and markdown)
+      await storeScreenshot(projectId, pageType, url, pageResult.screenshot, pageResult.html, pageResult.markdown, screenshotStorage);
     } catch (urlError) {
       console.warn(`[BRAND_ANALYSIS] Error analyzing ${pageType} page ${url}:`, urlError);
     }

@@ -6,12 +6,11 @@ export function buildVariantGenerationPrompt(hypothesis: Hypothesis): string {
 You are a CRO-focused UX/UI design assistant. Your task is to take a structured hypothesis and generate 3 practical, testable variants for A/B testing.
 
 HYPOTHESIS TO TEST:
-- Hypothesis: ${hypothesis.hypothesis}
-- Rationale: ${hypothesis.rationale}
-- Measurable Tests: ${hypothesis.measurable_tests}
-- Success Metrics: ${hypothesis.success_metrics}
-- OEC (Overall Evaluation Criterion): ${hypothesis.oec}
-- Accessibility Check: ${hypothesis.accessibility_check}
+- Hypothesis: ${hypothesis.description}
+- Primary Outcome: ${hypothesis.primary_outcome}
+- Current Problem: ${hypothesis.current_problem}
+- Why It Works: ${hypothesis.why_it_works.map(w => w.reason).join(', ')}
+- Predicted Lift: ${hypothesis.predicted_lift_range.min}-${hypothesis.predicted_lift_range.max}%
 
 YOUR TASK:
 Based on the hypothesis above, identify the most likely DOM element(s) or site objects that this hypothesis refers to and generate 3 practical, testable variants.

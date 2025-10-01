@@ -33,3 +33,5 @@ export const getPageType = (url: string): 'home' | 'pdp' | 'about' | 'other' => 
   
   return 'other';
 };
+
+

@@ -8,6 +8,7 @@ export interface FirecrawlScrapeResult {
     data?: BrandIntelligenceData;
     screenshot?: string;
     html?: string;
+    markdown?: string;
     error?: string;
 }
 
@@ -18,6 +19,7 @@ export interface PageAnalysisResult {
     data?: BrandIntelligenceData;
     screenshot?: string;
     html?: string;
+    markdown?: string;
     error?: string;
 }
 
@@ -104,7 +106,8 @@ export class FirecrawlService {
             fullPage: true,
             quality: 100
           },
-          "html"
+          "html",
+          "markdown"
         ]
       };
 
@@ -126,7 +129,8 @@ export class FirecrawlService {
         url: websiteUrl,
         data: result.json as BrandIntelligenceData,
         screenshot: screenshotData,
-        html: result.html
+        html: result.html,
+        markdown: (result as any).markdown
       };
         } catch (error) {
             console.error(`[FIRECRAWL] Error analyzing ${pageType} page ${websiteUrl}:`, error);

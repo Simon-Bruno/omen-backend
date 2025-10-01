@@ -13,12 +13,18 @@ export const createHypothesesSchema = z.object({
 
 export const createVariantsSchema = z.object({
   hypothesis: z.object({
-    hypothesis: z.string().describe('The hypothesis statement to test'),
-    rationale: z.string().describe('The rationale behind the hypothesis'),
-    measurable_tests: z.string().describe('What can be measured to test this hypothesis'),
-    success_metrics: z.string().describe('The success metrics for this hypothesis'),
-    oec: z.string().describe('The Overall Evaluation Criterion (OEC)'),
-    accessibility_check: z.string().describe('Accessibility considerations for this hypothesis')
+    title: z.string().describe('The hypothesis title'),
+    description: z.string().describe('The hypothesis description'),
+    primary_outcome: z.string().describe('The primary outcome metric'),
+    current_problem: z.string().describe('The current problem being addressed'),
+    why_it_works: z.array(z.object({
+      reason: z.string()
+    })).describe('Reasons why this hypothesis should work'),
+    baseline_performance: z.number().describe('Current baseline performance as percentage'),
+    predicted_lift_range: z.object({
+      min: z.number(),
+      max: z.number()
+    }).describe('Predicted lift range as decimals')
   }).optional().describe('The hypothesis object to generate variants for - if not provided, will use the most recently generated hypothesis from state')
 });
 
