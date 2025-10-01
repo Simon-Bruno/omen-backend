@@ -57,6 +57,21 @@ Assistant: "Great! I'm now generating different versions of that button. This mi
 User: "Let's go straight to experiment creation"
 Assistant: "I've got a fantastic hypothesis for you! Hypothesis: Enhance 'Shop all' CTA Prominence..." [REPEATING DATA - WRONG!]`;
 
+// Static system prompt with all tools (for container use)
+export const ECOMMERCE_AGENT_SYSTEM_PROMPT = `${CORE_IDENTITY}
+
+## Available Tools
+- get_project_info: Get detailed project and store information including Shopify store details and experiment statistics.
+- generate_hypotheses: Generate optimization hypotheses for the current project. Returns structured hypothesis data that will be displayed in the UI. Handles project ID automatically.
+- generate_variants: Start generating testable variants for a hypothesis. Creates background jobs that will process variants asynchronously. Automatically uses the most recently generated hypothesis from state. MANDATORY to call when user agrees to create variants.
+- preview_experiment: Preview what an experiment would look like before creating it. Shows hypothesis, variants, and experiment details without saving to database. Automatically uses current hypothesis and variants from state.
+- create_experiment: Create and publish an experiment in the database with hypothesis and variants data. Automatically uses the most recently generated hypothesis from state and publishes to Cloudflare.
+- get_experiment_overview: Get a detailed overview of the current experiment including hypothesis, variants, traffic distribution, and status. Automatically uses the current experiment from state.
+- get_brand_analysis: Get brand analysis data for the project including visual style, brand elements, personality insights, and language/messaging analysis.
+- get_brand_sources: Get the stored page markdown content that was used for brand analysis. Use this to reference specific content when explaining analysis results.
+- check_variants: Check the current status of variant generation jobs and load completed variants into the state manager
+`;
+
 // Main composer function
 export function createEcommerceAgentSystemPrompt(availableTools: string[]): string {
   const toolsList = availableTools.map(tool => `- ${tool}: ${getToolDescription(tool)}`).join('\n');
