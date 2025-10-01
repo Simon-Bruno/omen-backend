@@ -11,7 +11,7 @@ export interface AIConfig {
 export function getAIConfig(): AIConfig {
   const config = getServiceConfig();
   return {
-    model: config.google?.model || 'gemini-2.5-flash',
+    model: config.google?.model || 'gemini-2.5-pro',
     temperature: config.google?.temperature || 0.7,
     maxTokens: config.google?.maxTokens || 1000,
     apiKey: config.google?.apiKey || '',

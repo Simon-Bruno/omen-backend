@@ -1,7 +1,8 @@
 // Agent Domain Service - Provider-agnostic conversation management
 import { getToolsConfiguration } from './tools';
 import { createEcommerceAgentSystemPrompt } from './prompts';
-import { streamText, stepCountIs } from 'ai';
+import { ai } from '@infra/config/langsmith';
+import { stepCountIs } from 'ai';
 // import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
@@ -29,14 +30,6 @@ export class AgentServiceImpl implements AgentService {
 
     // Build messages with system prompt
     const llmMessages: ChatMessage[] = [];
-
-    // Add system prompt if configured
-    if (this.config.systemPrompt) {
-      llmMessages.push({
-        role: 'system',
-        content: this.config.systemPrompt,
-      });
-    }
 
     // Add conversation history if provided, otherwise just add the current message
     if (conversationHistory && conversationHistory.length > 0) {
@@ -109,7 +102,7 @@ export class AgentServiceImpl implements AgentService {
       return aiMessage;
     });
 
-    // Add system prompt if provided
+    // Add system prompt if provided (either from config or dynamic for tools)
     if (systemPrompt) {
       // Validate system prompt length (Google has limits)
       if (systemPrompt.length > 100000) {
@@ -139,7 +132,7 @@ export class AgentServiceImpl implements AgentService {
     console.log(`[AGENT] AI Config: model=${this.aiConfig.model}, temperature=${this.aiConfig.temperature}, maxTokens=${this.aiConfig.maxTokens}`);
 
     try {
-      const result = streamText(streamConfig);
+      const result = ai.streamText(streamConfig);
 
       // Create a message ID for the response
       const messageId = `msg-${Date.now()}`;
