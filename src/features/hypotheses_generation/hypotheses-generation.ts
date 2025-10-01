@@ -226,7 +226,7 @@ ${conflictSection}${hardcodedElementSection}
 
 3. **Constraints:**
 
-   * Produce **exactly 1 hypothesis** per set of screenshots.
+   * Produce **exactly 1 hypothesis** per set of screenshots, but return it as an array with one element.
    * Ensure recommendations are **UI-first** (not backend, pricing, or content strategy).
    * Handle edge cases gracefully:
 
@@ -246,7 +246,29 @@ ${conflictSection}${hardcodedElementSection}
      - Email signup rate: 1-3% (for newsletter forms)
      - Bounce rate: 40-60% (higher is worse)
    * For predicted_lift_range, be conservative but optimistic (typically 5-25% improvement)
-   * Primary outcome MUST be exactly 3 words or less - use concise metric names like "Click-through rate", "Conversion rate", "Add-to-cart rate"`;
+   * Primary outcome MUST be exactly 3 words or less - use concise metric names like "Click-through rate", "Conversion rate", "Add-to-cart rate"
+
+**IMPORTANT JSON FORMAT:**
+Return your response as a JSON object with a "hypotheses" array containing exactly 1 hypothesis object. The structure should be:
+{
+  "hypotheses": [
+    {
+      "title": "Your hypothesis title",
+      "description": "Your hypothesis description",
+      "primary_outcome": "Click-through rate",
+      "current_problem": "Current problem description",
+      "why_it_works": [
+        {"reason": "First reason why it works"},
+        {"reason": "Second reason why it works"}
+      ],
+      "baseline_performance": 15.5,
+      "predicted_lift_range": {
+        "min": 0.05,
+        "max": 0.15
+      }
+    }
+  ]
+}`;
     }
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
