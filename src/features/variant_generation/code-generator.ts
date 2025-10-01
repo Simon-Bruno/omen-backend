@@ -4,7 +4,7 @@ import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { InjectionPoint } from './dom-analyzer';
-import { getAIConfig } from '@shared/ai-config';
+import { getVariantGenerationAIConfig } from '@shared/ai-config';
 
 export interface CodeGenerationResult {
     css_code: string;
@@ -25,6 +25,16 @@ const codeGenerationSchema = z.object({
 });
 
 export class VariantCodeGenerator {
+    // Hardcoded element focus configuration - matches other services
+    private readonly HARDCODE_ELEMENT_FOCUS = true;
+    private readonly TARGET_ELEMENT = {
+        selector: 'a[href="/collections/all"].size-style.link',
+        description: 'Shop all button/link',
+        confidence: 1.0,
+        elementType: 'button',
+        attributes: { href: '/collections/all', class: 'size-style link' }
+    };
+
     async generateCode(
         variant: any, 
         _hypothesis: Hypothesis, 
@@ -35,22 +45,36 @@ export class VariantCodeGenerator {
         // Extract only essential brand info to reduce tokens
         const brandSummary = this.extractBrandSummary(brandAnalysis);
         
-        // Use ONLY the best selector from injection points
-        const bestPoint = injectionPoints[0];
+        // Use hardcoded selector if enabled, otherwise use injection points
+        if (this.HARDCODE_ELEMENT_FOCUS) {
+            console.log(`[CODE_GENERATOR] Using hardcoded selector for: ${variant.variant_label}`);
+            return this.generateCodeWithSelector(variant, brandSummary, screenshot, this.TARGET_ELEMENT);
+        }
         
+        // Use injection points for dynamic approach
+        const bestPoint = injectionPoints[0];
         if (!bestPoint) {
             throw new Error(`No injection points found for variant: ${variant.variant_label}`);
         }
         
+        return this.generateCodeWithSelector(variant, brandSummary, screenshot, bestPoint);
+    }
+
+    private async generateCodeWithSelector(
+        variant: any,
+        brandSummary: string,
+        screenshot: string,
+        point: any
+    ): Promise<CodeGenerationResult> {
         const codePrompt = `Generate CSS/HTML for A/B test variant:
 
 Variant: ${variant.variant_label}
 Description: ${variant.description}
 Brand: ${brandSummary}
 
-Target element: ${bestPoint.type} (${Math.round(bestPoint.confidence * 100)}% confidence)
-Selector: ${bestPoint.selector}
-${bestPoint.originalText ? `Current text: "${bestPoint.originalText}" (${bestPoint.originalText.length} chars)` : ''}
+Target element: ${point.elementType || point.type} (${Math.round((point.confidence || 1.0) * 100)}% confidence)
+Selector: ${point.selector}
+${point.originalText ? `Current text: "${point.originalText}" (${point.originalText.length} chars)` : ''}
 
 Generate ONLY CSS and HTML changes. The selector is already provided.
 
@@ -60,16 +84,16 @@ Methods:
 - modify_existing: Modify HTML structure at selector
 
 Rules:
-- Use selector: ${bestPoint.selector}
+- Use selector: ${point.selector}
 - Match text length if changing text
 - No JavaScript in html_code
 - Production-ready code only
 
 Return JSON: {css_code, html_code, injection_method, implementation_instructions}`;
 
-        const aiConfig = getAIConfig();
+        const aiConfig = getVariantGenerationAIConfig();
         console.log(`[CODE_GENERATOR] Generating code for variant: ${variant.variant_label}`);
-        console.log(`[CODE_GENERATOR] Using validated selector: ${bestPoint.selector} (${bestPoint.confidence})`);
+        console.log(`[CODE_GENERATOR] Using selector: ${point.selector} (${point.confidence || 1.0})`);
         
         try {
             const codeObject = await generateObject({
@@ -90,13 +114,7 @@ Return JSON: {css_code, html_code, injection_method, implementation_instructions
             
             // Force use of validated selector
             const result = codeObject.object;
-            result.target_selector = bestPoint.selector;
-            
-            // Add fallback selectors from injection points
-            console.log(`[CODE_GENERATOR] Primary selector: ${result.target_selector}`);
-            if (injectionPoints.length > 1) {
-                console.log(`[CODE_GENERATOR] Fallback selectors available:`, injectionPoints.slice(1, 4).map(p => p.selector));
-            }
+            result.target_selector = point.selector;
             
             return result;
         } catch (error) {
@@ -106,7 +124,7 @@ Return JSON: {css_code, html_code, injection_method, implementation_instructions
                 css_code: '',
                 html_code: '',
                 injection_method: 'selector' as const,
-                target_selector: bestPoint.selector,
+                target_selector: point.selector,
                 new_element_html: '',
                 implementation_instructions: `Code generation failed. Please implement manually: ${variant.description}`
             };
