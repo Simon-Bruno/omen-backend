@@ -12,7 +12,7 @@ import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
 import { getAIConfig } from '@shared/ai-config';
 import { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
-import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 export interface VariantGenerationService {
     generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult>;
@@ -197,7 +197,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         projectId,
                         'other', // Variant screenshots are categorized as 'other'
                         url,
-                        STANDARD_SCREENSHOT_OPTIONS,
+                        HIGH_QUALITY_SCREENSHOT_OPTIONS,
                         variantScreenshotBase64,
                         undefined, // No HTML content for variant screenshots
                         variantId // Unique variant ID to prevent duplicates
@@ -258,7 +258,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
             projectId, 
             pageType, 
-            STANDARD_SCREENSHOT_OPTIONS
+            HIGH_QUALITY_SCREENSHOT_OPTIONS
         );
         
         let screenshot: string;
@@ -286,7 +286,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     projectId, 
                     pageType,
                     url, 
-                    STANDARD_SCREENSHOT_OPTIONS,
+                    HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot,
                     htmlContent ? htmlContent.substring(0, 50000) : undefined // Limit HTML size for storage
                 );
@@ -409,7 +409,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                             projectId,
                             'other', // Variant screenshots are categorized as 'other'
                             url,
-                            STANDARD_SCREENSHOT_OPTIONS,
+                            HIGH_QUALITY_SCREENSHOT_OPTIONS,
                             variantScreenshotBase64,
                             undefined, // No HTML content for variant screenshots
                             `variant-${index + 1}-${variant.variant_label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}` // Unique variant ID
