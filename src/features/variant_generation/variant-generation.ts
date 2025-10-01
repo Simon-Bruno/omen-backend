@@ -48,6 +48,14 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
     
+    // Hardcoded element focus configuration - matches hypothesis generation
+    private readonly HARDCODE_ELEMENT_FOCUS = true;
+    private readonly TARGET_ELEMENT = {
+        selector: 'a[href="/collections/all"].size-style.link',
+        description: 'Shop all → button/link',
+        html: '<a href="/collections/all" class="size-style link link--ARGpDamJzVW9Gd2JMa__button_nazDaa" style="--size-style-width: fit-content;--size-style-height: ;--size-style-width-mobile: fit-content; --size-style-width-mobile-min: fit-content;">Shop all →</a>'
+    };
+    
     constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService, prisma: PrismaClient) {
         this.crawlerService = crawler;
         this.screenshotStorage = screenshotStorage;
@@ -286,15 +294,29 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
         // PARALLEL OPTIMIZATION: Run DOM analysis and brand analysis in parallel
         console.log(`[VARIANTS] Starting parallel operations: DOM analysis and brand analysis`);
+        
+        if (this.HARDCODE_ELEMENT_FOCUS) {
+            console.log(`[VARIANTS] HARDCODED ELEMENT FOCUS ENABLED - Using hardcoded selector: ${this.TARGET_ELEMENT.selector}`);
+        }
+        
         const [injectionPoints, brandAnalysis] = await Promise.all([
-            // Pass the HTML content we already have to avoid re-crawling
-            this.domAnalyzer.analyzeForHypothesisWithHtml(
-                url, 
-                hypothesis.description,
-                projectId,
-                htmlContent, // Pass the HTML we already have
-                { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-            ),
+            // Use hardcoded selector if enabled, otherwise use normal analysis
+            this.HARDCODE_ELEMENT_FOCUS 
+                ? this.domAnalyzer.analyzeWithHardcodedSelector(
+                    url,
+                    hypothesis.description,
+                    projectId,
+                    this.TARGET_ELEMENT.selector,
+                    htmlContent,
+                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                )
+                : this.domAnalyzer.analyzeForHypothesisWithHtml(
+                    url, 
+                    hypothesis.description,
+                    projectId,
+                    htmlContent, // Pass the HTML we already have
+                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                ),
             this._getCachedBrandAnalysis(projectId)
         ]);
 
