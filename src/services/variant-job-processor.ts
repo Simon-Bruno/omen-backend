@@ -128,16 +128,33 @@ export class VariantJobProcessor {
                 progress: 60,
             });
 
-            // Generate the single variant with code and screenshots
-            console.log(`[VARIANT_JOB] Generating variant ${variant.variant_label} for job ${jobId}`);
-            const finalVariant = await this.variantGenerationService.generateSingleVariant(
-                variant,
-                hypothesis,
-                projectId,
-                screenshot,
-                injectionPoints,
-                brandAnalysis
-            );
+            // Generate code for this variant
+            console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId}`);
+            let codeResult;
+            try {
+                codeResult = await this.variantGenerationService.codeGenerator.generateCode(
+                    variant, 
+                    hypothesis, 
+                    brandAnalysis, 
+                    screenshot, 
+                    injectionPoints
+                );
+            } catch (error) {
+                console.error(`[VARIANT_JOB] Failed to generate code for variant ${variant.variant_label}:`, error);
+                codeResult = null;
+            }
+
+            // Create the final variant object (screenshots are already taken by the main process)
+            const finalVariant = {
+                ...variant,
+                css_code: codeResult?.css_code || '',
+                html_code: codeResult?.html_code || '',
+                injection_method: codeResult?.injection_method || 'selector' as const,
+                target_selector: codeResult?.target_selector || '',
+                new_element_html: codeResult?.new_element_html || '',
+                implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
+                screenshot: '' // Screenshots are handled by the main process
+            };
 
             // Update job with result
             await VariantJobDAL.updateJob(jobId, {

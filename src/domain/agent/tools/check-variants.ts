@@ -61,8 +61,20 @@ class CheckVariantsExecutor {
       let message = '';
       
       if (completedJobs.length > 0) {
-        console.log(`[CHECK_VARIANTS] Attempting to load variants from ${completedJobs.length} completed jobs...`);
-        const loadedVariants = await variantStateManager.loadVariantsFromJobs(projectId);
+        console.log(`[CHECK_VARIANTS] Attempting to load variants from completed jobs...`);
+        
+        // Try to load variants from specific job IDs first (most precise)
+        const currentJobIds = variantStateManager.getCurrentJobIds();
+        let loadedVariants: any[] = [];
+        
+        if (currentJobIds && currentJobIds.length > 0) {
+          console.log(`[CHECK_VARIANTS] Loading variants from specific job IDs:`, currentJobIds);
+          loadedVariants = await variantStateManager.loadVariantsFromJobIds(currentJobIds);
+        } else {
+          console.log(`[CHECK_VARIANTS] No specific job IDs found, loading from all completed jobs`);
+          loadedVariants = await variantStateManager.loadVariantsFromJobs(projectId);
+        }
+        
         variantsFound = loadedVariants.length;
         
         if (variantsFound > 0) {
