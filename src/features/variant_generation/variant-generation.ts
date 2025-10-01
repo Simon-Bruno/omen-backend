@@ -51,7 +51,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     // Hardcoded element focus configuration - matches hypothesis generation
     private readonly HARDCODE_ELEMENT_FOCUS = true;
     private readonly TARGET_ELEMENT = {
-        selector: 'a[href="/collections/all"]',
+        selector: 'a[href="/collections/all"]', // Will be filtered by text content
         description: 'Shop all button/link',
         html: '<a href="/collections/all">Shop all</a>'
     };
