@@ -69,21 +69,15 @@ export class VariantJobProcessor {
             }
             
             const [injectionPoints, brandAnalysis] = await Promise.all([
-                // Use cached HTML if available, otherwise fall back to regular analysis
-                htmlContent 
-                    ? this.variantGenerationService.domAnalyzer.analyzeForHypothesisWithHtml(
-                        url, 
-                        hypothesis.description,
-                        projectId,
-                        htmlContent,
-                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                    )
-                    : this.variantGenerationService.domAnalyzer.analyzeForHypothesis(
-                        url, 
-                        hypothesis.description,
-                        projectId,
-                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                    ),
+                // Use hardcoded selector logic (same as variant generation)
+                this.variantGenerationService.domAnalyzer.analyzeWithHardcodedSelector(
+                    url,
+                    hypothesis.description,
+                    projectId,
+                    'a[href="/collections/all"]', // Hardcoded selector
+                    htmlContent,
+                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                ),
                 this.variantGenerationService.getCachedBrandAnalysis(projectId)
             ]);
 

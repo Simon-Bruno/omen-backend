@@ -285,7 +285,9 @@ export class ElementDetector {
     const placeholderKeywords = this.extractPlaceholderKeywords(hypothesis);
     
     for (const keyword of placeholderKeywords) {
-      const inputs = this.$(`input[placeholder*="${keyword}"]`);
+      // Escape special characters in the keyword for CSS selector
+      const escapedKeyword = keyword.replace(/[\\"']/g, '\\$&');
+      const inputs = this.$(`input[placeholder*="${escapedKeyword}"]`);
       
       inputs.each((_, el) => {
         const $el = this.$(el);
