@@ -7,6 +7,7 @@ import { chatRoutes } from './chat';
 import { brandSummaryRoutes } from './project/brandSummary';
 import { jobRoutes } from './project/jobs';
 import { screenshotRoutes } from './screenshots';
+import { experimentRoutes } from './experiment/index';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(healthRoutes);
@@ -17,4 +18,5 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(brandSummaryRoutes);
     await fastify.register(jobRoutes);
     await fastify.register(screenshotRoutes);
+    await fastify.register(experimentRoutes);
 }
