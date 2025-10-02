@@ -20,7 +20,7 @@ Generate 1 button variant that focuses on improving conversion through better bu
 VARIANT FOCUS (based on variant index):
 ${variantIndex === 0 ? 'Variant 1: Focus on COLOR and CONTRAST - Use bold, high-contrast colors to make the button stand out' : 
   variantIndex === 1 ? 'Variant 2: Focus on SIZE and TYPOGRAPHY - Use larger sizes and bold typography to increase prominence' : 
-  'Variant 3: Focus on SHAPE and STYLE - Use unique shapes, outlines, or visual styles to differentiate the button'}
+  'Variant 3: Focus on ANIMATION and INTERACTION - Use subtle animations, micro-interactions, and engaging effects to make the button more compelling'}
 
 BUTTON DESIGN PRINCIPLES TO CONSIDER:
 - Visual hierarchy and prominence
@@ -86,7 +86,7 @@ VARIANT NAMING RULES:
 SPECIFIC NAMING FOR THIS VARIANT:
 ${variantIndex === 0 ? 'Variant 1 (COLOR focus): Include specific color names and contrast terms (e.g., "Solid Turquoise Button", "Dark Navy CTA", "Bright Orange Button")' : 
   variantIndex === 1 ? 'Variant 2 (SIZE focus): Include specific size and typography terms (e.g., "Large Bold CTA", "Compact Uppercase Button", "Jumbo Text Button")' : 
-  'Variant 3 (SHAPE focus): Include specific shape and style terms (e.g., "Rounded Green Button", "Outlined White CTA", "Pill-Shaped Button")'}
+  'Variant 3 (ANIMATION focus): Include specific animation and interaction terms (e.g., "Pulse Animation Button", "Hover Glow CTA", "Bounce Effect Button")'}
 
 IMPORTANT: Return your response as a JSON object with a "variants" array containing exactly 1 variant object. The variant must have the fields: variant_label, description, rationale, accessibility_consideration, and implementation_notes.
 
@@ -130,8 +130,8 @@ Variant 2: Focus on SIZE and TYPOGRAPHY
 - Accessibility Consideration - check for WCAG compliance (contrast, tap size, ARIA roles, etc.)
 - Implementation Notes - specific technical details for implementation
 
-Variant 3: Focus on SHAPE and STYLE
-- Variant Label - Include specific shape and visual style (e.g., "Rounded Green Button", "Outlined White CTA")
+Variant 3: Focus on ANIMATION and INTERACTION
+- Variant Label - Include specific animation and interaction terms (e.g., "Pulse Animation Button", "Hover Glow CTA", "Bounce Effect Button")
 - Description - what visually or structurally changes
 - Rationale - why this might improve performance (CRO/UX principle)
 - Accessibility Consideration - check for WCAG compliance (contrast, tap size, ARIA roles, etc.)
@@ -156,7 +156,7 @@ CONSTRAINTS:
 CRITICAL NAMING REQUIREMENT:
 - Variant 1: Must focus on COLOR (e.g., "Solid Turquoise Button", "Dark Navy CTA")
 - Variant 2: Must focus on SIZE/TYPOGRAPHY (e.g., "Large Bold CTA", "Compact Uppercase Button")  
-- Variant 3: Must focus on SHAPE/STYLE (e.g., "Rounded Green Button", "Outlined White CTA")
+- Variant 3: Must focus on ANIMATION/INTERACTION (e.g., "Pulse Animation Button", "Hover Glow CTA", "Bounce Effect Button")
 - NO TWO VARIANTS can have similar names or approaches
 - Each name must be visually distinct and memorable
 
