@@ -19,6 +19,7 @@ class CheckVariantsExecutor {
     status: string; 
     message: string; 
     variantsFound: number;
+    variants: any[];
     jobsStatus: any;
   }> {
     const projectId = input.projectId || this.projectId;
@@ -58,6 +59,7 @@ class CheckVariantsExecutor {
       
       // Try to load variants from completed jobs
       let variantsFound = 0;
+      let loadedVariants: any[] = [];
       let message = '';
       
       if (completedJobs.length > 0) {
@@ -65,7 +67,6 @@ class CheckVariantsExecutor {
         
         // Try to load variants from specific job IDs first (most precise)
         const currentJobIds = variantStateManager.getCurrentJobIds();
-        let loadedVariants: any[] = [];
         
         if (currentJobIds && currentJobIds.length > 0) {
           console.log(`[CHECK_VARIANTS] Loading variants from specific job IDs:`, currentJobIds);
@@ -79,6 +80,9 @@ class CheckVariantsExecutor {
         
         if (variantsFound > 0) {
           message = `Successfully loaded ${variantsFound} variants from completed jobs. Variants are now available in the state manager.`;
+          console.log(`[CHECK_VARIANTS] ${message}`);
+        } else if (runningJobs.length > 0) {
+          message = `Found ${runningJobs.length} running jobs. Variants are still being generated. Please wait for completion.`;
           console.log(`[CHECK_VARIANTS] ${message}`);
         } else {
           message = `Found ${completedJobs.length} completed jobs but no variants could be extracted. This might indicate an issue with the job results.`;
@@ -101,6 +105,7 @@ class CheckVariantsExecutor {
         status: variantsFound > 0 ? 'SUCCESS' : 'NO_VARIANTS',
         message,
         variantsFound,
+        variants: loadedVariants,
         jobsStatus: {
           total: jobs.length,
           completed: completedJobs.length,
@@ -116,6 +121,7 @@ class CheckVariantsExecutor {
         status: 'ERROR',
         message: `Failed to check variants: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variantsFound: 0,
+        variants: [],
         jobsStatus: {}
       };
     }
