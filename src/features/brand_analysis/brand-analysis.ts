@@ -1,14 +1,7 @@
 // Brand Analysis Functions - Firecrawl Implementation with URL Selection
 import type { BrandIntelligenceData } from './types';
-import { synthesisSchema } from './types';
 import { ProjectDAL } from '@infra/dal';
 import { FirecrawlService } from './firecrawl-service';
-import { UrlSelector } from './url-selector';
-import { getSynthesisPrompt, type PageType } from './prompts';
-import { generateObject } from 'ai';
-import { google } from '@ai-sdk/google';
-import { getAIConfig } from '@shared/ai-config';
-import { extractUrlsFromHtml } from '@shared/utils/url-utils';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { PrismaClient } from '@prisma/client';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
@@ -113,86 +106,3 @@ async function storeScreenshot(
   }
 }
 
-// ********************************************************
-// HELPER FUNCTIONS
-// ********************************************************
-async function selectUrlsForAnalysis(candidates: string[]): Promise<{ home: string; pdp: string; about: string }> {
-  const urlSelector = new UrlSelector();
-  try {
-    const response = await urlSelector.selectUrls(candidates);
-    console.log(`[BRAND_ANALYSIS] URL selection completed:`, response);
-    return response;
-  } catch (error) {
-    console.error(`[BRAND_ANALYSIS] URL selection failed:`, error);
-    // Fallback to homepage-only if URL selection fails and we have candidates
-    if (candidates.length > 0) {
-      console.log(`[BRAND_ANALYSIS] Falling back to homepage-only analysis: ${candidates[0]}`);
-      return { home: candidates[0], pdp: '', about: '' };
-    }
-    throw new Error('No URLs available for analysis');
-  }
-}
-
-// Helper function to analyze additional pages
-async function analyzeAdditionalPages(
-  urlsWithTypes: Array<{ url: string; pageType: PageType }>,
-  baseUrl: string,
-  firecrawlService: FirecrawlService,
-  homeResult: { pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string },
-  projectId: string,
-  screenshotStorage: ScreenshotStorageService
-): Promise<Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string }>> {
-  const pageResults = [homeResult]; // Start with homepage
-
-  for (const { url, pageType } of urlsWithTypes) {
-    if (url === baseUrl) continue; // Skip homepage as we already have it
-
-    console.log(`[BRAND_ANALYSIS] Analyzing ${pageType} page: ${url}`);
-
-    try {
-      const pageResult = await firecrawlService.analyzePage(url, pageType);
-      pageResults.push(pageResult);
-      console.log(`[BRAND_ANALYSIS] ${pageType} page analysis completed for: ${url}`);
-
-      // Store screenshot for additional pages (with HTML and markdown)
-      await storeScreenshot(projectId, pageType, url, pageResult.screenshot, pageResult.html, pageResult.markdown, screenshotStorage);
-    } catch (urlError) {
-      console.warn(`[BRAND_ANALYSIS] Error analyzing ${pageType} page ${url}:`, urlError);
-    }
-  }
-
-  return pageResults;
-}
-
-// Helper function to synthesize page analyses
-async function synthesizePageAnalyses(pageResults: Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string }>): Promise<BrandIntelligenceData> {
-  try {
-    console.log(`[BRAND_ANALYSIS] Synthesizing results from ${pageResults.length} pages`);
-
-    const synthesisPrompt = getSynthesisPrompt(pageResults);
-    const aiConfig = getAIConfig();
-
-    const result = await generateObject({
-      model: google(aiConfig.model),
-      schema: synthesisSchema,
-      messages: [
-        {
-          role: 'system',
-          content: synthesisPrompt
-        }
-      ]
-    });
-
-    console.log(`[BRAND_ANALYSIS] Synthesis completed successfully`);
-    return result.object as BrandIntelligenceData;
-  } catch (error) {
-    console.error(`[BRAND_ANALYSIS] Synthesis failed:`, error);
-    // Fallback to homepage data if synthesis fails
-    const homePageResult = pageResults.find(result => result.pageType === 'home' && result.data);
-    if (homePageResult?.data) {
-      console.log(`[BRAND_ANALYSIS] Using homepage data as fallback`);
-      return homePageResult.data;
-    }
-    throw new Error(`Synthesis failed and no fallback data available: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
