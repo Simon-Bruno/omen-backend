@@ -5,6 +5,7 @@ import { prisma } from '@infra/prisma';
 import { registerRoutes } from '@interfaces/http/index';
 import { serviceContainer } from '@app/container';
 import { createJobCleanupService } from '@services/job-cleanup';
+import { backgroundServicesManager } from '@services/background-services';
 
 export async function createServer(): Promise<{ server: FastifyInstance; httpServer: any }> {
     // Create Fastify instance
@@ -50,9 +51,13 @@ export async function startServer(): Promise<void> {
         const jobCleanupService = createJobCleanupService(prisma);
         jobCleanupService.startCleanup();
 
+        // Start background services (SQS Consumer, etc.)
+        await backgroundServicesManager.start();
+
         // Graceful shutdown
         const gracefulShutdown = async (): Promise<void> => {
             jobCleanupService.stopCleanup();
+            await backgroundServicesManager.stop();
             await serviceContainer.cleanup();
             await prisma.$disconnect();
             await server.close();

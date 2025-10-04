@@ -1,0 +1,37 @@
+import { 
+  AnalyticsEventData, 
+  AnalyticsQuery, 
+  ExposureStats,
+  SQSAnalyticsMessage 
+} from './types';
+
+export interface AnalyticsService {
+  // Event Management
+  createEvent(eventData: Omit<AnalyticsEventData, 'id' | 'createdAt'>): Promise<AnalyticsEventData>;
+  createEvents(events: Omit<AnalyticsEventData, 'id' | 'createdAt'>[]): Promise<AnalyticsEventData[]>;
+  
+  // Query Methods
+  getEvents(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
+  getEventCount(query: AnalyticsQuery): Promise<number>;
+  
+  // Analytics Methods
+  getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]>;
+  
+  // SQS Integration
+  processSQSEvent(message: SQSAnalyticsMessage): Promise<void>;
+  processSQSBatch(messages: SQSAnalyticsMessage[]): Promise<void>;
+}
+
+export interface SQSConsumerService {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  isRunning(): boolean;
+}
+
+export interface AnalyticsRepository {
+  create(eventData: Omit<AnalyticsEventData, 'id' | 'createdAt'>): Promise<AnalyticsEventData>;
+  createMany(events: Omit<AnalyticsEventData, 'id' | 'createdAt'>[]): Promise<AnalyticsEventData[]>;
+  findMany(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
+  count(query: AnalyticsQuery): Promise<number>;
+  getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]>;
+}

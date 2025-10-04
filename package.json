@@ -34,6 +34,7 @@
     "@ai-sdk/openai": "^2.0.30",
     "@assistant-ui/react": "^0.11.18",
     "@assistant-ui/react-data-stream": "^0.11.0",
+    "@aws-sdk/client-sqs": "^3.693.0",
     "@fastify/cors": "^11.1.0",
     "@mendable/firecrawl-js": "^4.3.6",
     "@prisma/client": "^6.16.1",
