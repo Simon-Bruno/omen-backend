@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { serviceContainer } from '@app/container';
-import { authMiddleware } from '../middleware/auth';
-import { requireAuth, requireProjectOwnership } from '../middleware/authorization';
+import { betterAuthMiddleware } from '../middleware/better-auth';
+import { requireProject, requireProjectOwnership } from '../middleware/authorization';
 import {
   getExposureStatsHandler,
   getEventsHandler,
@@ -19,21 +19,21 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
   // Experiment exposure statistics
   fastify.get('/experiments/:experimentId/exposures', {
     schema: getExposureStatsSchema,
-    preHandler: [authMiddleware, requireAuth, requireProjectOwnership],
+    preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership],
     handler: getExposureStatsHandler(analyticsService)
   });
 
   // Raw events query
   fastify.get('/events', {
     schema: getEventsSchema,
-    preHandler: [authMiddleware, requireAuth, requireProjectOwnership],
+    preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership],
     handler: getEventsHandler(analyticsService)
   });
 
   // Event count
   fastify.get('/events/count', {
     schema: getEventCountSchema,
-    preHandler: [authMiddleware, requireAuth, requireProjectOwnership],
+    preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership],
     handler: getEventCountHandler(analyticsService)
   });
 }

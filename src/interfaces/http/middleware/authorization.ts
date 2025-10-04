@@ -4,10 +4,23 @@ import '@shared/fastify.d';
 import type { ProjectParams, ProjectBody } from '@shared/types';
 
 /**
- * Authorization guard middleware
- * Ensures all protected routes require projectId ownership
+ * Basic authentication guard middleware
+ * Ensures user is authenticated but doesn't require a project
  */
 export const requireAuth = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (!request.userId) {
+    return reply.status(401).send({
+      error: 'UNAUTHORIZED',
+      message: 'Authentication required'
+    });
+  }
+};
+
+/**
+ * Authorization guard middleware that requires a project
+ * Ensures all protected routes require projectId ownership
+ */
+export const requireProject = async (request: FastifyRequest, reply: FastifyReply) => {
   if (!request.userId) {
     return reply.status(401).send({
       error: 'UNAUTHORIZED',

@@ -2,12 +2,12 @@ import { FastifyInstance } from 'fastify';
 import { serviceContainer } from '@app/container';
 import { Readable } from 'node:stream';
 import { UIMessage } from 'ai';
-import { authMiddleware } from './middleware/auth';
+import { betterAuthMiddleware } from './middleware/better-auth';
 import { requireAuth } from './middleware/authorization';
 
 
 export async function chatRoutes(fastify: FastifyInstance) {
-    fastify.post("/chat", { preHandler: [authMiddleware, requireAuth] }, async (req, reply) => {
+    fastify.post("/chat", { preHandler: [betterAuthMiddleware, requireAuth] }, async (req, reply) => {
         const { messages } = (req.body ?? {}) as {
             messages?: UIMessage[];
         };
