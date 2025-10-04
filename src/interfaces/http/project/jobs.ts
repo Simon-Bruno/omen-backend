@@ -1,12 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { VariantJobDAL } from '@infra/dal';
-import { authMiddleware } from '../middleware/auth';
-import { requireAuth, requireProjectOwnership } from '../middleware/authorization';
+import { betterAuthMiddleware } from '../middleware/better-auth';
+import { requireProject, requireProjectOwnership } from '../middleware/authorization';
 
 export async function jobRoutes(fastify: FastifyInstance) {
     // Get job status by ID
     fastify.get('/project/:projectId/jobs/:jobId', { 
-        preHandler: [authMiddleware, requireAuth, requireProjectOwnership] 
+        preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership] 
     }, async (request, reply) => {
         try {
             const { projectId, jobId } = request.params as { projectId: string; jobId: string };
@@ -51,7 +51,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     // Get all jobs for a project
     fastify.get('/project/:projectId/jobs', { 
-        preHandler: [authMiddleware, requireAuth, requireProjectOwnership] 
+        preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership] 
     }, async (request, reply) => {
         try {
             const { projectId } = request.params as { projectId: string };

@@ -12,7 +12,58 @@ export type User = PrismaUser & {
  */
 export class UserService {
   /**
-   * Get user by Auth0 ID
+   * Get user by Better Auth ID
+   */
+  async getUserByBetterAuthId(betterAuthId: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: betterAuthId },
+      include: { project: true },
+    });
+
+    return user as User | null;
+  }
+
+  /**
+   * Get or create user from Better Auth payload
+   * Creates user on first login
+   */
+  async getOrCreateUser(betterAuthId: string, email: string, name: string): Promise<User> {
+    // Try to find existing user
+    let user = await prisma.user.findUnique({
+      where: { id: betterAuthId },
+      include: { project: true },
+    });
+
+    if (!user) {
+      // Create new user on first login
+      user = await prisma.user.create({
+        data: {
+          id: betterAuthId,
+          email,
+          name,
+        },
+        include: { project: true },
+      });
+    } else {
+      // Update user data if it has changed
+      const updates: any = {};
+      if (user.email !== email) updates.email = email;
+      if (user.name !== name) updates.name = name;
+
+      if (Object.keys(updates).length > 0) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: updates,
+          include: { project: true },
+        });
+      }
+    }
+
+    return user as User;
+  }
+
+  /**
+   * Get user by Auth0 ID (DEPRECATED - for migration purposes)
    */
   async getUserByAuth0Id(auth0Id: string): Promise<User | null> {
     const user = await prisma.user.findUnique({
@@ -21,42 +72,6 @@ export class UserService {
     });
 
     return user as User | null;
-  }
-
-  /**
-   * Get or create user from Auth0 payload
-   * Creates user on first login
-   */
-  async getOrCreateUser(auth0Id: string, email: string, firstName: string = '', lastName: string = ''): Promise<User> {
-    // Try to find existing user
-    let user = await prisma.user.findUnique({
-      where: { auth0Id },
-      include: { project: true },
-    });
-
-    if (!user) {
-      // Create new user on first login
-      user = await prisma.user.create({
-        data: {
-          auth0Id,
-          email,
-          firstName,
-          lastName,
-        },
-        include: { project: true },
-      });
-    } else {
-      // Update email if it has changed
-      if (user.email !== email) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: { email },
-          include: { project: true },
-        });
-      }
-    }
-
-    return user as User;
   }
 
   /**
@@ -71,6 +86,17 @@ export class UserService {
     return user as User | null;
   }
 
+  /**
+   * Get user by email
+   */
+  async getUserByEmail(email: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { project: true },
+    });
+
+    return user as User | null;
+  }
 
   /**
    * Update user email

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { ProjectDAL } from '@infra/dal';
-import { authMiddleware } from '../middleware/auth';
-import { requireAuth, requireProjectOwnership } from '../middleware/authorization';
+import { betterAuthMiddleware } from '../middleware/better-auth';
+import { requireProject, requireProjectOwnership } from '../middleware/authorization';
 import { prisma } from '@infra/prisma';
 import { createCloudflarePublisher } from '@infra/external/cloudflare/cloudflare-publisher';
 import { createExperimentPublisherService } from '@services/experiment-publisher';
@@ -10,7 +10,7 @@ import { getServiceConfig } from '@infra/config/services';
 export async function projectResetRoutes(fastify: FastifyInstance) {
     // Reset project: clear brand analysis, delete all experiments, unpublish from Cloudflare, and remove all related data
     fastify.post('/project/:projectId/reset', { 
-        preHandler: [authMiddleware, requireAuth, requireProjectOwnership]
+        preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership]
     }, async (request, reply) => {
         try {
             const { projectId } = request.params as { projectId: string };
@@ -133,7 +133,7 @@ export async function projectResetRoutes(fastify: FastifyInstance) {
 
     // Get project reset status (optional - shows what would be reset)
     fastify.get('/project/:projectId/reset/status', { 
-        preHandler: [authMiddleware, requireAuth, requireProjectOwnership] 
+        preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership] 
     }, async (request, reply) => {
         try {
             const { projectId } = request.params as { projectId: string };

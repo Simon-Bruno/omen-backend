@@ -14,6 +14,11 @@ declare module 'fastify' {
       sub: string; // Auth0 user ID
       email: string;
       email_verified: boolean;
+      project?: {
+        id: string;
+        shopDomain: string;
+        brandAnalysis: any;
+      } | null;
     };
     userId?: string; // Our internal user ID
     projectId?: string; // User's project ID

@@ -40,33 +40,33 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
     await storeScreenshot(projectId, 'home', baseUrl, homeResult.screenshot, homeResult.html, homeResult.markdown, screenshotStorage);
 
     // Step 2: Extract URLs from homepage HTML
-    const candidates = await extractUrlsFromHtml(homeResult.html || '', baseUrl);
+    // const candidates = await extractUrlsFromHtml(homeResult.html || '', baseUrl);
 
     // Step 3: Select URLs for additional analysis
-    console.log(`[BRAND_ANALYSIS] Step 3: Selecting URLs from ${candidates.length} candidates`);
-    const response = await selectUrlsForAnalysis(candidates);
-    const urlSelector = new UrlSelector();
-    const urlsWithTypes = urlSelector.getUrlsWithTypes(response);
-    console.log(`[BRAND_ANALYSIS] Selected URLs to analyze:`, urlsWithTypes);
+    // console.log(`[BRAND_ANALYSIS] Step 3: Selecting URLs from ${candidates.length} candidates`);
+    // const response = await selectUrlsForAnalysis(candidates);
+    // const urlSelector = new UrlSelector();
+    // const urlsWithTypes = urlSelector.getUrlsWithTypes(response);
+    // console.log(`[BRAND_ANALYSIS] Selected URLs to analyze:`, urlsWithTypes);
 
     // Check if we have additional pages to analyze
-    const hasAdditionalPages = urlsWithTypes.some(url => url.pageType !== 'home');
+    // const hasAdditionalPages = urlsWithTypes.some(url => url.pageType !== 'home');
     
     let finalBrandIntelligence: BrandIntelligenceData;
     
-    let pageResults: Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string; html?: string; markdown?: string }> = [homeResult];
-    if (hasAdditionalPages) {
-      // Step 4: Analyze additional pages
-      pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homeResult, projectId, screenshotStorage);
+    // let pageResults: Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string; html?: string; markdown?: string }> = [homeResult];
+    // if (hasAdditionalPages) {
+    //   // Step 4: Analyze additional pages
+    //   pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homeResult, projectId, screenshotStorage);
 
-      // Step 5: Synthesize results from all pages
-      console.log(`[BRAND_ANALYSIS] Step 5: Synthesizing results from ${pageResults.length} pages`);
-      finalBrandIntelligence = await synthesizePageAnalyses(pageResults);
-    } else {
+    //   // Step 5: Synthesize results from all pages
+    //   console.log(`[BRAND_ANALYSIS] Step 5: Synthesizing results from ${pageResults.length} pages`);
+    //   finalBrandIntelligence = await synthesizePageAnalyses(pageResults);
+    // } else {
       // Only homepage available, use it directly without synthesis
       console.log(`[BRAND_ANALYSIS] Only homepage available, using homepage data directly`);
       finalBrandIntelligence = homeResult.data;
-    }
+    // }
 
     // Store the analysis results without sources (sources are now in screenshots table)
     await ProjectDAL.updateProjectBrandAnalysis(projectId, finalBrandIntelligence);

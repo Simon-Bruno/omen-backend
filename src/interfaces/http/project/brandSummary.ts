@@ -1,14 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { ProjectDAL } from '@infra/dal';
-import { authMiddleware } from '../middleware/auth';
-import { requireAuth } from '../middleware/authorization';
+import { betterAuthMiddleware } from '../middleware/better-auth';
+import { requireProject } from '../middleware/authorization';
 import { prisma } from '@infra/prisma';
 import { JobStatus } from '@prisma/client';
 import { analyzeProject } from '@features/brand_analysis';
 
 export async function brandSummaryRoutes(fastify: FastifyInstance) {
     // Start brand summary generation
-    fastify.post('/project/:projectId/brand-summary', { preHandler: [authMiddleware, requireAuth] }, async (request, reply) => {
+    fastify.post('/project/:projectId/brand-summary', { preHandler: [betterAuthMiddleware, requireProject] }, async (request, reply) => {
         try {
             const { projectId } = request.params as { projectId: string };
 
@@ -39,7 +39,7 @@ export async function brandSummaryRoutes(fastify: FastifyInstance) {
     });
 
     // Get brand summary status
-    fastify.get('/project/:projectId/brand-summary/:jobId', { preHandler: [authMiddleware, requireAuth] }, async (request, reply) => {
+    fastify.get('/project/:projectId/brand-summary/:jobId', { preHandler: [betterAuthMiddleware, requireProject] }, async (request, reply) => {
         try {
             const { projectId, jobId } = request.params as { projectId: string; jobId: string };
 
