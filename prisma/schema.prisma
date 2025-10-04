@@ -34,6 +34,7 @@ model Project {
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   screenshots      Screenshot[]
   variantJobs      VariantJob[]
+  analyticsEvents  AnalyticsEvent[]
 
   @@map("projects")
 }
@@ -53,6 +54,7 @@ model Experiment {
   traffic               ExperimentTraffic[]
   variants              ExperimentVariant[]
   project               Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  analyticsEvents       AnalyticsEvent[]
 
   @@index([projectId, status])
   @@map("experiments")
@@ -148,7 +150,7 @@ model Screenshot {
   projectId       String
   url             String
   pageType        String
-  variantId       String?  // Optional variant identifier for variant screenshots
+  variantId       String? // Optional variant identifier for variant screenshots
   viewportWidth   Int
   viewportHeight  Int
   fullPage        Boolean
@@ -192,4 +194,27 @@ enum InjectPosition {
   OUTER
   BEFORE
   AFTER
+}
+
+model AnalyticsEvent {
+  id           String   @id @default(cuid())
+  projectId    String
+  experimentId String?
+  eventType    String   @default("exposure") // Only exposure events for now
+  sessionId    String // Primary identifier for user tracking
+  viewId       String? // Only for exposure events (SPA navigation)
+  properties   Json // Flexible event-specific data
+  timestamp    BigInt // Unix timestamp from client
+  createdAt    DateTime @default(now())
+
+  // Relations
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  experiment Experiment? @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([projectId, eventType])
+  @@index([eventType, timestamp])
+  @@index([sessionId])
+  @@index([experimentId])
+  @@map("analytics_events")
 }

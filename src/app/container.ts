@@ -7,6 +7,8 @@ import { createHypothesesGenerationService, HypothesesGenerationService } from '
 import { createScreenshotStorageService, type ScreenshotStorageService } from '@services/screenshot-storage';
 import { createScreenshotAnalyticsService, type ScreenshotAnalyticsService } from '@services/screenshot-analytics';
 import { createJobCleanupService, type JobCleanupService } from '@services/job-cleanup';
+import { createAnalyticsService, createSQSConsumerService, type AnalyticsService, type SQSConsumerService } from '@services/analytics';
+import { PrismaAnalyticsRepository } from '@infra/dal/analytics';
 import { getServiceConfig } from '@infra/config/services';
 import { PrismaClient } from '@prisma/client';
 
@@ -77,6 +79,23 @@ class ServiceContainer {
     return this.services.get('screenshotAnalytics') as ScreenshotAnalyticsService;
   }
 
+  getAnalyticsService(): AnalyticsService {
+    if (!this.services.has('analytics')) {
+      const repository = new PrismaAnalyticsRepository(this.prisma);
+      const analyticsService = createAnalyticsService(repository);
+      this.services.set('analytics', analyticsService);
+    }
+    return this.services.get('analytics') as AnalyticsService;
+  }
+
+  getSQSConsumerService(): SQSConsumerService {
+    if (!this.services.has('sqsConsumer')) {
+      const analyticsService = this.getAnalyticsService();
+      const sqsConsumerService = createSQSConsumerService(this.config.sqs, analyticsService);
+      this.services.set('sqsConsumer', sqsConsumerService);
+    }
+    return this.services.get('sqsConsumer') as SQSConsumerService;
+  }
 
   async cleanup(): Promise<void> {
     // Cleanup any services that need it

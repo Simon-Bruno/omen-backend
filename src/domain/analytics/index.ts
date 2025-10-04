@@ -1,2 +1,2 @@
-// Brand analysis moved to features/brand_analysis
-// Diagnostics service removed
+export * from './types';
+export * from './analytics-service';

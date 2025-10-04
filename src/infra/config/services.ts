@@ -33,6 +33,15 @@ export interface ServiceConfig {
     apiToken: string;
     namespaceId: string;
   };
+  sqs: {
+    accessKeyId: string;
+    secretAccessKey: string;
+    region: string;
+    queueUrl: string;
+    batchSize?: number;
+    pollInterval?: number;
+    visibilityTimeout?: number;
+  };
 }
 
 export function getServiceConfig(): ServiceConfig {
@@ -69,6 +78,15 @@ export function getServiceConfig(): ServiceConfig {
       accountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
       apiToken: process.env.CLOUDFLARE_API_TOKEN || '',
       namespaceId: process.env.CLOUDFLARE_NAMESPACE_ID || '',
+    },
+    sqs: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+      region: process.env.AWS_REGION || 'eu-central-1',
+      queueUrl: process.env.SQS_QUEUE_URL || '',
+      batchSize: parseInt(process.env.SQS_BATCH_SIZE || '10'),
+      pollInterval: parseInt(process.env.SQS_POLL_INTERVAL || '5000'),
+      visibilityTimeout: parseInt(process.env.SQS_VISIBILITY_TIMEOUT || '300'),
     },
   };
 }
