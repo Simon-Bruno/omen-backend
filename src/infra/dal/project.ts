@@ -4,7 +4,7 @@ import type { Project, ProjectWithRelations } from './types';
 
 export class ProjectDAL {
   /**
-   * Get project for a specific user (single project per user rule)
+   * Get project for a specific user
    */
   static async getProjectForUser(userId: string): Promise<Project | null> {
     return await prisma.project.findUnique({
