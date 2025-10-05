@@ -8,7 +8,7 @@ export const getProjectInfoSchema = z.object({
 
 export const createHypothesesSchema = z.object({
   projectId: z.string().optional().describe('The project ID to generate hypotheses for (optional, will use default if not provided)'),
-  url: z.string().optional().describe('The URL to analyze (optional, defaults to omen-mvp.myshopify.com)')
+  url: z.string().optional().describe('The URL to analyze (optional, defaults to the project\'s website URL)')
 });
 
 export const createVariantsSchema = z.object({

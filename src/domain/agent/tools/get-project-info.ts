@@ -28,7 +28,7 @@ export function createGetProjectInfoTool(projectId: string) {
   const executor = new GetProjectInfoExecutor(projectId);
 
   return tool({
-    description: 'Get detailed information about the current project including Shopify store details and experiment statistics',
+    description: 'Get detailed information about the current project including store details and experiment statistics',
     inputSchema: getProjectInfoSchema,
     execute: async (input) => {
       try {

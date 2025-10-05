@@ -55,7 +55,8 @@ export class PlaywrightCrawlerService implements CrawlerService {
   async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: boolean, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string> {
     await this.initialize();
 
-    if (!url.startsWith("https://")) {
+    // Handle both full URLs and domain-only formats
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
       url = `https://${url}`;
     }
 
@@ -120,8 +121,6 @@ export class PlaywrightCrawlerService implements CrawlerService {
     finally {
       await page.close();
     }
-
-    return '';
   }
 
   private async handleShopifyPasswordAuth(page: import('playwright').Page, auth: { type: 'shopify_password'; password: string; shopDomain: string }): Promise<void> {
@@ -423,7 +422,8 @@ export class PlaywrightCrawlerService implements CrawlerService {
       ],
     });
 
-    if (!url.startsWith("https://")) {
+    // Handle both full URLs and domain-only formats
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
       url = `https://${url}`;
     }
 

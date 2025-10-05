@@ -61,12 +61,13 @@ export interface AgentConfig {
 
 export interface ProjectInfo {
   id: string;
-  shopDomain: string;
+  shopDomain: string; // Website URL for all stores (Shopify and non-Shopify)
+  isShopify: boolean; // Whether this is a Shopify store or not
   shopName?: string;
   shopEmail?: string;
-  shopPlan?: string;
-  shopCurrency?: string;
-  shopCountry?: string;
+  shopPlan?: string; // Only for Shopify stores
+  shopCurrency?: string; // Only for Shopify stores
+  shopCountry?: string; // Only for Shopify stores
   experimentsCount: number;
   activeExperimentsCount: number;
 }

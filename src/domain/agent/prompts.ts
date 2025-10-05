@@ -94,7 +94,7 @@ Assistant: "Of course. I've designed three distinct variants to test our hypothe
 export const ECOMMERCE_AGENT_SYSTEM_PROMPT = `${CORE_IDENTITY}
 
 ## Available Tools
-- get_project_info: Get detailed project and store information including Shopify store details and experiment statistics.
+- get_project_info: Get detailed project and store information including store details and experiment statistics.
 - generate_hypotheses: Generate optimization hypotheses for the current project. Returns structured hypothesis data that will be displayed in the UI. Handles project ID automatically.
 - generate_variants: Start generating testable variants for a hypothesis. Creates background jobs that will process variants asynchronously. Automatically uses the most recently generated hypothesis from state. MANDATORY to call when user agrees to create variants.
 - preview_experiment: Preview what an experiment would look like before creating it. Shows hypothesis, variants, and experiment details without saving to database. Automatically uses current hypothesis and variants from state.
@@ -119,7 +119,7 @@ ${toolsList}
 
 function getToolDescription(toolName: string): string {
   const descriptions: Record<string, string> = {
-    'get_project_info': 'Get detailed project and store information including Shopify store details and experiment statistics.',
+    'get_project_info': 'Get detailed project and store information including store details and experiment statistics.',
     'generate_hypotheses': 'Generate optimization hypotheses for the current project. Returns structured hypothesis data that will be displayed in the UI. Handles project ID automatically.',
     'generate_variants': 'Start generating testable variants for a hypothesis. Creates background jobs that will process variants asynchronously. Automatically uses the most recently generated hypothesis from state. MANDATORY to call when user agrees to create variants.',
     'preview_experiment': 'Preview what an experiment would look like before creating it. Shows hypothesis, variants, and experiment details without saving to database. Automatically uses current hypothesis and variants from state.',
