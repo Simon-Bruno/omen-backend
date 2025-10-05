@@ -204,6 +204,8 @@ enum InjectPosition {
   OUTER
   BEFORE
   AFTER
+  APPEND
+  PREPEND
 }
 
 enum EventType {
