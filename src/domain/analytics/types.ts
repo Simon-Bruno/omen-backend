@@ -1,13 +1,9 @@
-// Analytics Event Types
+// Analytics Event Types - matches Prisma EventType enum
 export type AnalyticsEventType = 
-  | 'exposure'
-  | 'conversion'
-  | 'page_view'
-  | 'revenue'
-  | 'click'
-  | 'scroll'
-  | 'form_submit'
-  | 'custom';
+  | 'EXPOSURE'
+  | 'PAGEVIEW'
+  | 'CONVERSION'
+  | 'CUSTOM';
 
 export interface AnalyticsEventData {
   id: string;
@@ -23,14 +19,34 @@ export interface AnalyticsEventData {
 
 // Event Properties Interfaces
 export interface ExposureEventProperties {
-  experimentId: string;
-  variantId: string;
+  expId: string;
+  variantKey: string;
+  userKey: string;
   device?: 'desktop' | 'mobile' | 'tablet';
-  pageUrl?: string;
-  userAgent?: string;
-  viewportWidth?: number;
-  viewportHeight?: number;
+}
+
+export interface PageviewEventProperties {
+  url: string;
+  title?: string;
   referrer?: string;
+  viewport?: {
+    width: number;
+    height: number;
+  };
+  device?: 'desktop' | 'mobile' | 'tablet';
+}
+
+export interface ConversionEventProperties {
+  goal: string;
+  value?: number;
+  properties?: Record<string, any>;
+  device?: 'desktop' | 'mobile' | 'tablet';
+}
+
+export interface CustomEventProperties {
+  eventName: string;
+  properties?: Record<string, any>;
+  device?: 'desktop' | 'mobile' | 'tablet';
 }
 
 // Analytics Query Types
@@ -49,6 +65,40 @@ export interface ExposureStats {
   variantId: string;
   exposures: number;
   uniqueSessions: number;
+}
+
+export interface FunnelStep {
+  stepName: string;
+  eventType: string;
+  count: number;
+  percentage: number;
+  dropoffRate: number;
+}
+
+export interface FunnelAnalysis {
+  experimentId: string;
+  variants: {
+    variantId: string;
+    steps: FunnelStep[];
+    totalSessions: number;
+    conversionRate: number;
+  }[];
+  overallStats: {
+    totalSessions: number;
+    totalExposures: number;
+    totalConversions: number;
+    overallConversionRate: number;
+  };
+}
+
+export interface ConversionRates {
+  experimentId: string;
+  variantId: string;
+  sessions: number;
+  conversions: number;
+  conversionRate: number;
+  averageValue?: number;
+  totalValue?: number;
 }
 
 // SQS Message Types

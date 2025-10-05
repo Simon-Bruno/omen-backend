@@ -15,6 +15,7 @@ export interface PublishedExperiment {
   oec: string;
   traffic: Record<string, number>;
   variants: Record<string, PublishedVariant>;
+  targetUrls?: string[]; // URL patterns for targeting
 }
 
 export interface PublishedVariant {
