@@ -26,8 +26,18 @@ class GenerateHypothesesExecutor {
     }
 
     async execute(input: { projectId?: string; url?: string }): Promise<HypothesesGenerationResult> {
-        // Use provided URL or default, and use injected project ID
-        const url = input.url || 'https://omen-mvp.myshopify.com';
+        // Get the project's URL if not provided
+        let url = input.url;
+        if (!url) {
+            const project = await this.prisma.project.findUnique({
+                where: { id: this.projectId },
+                select: { shopDomain: true }
+            });
+            if (!project) {
+                throw new Error(`Project ${this.projectId} not found`);
+            }
+            url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
+        }
         console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url} with project ${this.projectId}`);
         
         const result = await this.generateHypotheses(url, this.projectId);

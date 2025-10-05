@@ -162,18 +162,19 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Complete registration with Shopify integration
-  fastify.post('/auth/register-with-shopify', async (request, reply) => {
+  // Universal registration route for both Shopify and non-Shopify stores
+  fastify.post('/auth/register', async (request, reply) => {
     try {
-      const { email, password, name, shop } = request.body as {
+      const { email, password, name, websiteUrl, isShopify = false } = request.body as {
         email: string;
         password: string;
         name: string;
-        shop: string;
+        websiteUrl: string;
+        isShopify?: boolean;
       };
 
-      // Validate shop domain format
-      if (!shop.endsWith('.myshopify.com')) {
+      // Validate website URL based on store type
+      if (isShopify && !websiteUrl.endsWith('.myshopify.com')) {
         return reply.status(400).send({
           error: 'BAD_REQUEST',
           message: 'Invalid Shopify domain format. Must end with .myshopify.com',
@@ -223,25 +224,51 @@ export async function authRoutes(fastify: FastifyInstance) {
         name
       );
 
-      // Step 3: Generate Shopify OAuth URL
-      const { shopifyOAuth } = await import('@infra/external/shopify');
-      const { oauthUrl, state } = shopifyOAuth.generateRegistrationOAuthUrl(shop, email);
+      // Step 3: Handle based on store type
+      if (isShopify) {
+        // Generate Shopify OAuth URL for Shopify stores
+        const { shopifyOAuth } = await import('@infra/external/shopify');
+        const { oauthUrl, state } = shopifyOAuth.generateRegistrationOAuthUrl(websiteUrl, email);
 
-      // Copy cookies from Better Auth response
-      betterAuthResponse.headers.forEach((value, key) => {
-        if (key.toLowerCase().includes('cookie') || key.toLowerCase().includes('set-')) {
-          reply.header(key, value);
-        }
-      });
+        // Copy cookies from Better Auth response
+        betterAuthResponse.headers.forEach((value, key) => {
+          if (key.toLowerCase().includes('cookie') || key.toLowerCase().includes('set-')) {
+            reply.header(key, value);
+          }
+        });
 
-      return {
-        message: 'User created successfully, proceed to Shopify OAuth',
-        session: signUpData.session,
-        user: signUpData.user,
-        oauthUrl,
-        state,
-        shop,
-      };
+        return {
+          message: 'User created successfully, proceed to Shopify OAuth',
+          session: signUpData.session,
+          user: signUpData.user,
+          oauthUrl,
+          state,
+          websiteUrl,
+          isShopify: true,
+        };
+      } else {
+        // For non-Shopify stores, create project directly
+        await userService.createProjectForUser(
+          signUpData.user.id,
+          websiteUrl,
+          false // isShopify = false
+        );
+
+        // Copy cookies from Better Auth response
+        betterAuthResponse.headers.forEach((value, key) => {
+          if (key.toLowerCase().includes('cookie') || key.toLowerCase().includes('set-')) {
+            reply.header(key, value);
+          }
+        });
+
+        return {
+          message: 'User and project created successfully',
+          session: signUpData.session,
+          user: signUpData.user,
+          websiteUrl,
+          isShopify: false,
+        };
+      }
 
     } catch (error: unknown) {
       fastify.log.error({ err: error }, 'Registration with Shopify error:');

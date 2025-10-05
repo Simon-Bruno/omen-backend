@@ -121,6 +121,43 @@ export class UserService {
   }
 
   /**
+   * Create a project for a user (for non-Shopify stores during registration)
+   */
+  async createProjectForUser(userId: string, websiteUrl: string, isShopify: boolean = false): Promise<User> {
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { project: true },
+    });
+
+    if (!existingUser) {
+      throw new Error('User not found');
+    }
+
+    // If user already has a project, throw an error (shouldn't happen during registration)
+    if (existingUser.project) {
+      throw new Error('User already has a project');
+    }
+
+    // Create a new project for the user
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        project: {
+          create: {
+            shopDomain: websiteUrl,
+            isShopify,
+            accessTokenEnc: null, // No token needed for non-Shopify stores
+          },
+        },
+      },
+      include: { project: true },
+    });
+
+    return user as User;
+  }
+
+  /**
    * Bind a project to a user (single project rule)
    * This will create a new project or update the existing one
    */
@@ -144,12 +181,14 @@ export class UserService {
               update: {
                 shopDomain,
                 accessTokenEnc,
+                isShopify: true, // Mark as Shopify store when binding via OAuth
               },
             }
           : {
               create: {
                 shopDomain,
                 accessTokenEnc,
+                isShopify: true, // Mark as Shopify store when binding via OAuth
               },
             },
       },

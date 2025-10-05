@@ -74,7 +74,10 @@ export class ShopifyService {
   /**
    * Get shop profile using encrypted token from database
    */
-  async getShopProfileWithEncryptedToken(shop: string, encryptedToken: string): Promise<ShopifyShop> {
+  async getShopProfileWithEncryptedToken(shop: string, encryptedToken: string | null): Promise<ShopifyShop> {
+    if (!encryptedToken) {
+      throw new Error('Access token is required for Shopify API calls');
+    }
     const accessToken = decrypt(encryptedToken);
     return this.getShopProfile(shop, accessToken);
   }

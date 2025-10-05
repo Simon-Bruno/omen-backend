@@ -15,7 +15,7 @@ export class ProjectInfoServiceImpl implements ProjectInfoService {
       throw new Error(`Project ${projectId} not found`);
     }
 
-    // Get Shopify store information
+    // Get store information (only for Shopify stores)
     let shopInfo: {
       name?: string;
       email?: string;
@@ -24,21 +24,30 @@ export class ProjectInfoServiceImpl implements ProjectInfoService {
       country?: string;
     } = {};
 
-    try {
-      const shopProfile = await shopify.getShopProfileWithEncryptedToken(
-        project.shopDomain,
-        project.accessTokenEnc
-      );
+    // Only fetch Shopify data if this is a Shopify store
+    if (project.isShopify && project.accessTokenEnc) {
+      try {
+        const shopProfile = await shopify.getShopProfileWithEncryptedToken(
+          project.shopDomain,
+          project.accessTokenEnc
+        );
+        shopInfo = {
+          name: shopProfile.name,
+          email: shopProfile.email,
+          planName: shopProfile.planName,
+          currency: shopProfile.currency,
+          country: shopProfile.country,
+        };
+      } catch (error) {
+        console.warn(`[PROJECT_INFO] Failed to fetch Shopify store info for ${project.shopDomain}:`, error);
+        // Continue without shop info if API call fails
+      }
+    } else if (!project.isShopify) {
+      // For non-Shopify stores, use generic info
       shopInfo = {
-        name: shopProfile.name,
-        email: shopProfile.email,
-        planName: shopProfile.planName,
-        currency: shopProfile.currency,
-        country: shopProfile.country,
+        name: project.shopDomain, // Use domain as name for non-Shopify stores
+        // Other fields remain undefined for non-Shopify stores
       };
-    } catch (error) {
-      console.warn(`[PROJECT_INFO] Failed to fetch Shopify store info for ${project.shopDomain}:`, error);
-      // Continue without shop info if API call fails
     }
 
     // Count experiments by status
@@ -50,6 +59,7 @@ export class ProjectInfoServiceImpl implements ProjectInfoService {
     return {
       id: project.id,
       shopDomain: project.shopDomain,
+      isShopify: project.isShopify,
       shopName: shopInfo.name,
       shopEmail: shopInfo.email,
       shopPlan: shopInfo.planName,

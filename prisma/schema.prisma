@@ -33,8 +33,9 @@ model User {
 model Project {
   id               String            @id @default(cuid())
   shopDomain       String            @unique
+  isShopify        Boolean           @default(true) // true for Shopify stores, false for other platforms
   brandAnalysis    Json?
-  accessTokenEnc   String
+  accessTokenEnc   String?           // Optional - only required for Shopify stores
   userId           String            @unique
   createdAt        DateTime          @default(now())
   brandSummaryJobs BrandSummaryJob[]

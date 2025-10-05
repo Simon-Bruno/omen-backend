@@ -20,6 +20,10 @@ const getDefaultProjectInfo = async () => {
         throw new Error("Project not found");
     }
 
+    if (!projectInfo.isShopify || !projectInfo.accessTokenEnc) {
+        throw new Error("Project is not a Shopify store or missing access token");
+    }
+
     // Log all variables to check if they are correct
     console.log("Project info:", projectInfo);
     console.log("Shop domain:", projectInfo.shopDomain);

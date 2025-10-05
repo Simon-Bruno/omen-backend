@@ -154,7 +154,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             throw new Error(`Project not found: ${projectId}`);
         }
         
-        const url = `https://${project.shopDomain}`;
+        // Handle both Shopify domains and full URLs
+        const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
+            ? project.shopDomain
+            : `https://${project.shopDomain}`;
         
         // Initialize crawler for this variant
         const { createPlaywrightCrawler } = await import('@features/crawler');
@@ -244,7 +247,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             throw new Error(`Project not found: ${projectId}`);
         }
         
-        const url = `https://${project.shopDomain}`;
+        // Handle both Shopify domains and full URLs
+        const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
+            ? project.shopDomain
+            : `https://${project.shopDomain}`;
         console.log(`[VARIANTS] Using shop domain: ${project.shopDomain}, URL: ${url}`);
         
         const toDataUrl = (b64: string): string => {

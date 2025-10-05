@@ -11,11 +11,14 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
   // Initialize Prisma client and screenshot storage service
   const prisma = new PrismaClient();
   const screenshotStorage = createScreenshotStorageService(prisma);
-  
+
   try {
     console.log(`[BRAND_ANALYSIS] Starting Firecrawl analysis for project ${projectId}, shop: ${shopDomain}`);
 
-    const baseUrl = `https://${shopDomain}`;
+    // Handle both Shopify domains (e.g., "shop.myshopify.com") and full URLs (e.g., "https://example.com")
+    const baseUrl = shopDomain.startsWith('http://') || shopDomain.startsWith('https://')
+      ? shopDomain
+      : `https://${shopDomain}`;
     const firecrawlService = new FirecrawlService();
 
     // Step 1: Analyze the homepage
