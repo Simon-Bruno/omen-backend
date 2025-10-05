@@ -49,7 +49,7 @@ export type ExperimentStatusType = 'draft' | 'running' | 'paused' | 'finished';
 
 export type VariantId = 'A' | 'B' | 'C';
 
-export type RenderPosition = 'inner' | 'outer' | 'before' | 'after';
+export type RenderPosition = 'inner' | 'outer' | 'before' | 'after' | 'append' | 'prepend';
 
 export type ApplyMode = 'first' | 'all';
 

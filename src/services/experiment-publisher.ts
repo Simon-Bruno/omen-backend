@@ -4,7 +4,7 @@ import { prisma } from '@infra/prisma';
 
 export interface ExperimentPublisherService {
   publishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }>;
-  unpublishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }>;
+  unpublishExperiment(experimentId: string, newStatus?: 'DRAFT' | 'PAUSED'): Promise<{ success: boolean; error?: string }>;
 }
 
 export class ExperimentPublisherServiceImpl implements ExperimentPublisherService {
@@ -42,9 +42,10 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         trafficCount: experiment.traffic.length
       });
 
-      if (experiment.status !== 'DRAFT') {
-        console.error(`[EXPERIMENT_PUBLISHER] Experiment ${experimentId} is not in DRAFT status: ${experiment.status}`);
-        return { success: false, error: 'Only DRAFT experiments can be published' };
+      // Can publish DRAFT (new) or PAUSED (resuming) experiments
+      if (experiment.status !== 'DRAFT' && experiment.status !== 'PAUSED') {
+        console.error(`[EXPERIMENT_PUBLISHER] Experiment ${experimentId} cannot be published from ${experiment.status} status`);
+        return { success: false, error: 'Only DRAFT or PAUSED experiments can be published' };
       }
 
       // Transform database data to published format
@@ -102,9 +103,9 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
     }
   }
 
-  async unpublishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }> {
+  async unpublishExperiment(experimentId: string, newStatus?: 'DRAFT' | 'PAUSED'): Promise<{ success: boolean; error?: string }> {
     console.log(`[EXPERIMENT_PUBLISHER] Starting unpublish process for experiment: ${experimentId}`);
-    
+
     try {
       // Unpublish from Cloudflare
       console.log(`[EXPERIMENT_PUBLISHER] Unpublishing from Cloudflare...`);
@@ -112,12 +113,13 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
 
       if (result.success) {
         console.log(`[EXPERIMENT_PUBLISHER] Cloudflare unpublish successful, updating database status...`);
-        // Update experiment status in database
+        // Update experiment status in database (default to DRAFT for backward compatibility)
+        const statusToSet = newStatus || 'DRAFT';
         await prisma.experiment.update({
           where: { id: experimentId },
-          data: { status: 'DRAFT' },
+          data: { status: statusToSet },
         });
-        console.log(`[EXPERIMENT_PUBLISHER] Database status updated to DRAFT for experiment: ${experimentId}`);
+        console.log(`[EXPERIMENT_PUBLISHER] Database status updated to ${statusToSet} for experiment: ${experimentId}`);
       } else {
         console.error(`[EXPERIMENT_PUBLISHER] Cloudflare unpublish failed:`, result.error);
       }
@@ -130,9 +132,9 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         stack: error instanceof Error ? error.stack : undefined,
         experimentId
       });
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }

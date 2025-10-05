@@ -9,7 +9,7 @@ import { z } from 'zod';
 // Base types
 export const ExperimentStatusSchema = z.enum(['draft', 'running', 'paused', 'finished']);
 export const VariantIdSchema = z.enum(['A', 'B', 'C']);
-export const RenderPositionSchema = z.enum(['inner', 'outer', 'before', 'after']);
+export const RenderPositionSchema = z.enum(['inner', 'outer', 'before', 'after', 'append', 'prepend']);
 export const ApplyModeSchema = z.enum(['first', 'all']);
 
 // Match configuration
