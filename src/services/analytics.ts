@@ -7,6 +7,8 @@ import {
   AnalyticsEventData, 
   AnalyticsQuery, 
   ExposureStats,
+  FunnelAnalysis,
+  ConversionRates,
   SQSAnalyticsMessage 
 } from '@domain/analytics/types';
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
@@ -27,12 +29,32 @@ export class AnalyticsServiceImpl implements AnalyticsService {
     return this.repository.findMany(query);
   }
 
+  async getEventsWithAttribution(query: AnalyticsQuery): Promise<AnalyticsEventData[]> {
+    return this.repository.getEventsWithAttribution(query);
+  }
+
   async getEventCount(query: AnalyticsQuery): Promise<number> {
     return this.repository.count(query);
   }
 
   async getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]> {
     return this.repository.getExposureStats(projectId, experimentId);
+  }
+
+  async getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis> {
+    return this.repository.getFunnelAnalysis(projectId, experimentId);
+  }
+
+  async getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]> {
+    return this.repository.getConversionRates(projectId, experimentId);
+  }
+
+  async getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]> {
+    return this.repository.getUserJourney(projectId, sessionId);
+  }
+
+  async getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }> {
+    return this.repository.getExperimentSessions(projectId, experimentId, limit, offset);
   }
 
   async processSQSEvent(message: SQSAnalyticsMessage): Promise<void> {
@@ -54,7 +76,9 @@ export class AnalyticsServiceImpl implements AnalyticsService {
 
   async processSQSBatch(messages: SQSAnalyticsMessage[]): Promise<void> {
     try {
-      await this.createEvents(messages.map(message => ({
+      console.log(`[ANALYTICS] Processing ${messages.length} SQS messages`);
+      
+      const events = messages.map(message => ({
         projectId: message.projectId,
         experimentId: message.experimentId,
         eventType: message.eventType,
@@ -62,9 +86,22 @@ export class AnalyticsServiceImpl implements AnalyticsService {
         viewId: message.viewId,
         properties: message.properties,
         timestamp: message.timestamp,
-      })));
+      }));
+      
+      const createdEvents = await this.createEvents(events);
+      console.log(`[ANALYTICS] Successfully created ${createdEvents.length} analytics events`);
+      
     } catch (error) {
       console.error('Failed to process SQS batch:', error);
+      
+      // Don't throw error to prevent SQS message from being reprocessed indefinitely
+      // The analytics repository now handles invalid experiment IDs gracefully
+      if (error instanceof Error && error.message.includes('Foreign key constraint')) {
+        console.warn('[ANALYTICS] Foreign key constraint error - some events may have been filtered out');
+        return; // Continue processing other batches
+      }
+      
+      // For other errors, still throw to trigger retry mechanism
       throw error;
     }
   }
@@ -206,7 +243,9 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
       typeof message.sessionId === 'string' &&
       typeof message.timestamp === 'number' &&
       message.properties &&
-      typeof message.properties === 'object'
+      typeof message.properties === 'object' &&
+      // Validate eventType is one of our supported types
+      ['EXPOSURE', 'PAGEVIEW', 'CONVERSION', 'CUSTOM'].includes(message.eventType)
     );
   }
 
@@ -221,6 +260,7 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
       console.error('Failed to delete SQS message:', error);
     }
   }
+
 }
 
 export function createAnalyticsService(repository: AnalyticsRepository): AnalyticsService {

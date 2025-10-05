@@ -57,6 +57,7 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         oec: experiment.oec,
         traffic: this.buildTrafficDistribution(experiment.traffic),
         variants: this.buildVariants(experiment.variants),
+        targetUrls: experiment.targetUrls as string[] | undefined, // Include URL targeting data
       };
 
       console.log(`[EXPERIMENT_PUBLISHER] Transformed experiment data:`, {
@@ -141,6 +142,14 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
     traffic.forEach(t => {
       distribution[t.variantId] = parseFloat(t.percentage.toString());
     });
+    
+    // Ensure control variant is included in traffic distribution
+    // Control gets traffic allocation but no code storage (implicit control)
+    if (!distribution.control) {
+      console.warn(`[EXPERIMENT_PUBLISHER] No control variant found in traffic distribution for experiment`);
+    }
+    
+    console.log(`[EXPERIMENT_PUBLISHER] Traffic distribution:`, distribution);
     return distribution;
   }
 

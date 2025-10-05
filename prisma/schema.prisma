@@ -59,6 +59,7 @@ model Experiment {
   oec                   String
   minDays               Int
   minSessionsPerVariant Int
+  targetUrls            Json?                 // URL patterns for targeting
   hypothesis            ExperimentHypothesis?
   traffic               ExperimentTraffic[]
   variants              ExperimentVariant[]
@@ -205,11 +206,18 @@ enum InjectPosition {
   AFTER
 }
 
+enum EventType {
+  EXPOSURE
+  PAGEVIEW
+  CONVERSION
+  CUSTOM
+}
+
 model AnalyticsEvent {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   projectId    String
   experimentId String?
-  eventType    String   @default("exposure") // Only exposure events for now
+  eventType    EventType @default(EXPOSURE)
   sessionId    String // Primary identifier for user tracking
   viewId       String? // Only for exposure events (SPA navigation)
   properties   Json // Flexible event-specific data
@@ -225,6 +233,7 @@ model AnalyticsEvent {
   @@index([eventType, timestamp])
   @@index([sessionId])
   @@index([experimentId])
+  @@index([sessionId, eventType]) // For pageview funnel analysis
   @@map("analytics_events")
 }
 

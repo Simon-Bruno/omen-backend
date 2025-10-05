@@ -10,6 +10,7 @@ export interface CreateExperimentData {
   oec: string;
   minDays: number;
   minSessionsPerVariant: number;
+  targetUrls?: any; // URL patterns for targeting
 }
 
 export interface UpdateExperimentStatusData {

@@ -2,6 +2,8 @@ import {
   AnalyticsEventData, 
   AnalyticsQuery, 
   ExposureStats,
+  FunnelAnalysis,
+  ConversionRates,
   SQSAnalyticsMessage 
 } from './types';
 
@@ -12,10 +14,17 @@ export interface AnalyticsService {
   
   // Query Methods
   getEvents(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
+  getEventsWithAttribution(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
   getEventCount(query: AnalyticsQuery): Promise<number>;
   
   // Analytics Methods
   getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]>;
+  getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis>;
+  getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]>;
+  getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]>;
+  
+  // Session Management
+  getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }>;
   
   // SQS Integration
   processSQSEvent(message: SQSAnalyticsMessage): Promise<void>;
@@ -34,4 +43,9 @@ export interface AnalyticsRepository {
   findMany(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
   count(query: AnalyticsQuery): Promise<number>;
   getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]>;
+  getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis>;
+  getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]>;
+  getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]>;
+  getEventsWithAttribution(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
+  getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }>;
 }

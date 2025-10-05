@@ -47,11 +47,21 @@ export const betterAuthMiddleware = async (request: FastifyRequest, reply: Fasti
       sessionData.user.name
     );
     
+    console.log('[BETTER_AUTH] User data:', {
+      userId: user.id,
+      email: user.email,
+      hasProject: !!user.project,
+      projectId: user.project?.id
+    });
+    
     request.userId = user.id;
 
     // Get user's project ID (single project per user)
     if (user.project) {
       request.projectId = user.project.id;
+      console.log('[BETTER_AUTH] Project ID set:', request.projectId);
+    } else {
+      console.log('[BETTER_AUTH] No project found for user');
     }
 
   } catch (error) {

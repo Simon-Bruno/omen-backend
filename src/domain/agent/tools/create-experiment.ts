@@ -35,10 +35,78 @@ const createExperimentSchema = z.object({
     implementation_instructions: z.string().describe('Step-by-step implementation instructions'),
     screenshot: z.string().optional().describe('URL to the screenshot of the variant applied to the page')
   })).optional().describe('The variants to test - if not provided, will use the most recently generated variants from state'),
-  jobIds: z.array(z.string()).optional().describe('Specific job IDs to load variants from - if provided, will load variants from these exact jobs instead of searching all project jobs')
+  jobIds: z.array(z.string()).optional().describe('Specific job IDs to load variants from - if provided, will load variants from these exact jobs instead of searching all project jobs'),
+  targetUrls: z.array(z.string()).optional().describe('URL patterns where this experiment should run (e.g., ["/products/*", "/checkout", "^/collections/shoes$"]). If not provided, will auto-detect based on hypothesis and variants.')
 });
 
 //TODO: Remove implementation instructions
+
+// Extract URL patterns from screenshot data
+async function extractURLPatternsFromScreenshots(projectId: string, _variants: any[]): Promise<string[]> {
+  const patterns: string[] = [];
+
+  try {
+    // Get all screenshots for this project
+    const screenshots = await prisma.screenshot.findMany({
+      where: { projectId },
+      select: { url: true, pageType: true },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    console.log(`[EXPERIMENT_TOOL] Found ${screenshots.length} screenshots for project ${projectId}`);
+
+    // Extract URLs from screenshots
+    const urls = screenshots.map(s => s.url);
+    console.log(`[EXPERIMENT_TOOL] Screenshot URLs:`, urls);
+
+    // Create smart patterns from URLs
+    for (const url of urls) {
+      try {
+        const urlObj = new globalThis.URL(url);
+        const pathname = urlObj.pathname;
+
+        // Smart pattern detection
+        if (pathname.includes('/products/') || pathname.includes('/product/')) {
+          // PDP pattern - match all product pages
+          patterns.push('/products/*');
+          patterns.push('/product/*');
+        } else if (pathname.includes('/collections/')) {
+          // Collection pattern
+          patterns.push('/collections/*');
+        } else if (pathname.includes('/categories/')) {
+          // Category pattern
+          patterns.push('/categories/*');
+        } else if (pathname === '/' || pathname === '/home') {
+          // Homepage pattern
+          patterns.push('/');
+          patterns.push('/home');
+        } else if (pathname.includes('/cart')) {
+          // Cart pattern
+          patterns.push('/cart');
+          patterns.push('/cart/*');
+        } else if (pathname.includes('/checkout')) {
+          // Checkout pattern
+          patterns.push('/checkout');
+          patterns.push('/checkout/*');
+        } else {
+          // Exact match for other pages
+          patterns.push(pathname);
+        }
+      } catch (error) {
+        console.warn(`[EXPERIMENT_TOOL] Invalid URL: ${url}`, error);
+      }
+    }
+
+    // Remove duplicates and return
+    const uniquePatterns = [...new Set(patterns)];
+    console.log(`[EXPERIMENT_TOOL] Generated URL patterns:`, uniquePatterns);
+    return uniquePatterns;
+
+  } catch (error) {
+    console.error(`[EXPERIMENT_TOOL] Error extracting URL patterns from screenshots:`, error);
+    return ['/*']; // Fallback to all pages
+  }
+}
 
 class CreateExperimentExecutor {
   private projectId: string;
@@ -47,23 +115,23 @@ class CreateExperimentExecutor {
     this.projectId = projectId;
   }
 
-  async execute(input: { 
-    name?: string; 
-    hypothesis?: any; 
+  async execute(input: {
+    name?: string;
+    hypothesis?: any;
     variants?: any[];
     jobIds?: string[];
   }): Promise<{ experimentId: string; status: string; message: string }> {
     console.log(`[EXPERIMENT_TOOL] ===== EXPERIMENT CREATION INPUT =====`);
     console.log(`[EXPERIMENT_TOOL] Full input received:`, JSON.stringify(input, null, 2));
     console.log(`[EXPERIMENT_TOOL] Input variants length:`, input.variants ? input.variants.length : 'undefined');
-    
+
     // Get hypothesis from state manager (preferred) or input
     let hypothesis = hypothesisStateManager.getCurrentHypothesis();
-    
-        if (hypothesis) {
-            console.log(`[EXPERIMENT_TOOL] Using hypothesis from state manager: "${hypothesis.title}"`);
-        } else if (input.hypothesis) {
-            console.log(`[EXPERIMENT_TOOL] Using hypothesis from input: "${input.hypothesis.title}"`);
+
+    if (hypothesis) {
+      console.log(`[EXPERIMENT_TOOL] Using hypothesis from state manager: "${hypothesis.title}"`);
+    } else if (input.hypothesis) {
+      console.log(`[EXPERIMENT_TOOL] Using hypothesis from input: "${input.hypothesis.title}"`);
       hypothesis = input.hypothesis;
     } else {
       console.log(`[EXPERIMENT_TOOL] No hypothesis available in state or input`);
@@ -72,10 +140,10 @@ class CreateExperimentExecutor {
 
     // Get variants from state manager (preferred) or input
     let variants = variantStateManager.getCurrentVariants();
-    
+
     console.log(`[EXPERIMENT_TOOL] State manager variants:`, variants ? `${variants.length} variants` : 'null');
     console.log(`[EXPERIMENT_TOOL] Input variants:`, input.variants ? `${input.variants.length} variants` : 'undefined');
-    
+
     if (variants && variants.length > 0) {
       console.log(`[EXPERIMENT_TOOL] Using ${variants.length} variants from state manager`);
       console.log(`[EXPERIMENT_TOOL] Variant labels:`, variants.map(v => v.variant_label));
@@ -87,12 +155,12 @@ class CreateExperimentExecutor {
       console.log(`[EXPERIMENT_TOOL] No variants available in state or input`);
       console.log(`[EXPERIMENT_TOOL] State manager has variants:`, variantStateManager.hasCurrentVariants());
       console.log(`[EXPERIMENT_TOOL] State manager variant count:`, variantStateManager.getCurrentVariantCount());
-      
+
       // Try to load variants from completed jobs
       console.log(`[EXPERIMENT_TOOL] Attempting to load variants from completed jobs...`);
       try {
         let loadedVariants: any[] = [];
-        
+
         // Priority 1: Use jobIds from input (most explicit)
         if (input.jobIds && input.jobIds.length > 0) {
           console.log(`[EXPERIMENT_TOOL] Loading variants from input job IDs:`, input.jobIds);
@@ -109,7 +177,7 @@ class CreateExperimentExecutor {
             loadedVariants = await variantStateManager.loadVariantsFromJobs(this.projectId);
           }
         }
-        
+
         if (loadedVariants && loadedVariants.length > 0) {
           console.log(`[EXPERIMENT_TOOL] Successfully loaded ${loadedVariants.length} variants from completed jobs`);
           console.log(`[EXPERIMENT_TOOL] Loaded variant labels:`, loadedVariants.map(v => v.variant_label));
@@ -123,7 +191,7 @@ class CreateExperimentExecutor {
         throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
       }
     }
-    
+
     console.log(`[EXPERIMENT_TOOL] ======================================`);
 
     // Auto-generate experiment name from hypothesis if not provided
@@ -132,7 +200,7 @@ class CreateExperimentExecutor {
       // Extract key words from hypothesis to create a meaningful name
       const hypothesisText = hypothesis.description.toLowerCase();
       let name = 'Button Optimization';
-      
+
       if (hypothesisText.includes('button')) {
         if (hypothesisText.includes('contrast')) {
           name = 'Button Contrast Optimization';
@@ -154,7 +222,7 @@ class CreateExperimentExecutor {
       } else {
         name = 'Conversion Optimization';
       }
-      
+
       experimentName = name;
       console.log(`[EXPERIMENT_TOOL] Auto-generated experiment name: "${experimentName}"`);
     } else {
@@ -208,12 +276,20 @@ class CreateExperimentExecutor {
 
       console.log(`[EXPERIMENT_TOOL] No conflicts detected, proceeding with experiment creation`);
 
+      // Auto-detect URL patterns if not provided
+      let targetUrls = input.targetUrls;
+      if (!targetUrls || targetUrls.length === 0) {
+        targetUrls = await extractURLPatternsFromScreenshots(this.projectId, variants);
+        console.log(`[EXPERIMENT_TOOL] Auto-detected URL patterns from screenshots:`, targetUrls);
+      }
+
       const experiment = await ExperimentDAL.createExperiment({
         projectId,
         name: experimentName,
         oec: hypothesis.primary_outcome || 'Improve conversion rate', // Use primary_outcome as OEC
         minDays: 7, // Default minimum days
-        minSessionsPerVariant: 1000 // Default minimum sessions
+        minSessionsPerVariant: 1000, // Default minimum sessions
+        targetUrls: targetUrls.length > 0 ? targetUrls : null
       });
 
       // Create hypothesis
@@ -226,11 +302,30 @@ class CreateExperimentExecutor {
         }
       });
 
-      // Create traffic distribution (equal split for now)
-      const variantIds = ['A', 'B', 'C'].slice(0, variants.length);
-      const percentagePerVariant = 1.0 / variantIds.length;
-      
-      console.log(`[EXPERIMENT_TOOL] Creating traffic distribution for ${variants.length} variants`);
+      // Create traffic distribution with control group
+      const generateVariantIds = (variantCount: number): string[] => {
+        const ids = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']; // Support up to 8 variants
+        return ids.slice(0, variantCount);
+      };
+
+      const variantIds = generateVariantIds(variants.length);
+      const totalVariants = variants.length + 1; // +1 for control group
+      const percentagePerVariant = 1.0 / totalVariants;
+
+      console.log(`[EXPERIMENT_TOOL] Creating traffic distribution for ${variants.length} test variants + 1 control group`);
+      console.log(`[EXPERIMENT_TOOL] Total variants: ${totalVariants}, percentage per variant: ${(percentagePerVariant * 100).toFixed(2)}%`);
+
+      // Create traffic for control group (always gets equal share)
+      await prisma.experimentTraffic.create({
+        data: {
+          experimentId: experiment.id,
+          variantId: 'control',
+          percentage: percentagePerVariant
+        }
+      });
+      console.log(`[EXPERIMENT_TOOL] Control group allocated ${(percentagePerVariant * 100).toFixed(2)}% traffic`);
+
+      // Create traffic for test variants
       for (let i = 0; i < variantIds.length; i++) {
         await prisma.experimentTraffic.create({
           data: {
@@ -239,6 +334,7 @@ class CreateExperimentExecutor {
             percentage: percentagePerVariant
           }
         });
+        console.log(`[EXPERIMENT_TOOL] Variant ${variantIds[i]} allocated ${(percentagePerVariant * 100).toFixed(2)}% traffic`);
       }
 
       // Create variants
@@ -253,7 +349,7 @@ class CreateExperimentExecutor {
           has_html: !!variant.html_code,
           injection_method: variant.injection_method
         }, null, 2));
-        
+
         await prisma.experimentVariant.create({
           data: {
             experimentId: experiment.id,
@@ -277,9 +373,9 @@ class CreateExperimentExecutor {
         const config = getServiceConfig();
         const cloudflarePublisher = createCloudflarePublisher(config.cloudflare);
         const experimentPublisher = createExperimentPublisherService(cloudflarePublisher);
-        
+
         const publishResult = await experimentPublisher.publishExperiment(experiment.id);
-        
+
         if (publishResult.success) {
           console.log(`[EXPERIMENT_TOOL] Experiment published successfully`);
           return {
