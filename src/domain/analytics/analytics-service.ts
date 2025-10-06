@@ -1,10 +1,11 @@
-import { 
-  AnalyticsEventData, 
-  AnalyticsQuery, 
+import {
+  AnalyticsEventData,
+  AnalyticsQuery,
   ExposureStats,
   FunnelAnalysis,
   ConversionRates,
-  SQSAnalyticsMessage 
+  PurchaseStats,
+  SQSAnalyticsMessage
 } from './types';
 
 export interface AnalyticsService {
@@ -21,6 +22,7 @@ export interface AnalyticsService {
   getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]>;
   getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis>;
   getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]>;
+  getPurchaseStats(projectId: string, experimentId: string): Promise<PurchaseStats[]>;
   getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]>;
   
   // Session Management
@@ -45,6 +47,7 @@ export interface AnalyticsRepository {
   getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]>;
   getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis>;
   getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]>;
+  getPurchaseStats(projectId: string, experimentId: string): Promise<PurchaseStats[]>;
   getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]>;
   getEventsWithAttribution(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
   getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }>;

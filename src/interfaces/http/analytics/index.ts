@@ -9,6 +9,7 @@ import {
   getUserJourneyHandler,
   getFunnelAnalysisHandler,
   getConversionRatesHandler,
+  getPurchaseStatsHandler,
   getExperimentSessionsHandler
 } from './handlers';
 import {
@@ -18,6 +19,7 @@ import {
   getUserJourneySchema,
   getFunnelAnalysisSchema,
   getConversionRatesSchema,
+  getPurchaseStatsSchema,
   getExperimentSessionsSchema
 } from './schemas';
 
@@ -67,6 +69,13 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
     schema: getConversionRatesSchema,
     preHandler: [betterAuthMiddleware, requireProject],
     handler: getConversionRatesHandler(analyticsService)
+  });
+
+  // Purchase stats for an experiment
+  fastify.get('/purchases/:experimentId', {
+    schema: getPurchaseStatsSchema,
+    preHandler: [betterAuthMiddleware, requireProject],
+    handler: getPurchaseStatsHandler(analyticsService)
   });
 
   // Sessions for an experiment

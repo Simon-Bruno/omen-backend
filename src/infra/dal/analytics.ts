@@ -5,6 +5,7 @@ import {
   ExposureStats,
   FunnelAnalysis,
   ConversionRates,
+  PurchaseStats,
   FunnelStep
 } from '@domain/analytics/types';
 import { AnalyticsRepository } from '@domain/analytics/analytics-service';
@@ -555,6 +556,180 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       conversionRate: stats.sessions > 0 ? (stats.conversions / stats.sessions) * 100 : 0,
       averageValue: stats.conversionCount > 0 ? stats.totalValue / stats.conversionCount : 0,
       totalValue: stats.totalValue,
+    }));
+  }
+
+  async getPurchaseStats(projectId: string, experimentId: string): Promise<PurchaseStats[]> {
+    // First, get all variants from the experiment
+    const experiment = await this.prisma.experiment.findUnique({
+      where: { id: experimentId },
+      select: { variants: true }
+    });
+
+    if (!experiment) {
+      return [];
+    }
+
+    // Initialize all variants with zero stats
+    const variantStats = new Map<string, {
+      sessions: number;
+      purchases: number;
+      totalRevenue: number;
+      purchaseCount: number;
+    }>();
+
+    // Parse variants from experiment data
+    const variants = experiment.variants as any[];
+    for (const variant of variants) {
+      const variantId = variant.variantId;
+      if (variantId) {
+        variantStats.set(variantId, {
+          sessions: 0,
+          purchases: 0,
+          totalRevenue: 0,
+          purchaseCount: 0,
+        });
+      }
+    }
+
+    // First, find all sessions that have events for this experiment
+    const experimentSessions = await this.prisma.analyticsEvent.findMany({
+      where: {
+        projectId,
+        experimentId,
+      },
+      select: {
+        sessionId: true,
+      },
+      distinct: ['sessionId'],
+    });
+
+    const sessionIds = experimentSessions.map(s => s.sessionId);
+
+    if (sessionIds.length === 0) {
+      return Array.from(variantStats.entries()).map(([variantId]) => ({
+        experimentId,
+        variantId,
+        sessions: 0,
+        purchases: 0,
+        purchaseRate: 0,
+        totalRevenue: 0,
+        averageOrderValue: 0,
+        revenuePerSession: 0,
+      }));
+    }
+
+    // Get only EXPOSURE and PURCHASE events for these sessions
+    const events = await this.prisma.analyticsEvent.findMany({
+      where: {
+        projectId,
+        sessionId: {
+          in: sessionIds,
+        },
+        eventType: {
+          in: ['EXPOSURE', 'PURCHASE']
+        }
+      },
+      orderBy: { timestamp: 'asc' },
+    });
+
+    // Map to AnalyticsEventData format
+    const mappedEvents = events.map(event => this.mapToAnalyticsEventData(event));
+
+    // Group events by variant and session
+    const variantSessions = new Map<string, Set<string>>();
+    const variantPurchases = new Map<string, Set<string>>();
+    const variantRevenues = new Map<string, number[]>();
+
+    // Initialize maps for all variants
+    for (const [variantId] of variantStats.entries()) {
+      variantSessions.set(variantId, new Set());
+      variantPurchases.set(variantId, new Set());
+      variantRevenues.set(variantId, []);
+    }
+
+    // Process events
+    for (const event of mappedEvents) {
+      if (event.eventType === 'EXPOSURE' && event.experimentId === experimentId) {
+        // Get variant from exposure event
+        const variantKey = (event.properties as any)?.variantKey;
+        if (variantKey) {
+          if (!variantStats.has(variantKey)) {
+            // If we find a variant in events that's not in the experiment, add it
+            variantStats.set(variantKey, {
+              sessions: 0,
+              purchases: 0,
+              totalRevenue: 0,
+              purchaseCount: 0,
+            });
+            variantSessions.set(variantKey, new Set());
+            variantPurchases.set(variantKey, new Set());
+            variantRevenues.set(variantKey, []);
+          }
+
+          // Track unique sessions that were exposed to this variant
+          const sessions = variantSessions.get(variantKey);
+          if (sessions) {
+            sessions.add(event.sessionId);
+          }
+        }
+      } else if (event.eventType === 'PURCHASE') {
+        // For purchases, we need to find which variant this session was exposed to
+        // Look for the most recent exposure event for this session in this experiment
+        const exposureEvent = mappedEvents
+          .filter(e => e.eventType === 'EXPOSURE' && e.experimentId === experimentId && e.sessionId === event.sessionId)
+          .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+        if (exposureEvent) {
+          const variantKey = (exposureEvent.properties as any)?.variantKey;
+          if (variantKey) {
+            if (!variantStats.has(variantKey)) {
+              // If we find a variant in events that's not in the experiment, add it
+              variantStats.set(variantKey, {
+                sessions: 0,
+                purchases: 0,
+                totalRevenue: 0,
+                purchaseCount: 0,
+              });
+              variantSessions.set(variantKey, new Set());
+              variantPurchases.set(variantKey, new Set());
+              variantRevenues.set(variantKey, []);
+            }
+
+            // Track unique sessions that purchased for this variant
+            const purchases = variantPurchases.get(variantKey);
+            const revenues = variantRevenues.get(variantKey);
+            if (purchases && revenues) {
+              purchases.add(event.sessionId);
+              const revenue = (event.properties as any)?.revenue || 0;
+              revenues.push(revenue);
+            }
+          }
+        }
+      }
+    }
+
+    // Calculate final stats for each variant
+    for (const [variantId, stats] of variantStats.entries()) {
+      const sessions = variantSessions.get(variantId) || new Set();
+      const purchases = variantPurchases.get(variantId) || new Set();
+      const revenues = variantRevenues.get(variantId) || [];
+
+      stats.sessions = sessions.size;
+      stats.purchases = purchases.size;
+      stats.totalRevenue = revenues.reduce((sum, val) => sum + val, 0);
+      stats.purchaseCount = revenues.length;
+    }
+
+    return Array.from(variantStats.entries()).map(([variantId, stats]) => ({
+      experimentId,
+      variantId,
+      sessions: stats.sessions,
+      purchases: stats.purchases,
+      purchaseRate: stats.sessions > 0 ? (stats.purchases / stats.sessions) * 100 : 0,
+      totalRevenue: stats.totalRevenue,
+      averageOrderValue: stats.purchaseCount > 0 ? stats.totalRevenue / stats.purchaseCount : 0,
+      revenuePerSession: stats.sessions > 0 ? stats.totalRevenue / stats.sessions : 0,
     }));
   }
 
