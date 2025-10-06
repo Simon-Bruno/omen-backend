@@ -58,7 +58,8 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         oec: experiment.oec,
         traffic: this.buildTrafficDistribution(experiment.traffic),
         variants: this.buildVariants(experiment.variants),
-        targetUrls: experiment.targetUrls as string[] | undefined, // Include URL targeting data
+        targetUrls: this.parseTargetUrls(experiment.targetUrls), // Include URL targeting data
+        targeting: (experiment as any).targeting as any | undefined,
       };
 
       console.log(`[EXPERIMENT_PUBLISHER] Transformed experiment data:`, {
@@ -167,6 +168,26 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
       };
     });
     return variantMap;
+  }
+
+  private parseTargetUrls(targetUrls: any): string[] | undefined {
+    if (!targetUrls) return undefined;
+    
+    // If it's already an array, return it
+    if (Array.isArray(targetUrls)) return targetUrls;
+    
+    // If it's a string, try to parse it as JSON
+    if (typeof targetUrls === 'string') {
+      try {
+        const parsed = JSON.parse(targetUrls);
+        return Array.isArray(parsed) ? parsed : undefined;
+      } catch (error) {
+        console.warn(`[EXPERIMENT_PUBLISHER] Failed to parse targetUrls JSON: ${targetUrls}`, error);
+        return undefined;
+      }
+    }
+    
+    return undefined;
   }
 }
 
