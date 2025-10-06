@@ -61,6 +61,7 @@ model Experiment {
   minDays               Int
   minSessionsPerVariant Int
   targetUrls            Json?                 // URL patterns for targeting
+  targeting             Json?                 // Declarative DOM targeting rules
   hypothesis            ExperimentHypothesis?
   traffic               ExperimentTraffic[]
   variants              ExperimentVariant[]

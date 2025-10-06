@@ -11,6 +11,7 @@ export interface CreateExperimentData {
   minDays: number;
   minSessionsPerVariant: number;
   targetUrls?: any; // URL patterns for targeting
+  targeting?: any; // Declarative DOM targeting rules
 }
 
 export interface UpdateExperimentStatusData {

@@ -133,12 +133,30 @@ export async function experimentRoutes(fastify: FastifyInstance) {
     });
 
     // POST /experiments - Create a new experiment manually
+    const domTargetingRule = z.discriminatedUnion('type', [
+        z.object({ type: z.literal('selectorExists'), selector: z.string().min(1) }),
+        z.object({ type: z.literal('selectorNotExists'), selector: z.string().min(1) }),
+        z.object({ type: z.literal('textContains'), selector: z.string().min(1), text: z.string().min(1) }),
+        z.object({ type: z.literal('attrEquals'), selector: z.string().min(1), attr: z.string().min(1), value: z.string() }),
+        z.object({ type: z.literal('meta'), name: z.string().min(1), value: z.string(), by: z.enum(['name', 'property']).optional() }),
+        z.object({ type: z.literal('cookie'), name: z.string().min(1), value: z.string() }),
+        z.object({ type: z.literal('localStorage'), key: z.string().min(1), value: z.string() }),
+        z.object({ type: z.literal('urlParam'), name: z.string().min(1), value: z.string() })
+    ]);
+
+    const domTargetingSchema = z.object({
+        match: z.enum(['all', 'any']).optional().default('all'),
+        timeoutMs: z.number().int().min(0).max(10000).optional().default(1500),
+        rules: z.array(domTargetingRule).min(1)
+    }).optional();
+
     const createExperimentSchema = z.object({
         name: z.string().min(1, 'Name is required'),
         oec: z.string().min(1, 'Overall Evaluation Criterion (OEC) is required'),
         minDays: z.number().int().positive('Minimum days must be positive').default(7),
         minSessionsPerVariant: z.number().int().positive('Minimum sessions per variant must be positive').default(1000),
         targetUrls: z.array(z.string()).optional(),
+        targeting: domTargetingSchema,
         hypothesis: z.object({
             hypothesis: z.string().min(1, 'Hypothesis statement is required'),
             rationale: z.string().min(1, 'Rationale is required'),
@@ -198,9 +216,6 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 minSessionsPerVariant: data.minSessionsPerVariant,
                 targetUrls: data.targetUrls || null
             });
-
-            // Create hypothesis
-            await prisma.experimentHypothesis.create({
                 data: {
                     experimentId: experiment.id,
                     hypothesis: data.hypothesis.hypothesis,
