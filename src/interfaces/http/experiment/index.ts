@@ -214,7 +214,8 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 oec: data.oec,
                 minDays: data.minDays,
                 minSessionsPerVariant: data.minSessionsPerVariant,
-                targetUrls: data.targetUrls || null
+                targetUrls: data.targetUrls || null,
+                targeting: data.targeting || null
             });
 
             // Create hypothesis
