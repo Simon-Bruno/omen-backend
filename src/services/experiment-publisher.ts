@@ -162,6 +162,7 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         selector: v.selector || 'body',
         html: v.html,
         css: v.css || '',
+        js: v.js || undefined,
         position: v.position,
       };
     });

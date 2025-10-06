@@ -10,10 +10,6 @@ import { handleAuthError } from '@infra/errors';
  */
 export const betterAuthMiddleware = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
-    // Debug: Log headers and cookies
-    console.log('[BETTER_AUTH] Headers:', request.headers);
-    console.log('[BETTER_AUTH] Cookies:', request.headers.cookie);
-    
     // Create headers object for Better Auth (includes cookies)
     const fetchHeaders = new Headers(request.headers as HeadersInit);
 
@@ -26,9 +22,9 @@ export const betterAuthMiddleware = async (request: FastifyRequest, reply: Fasti
 
     if (!sessionData || !sessionData.session || !sessionData.user) {
       console.log('[BETTER_AUTH] No valid session found');
-      return reply.status(401).send({ 
-        error: 'UNAUTHORIZED', 
-        message: 'Invalid or expired session' 
+      return reply.status(401).send({
+        error: 'UNAUTHORIZED',
+        message: 'Invalid or expired session'
       });
     }
 
@@ -46,14 +42,14 @@ export const betterAuthMiddleware = async (request: FastifyRequest, reply: Fasti
       sessionData.user.email,
       sessionData.user.name
     );
-    
+
     console.log('[BETTER_AUTH] User data:', {
       userId: user.id,
       email: user.email,
       hasProject: !!user.project,
       projectId: user.project?.id
     });
-    
+
     request.userId = user.id;
 
     // Get user's project ID (single project per user)
