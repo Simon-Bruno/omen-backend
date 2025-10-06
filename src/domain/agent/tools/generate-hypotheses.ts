@@ -6,19 +6,17 @@ import { HypothesesGenerationResult } from '@features/hypotheses_generation/hypo
 import { createPlaywrightCrawler } from '@features/crawler';
 import { getServiceConfig } from '@infra/config/services';
 import { hypothesisStateManager } from '../hypothesis-state-manager';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@infra/prisma';
 
 class GenerateHypothesesExecutor {
     private hypothesesGenerationService: HypothesesGenerationService;
     private projectId: string;
-    private prisma: PrismaClient;
 
     constructor(projectId: string) {
         this.projectId = projectId;
-        this.prisma = new PrismaClient();
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        this.hypothesesGenerationService = createHypothesesGenerationService(crawler, this.prisma);
+        this.hypothesesGenerationService = createHypothesesGenerationService(crawler, prisma);
     }
 
     private async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
@@ -29,7 +27,7 @@ class GenerateHypothesesExecutor {
         // Get the project's URL if not provided
         let url = input.url;
         if (!url) {
-            const project = await this.prisma.project.findUnique({
+            const project = await prisma.project.findUnique({
                 where: { id: this.projectId },
                 select: { shopDomain: true }
             });
@@ -68,10 +66,6 @@ class GenerateHypothesesExecutor {
         }
         
         return result;
-    }
-
-    async cleanup(): Promise<void> {
-        await this.prisma.$disconnect();
     }
 }
 

@@ -1,14 +1,7 @@
-// Screenshot Storage Service
-import { PrismaClient } from '@prisma/client';
+// Screenshot Storage Service - Refactored to use ScreenshotDAL
+import { ScreenshotDAL, type ScreenshotOptions } from '@infra/dal/screenshot';
 
-// Constants for variant identification
-const NON_VARIANT_ID = '__NON_VARIANT__';
-
-export interface ScreenshotOptions {
-  viewport: { width: number; height: number };
-  fullPage: boolean;
-  quality: number;
-}
+export type { ScreenshotOptions } from '@infra/dal/screenshot';
 
 export interface ScreenshotStorageService {
   getScreenshot(
@@ -16,13 +9,13 @@ export interface ScreenshotStorageService {
     pageType: 'home' | 'pdp' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<string | null>;
-  
+
   getScreenshotWithHtml(
     projectId: string,
     pageType: 'home' | 'pdp' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<{ screenshot: string | null; html: string | null }>;
-  
+
   saveScreenshot(
     projectId: string,
     pageType: 'home' | 'pdp' | 'about' | 'other',
@@ -32,16 +25,16 @@ export interface ScreenshotStorageService {
     htmlContent?: string,
     markdownContent?: string,
     variantId?: string
-  ): Promise<string>; // Return screenshot ID
-  
+  ): Promise<string>;
+
   cleanupExpiredScreenshots(): Promise<number>;
-  
+
   getScreenshotStats(projectId: string): Promise<{
     totalScreenshots: number;
     totalSize: number;
     accessCount: number;
   }>;
-  
+
   getScreenshotById(screenshotId: string): Promise<{
     data: Buffer;
     contentType: string;
@@ -49,31 +42,13 @@ export interface ScreenshotStorageService {
 }
 
 export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
-  private prisma: PrismaClient;
-  private maxAge: number = 24 * 60 * 60 * 1000; // 24 hours
-
-  constructor(prisma: PrismaClient) {
-    this.prisma = prisma;
-  }
-
   async getScreenshot(
     projectId: string,
     pageType: 'home' | 'pdp' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<string | null> {
     try {
-      const screenshotRecord = await this.prisma.screenshot.findFirst({
-        where: {
-          projectId,
-          pageType,
-          variantId: NON_VARIANT_ID, // Only get non-variant screenshots
-          viewportWidth: options.viewport.width,
-          viewportHeight: options.viewport.height,
-          fullPage: options.fullPage,
-          quality: options.quality,
-          expiresAt: { gt: new Date() }
-        }
-      });
+      const screenshotRecord = await ScreenshotDAL.getScreenshot(projectId, pageType, options);
 
       if (!screenshotRecord || !screenshotRecord.data) {
         console.log(`[SCREENSHOT_STORAGE] No screenshot found for ${pageType} page`);
@@ -81,13 +56,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
       }
 
       // Update access tracking
-      await this.prisma.screenshot.update({
-        where: { id: screenshotRecord.id },
-        data: { 
-          accessedAt: new Date(),
-          accessCount: { increment: 1 }
-        }
-      });
+      await ScreenshotDAL.updateAccessTracking(screenshotRecord.id);
 
       console.log(`[SCREENSHOT_STORAGE] Retrieved ${pageType} screenshot (${screenshotRecord.fileSize} bytes)`);
       return Buffer.from(screenshotRecord.data).toString('base64');
@@ -103,18 +72,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
     options: ScreenshotOptions
   ): Promise<{ screenshot: string | null; html: string | null }> {
     try {
-      const screenshotRecord = await this.prisma.screenshot.findFirst({
-        where: {
-          projectId,
-          pageType,
-          variantId: NON_VARIANT_ID, // Only get non-variant screenshots
-          viewportWidth: options.viewport.width,
-          viewportHeight: options.viewport.height,
-          fullPage: options.fullPage,
-          quality: options.quality,
-          expiresAt: { gt: new Date() }
-        }
-      });
+      const screenshotRecord = await ScreenshotDAL.getScreenshot(projectId, pageType, options);
 
       if (!screenshotRecord || !screenshotRecord.data) {
         console.log(`[SCREENSHOT_STORAGE] No screenshot found for ${pageType} page`);
@@ -122,13 +80,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
       }
 
       // Update access tracking
-      await this.prisma.screenshot.update({
-        where: { id: screenshotRecord.id },
-        data: { 
-          accessedAt: new Date(),
-          accessCount: { increment: 1 }
-        }
-      });
+      await ScreenshotDAL.updateAccessTracking(screenshotRecord.id);
 
       const htmlSize = screenshotRecord.htmlContent ? screenshotRecord.htmlContent.length : 0;
       console.log(`[SCREENSHOT_STORAGE] Retrieved ${pageType} screenshot with HTML (${screenshotRecord.fileSize} bytes, HTML: ${htmlSize} chars)`);
@@ -153,46 +105,18 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
     variantId?: string
   ): Promise<string> {
     try {
+      const result = await ScreenshotDAL.upsertScreenshot(
+        projectId,
+        pageType,
+        url,
+        options,
+        screenshotData,
+        htmlContent,
+        markdownContent,
+        variantId
+      );
+
       const buffer = Buffer.from(screenshotData, 'base64');
-      const expiresAt = new Date(Date.now() + this.maxAge);
-
-      const result = await this.prisma.screenshot.upsert({
-        where: {
-          projectId_pageType_variantId_viewportWidth_viewportHeight_fullPage_quality: {
-            projectId,
-            pageType,
-            variantId: variantId ?? NON_VARIANT_ID,
-            viewportWidth: options.viewport.width,
-            viewportHeight: options.viewport.height,
-            fullPage: options.fullPage,
-            quality: options.quality
-          }
-        },
-        create: {
-          projectId,
-          url,
-          pageType,
-          variantId: variantId ?? NON_VARIANT_ID,
-          viewportWidth: options.viewport.width,
-          viewportHeight: options.viewport.height,
-          fullPage: options.fullPage,
-          quality: options.quality,
-          data: buffer,
-          htmlContent: htmlContent || null,
-          markdownContent: markdownContent || null,
-          fileSize: buffer.length,
-          expiresAt
-        },
-        update: {
-          data: buffer,
-          htmlContent: htmlContent || undefined,
-          markdownContent: markdownContent || undefined,
-          fileSize: buffer.length,
-          expiresAt,
-          accessedAt: new Date()
-        }
-      });
-
       const htmlSize = htmlContent ? htmlContent.length : 0;
       const markdownSize = markdownContent ? markdownContent.length : 0;
       console.log(`[SCREENSHOT_STORAGE] Saved ${pageType} screenshot (${buffer.length} bytes, HTML: ${htmlSize} chars, Markdown: ${markdownSize} chars) with ID: ${result.id}`);
@@ -205,12 +129,9 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
 
   async cleanupExpiredScreenshots(): Promise<number> {
     try {
-      const result = await this.prisma.screenshot.deleteMany({
-        where: { expiresAt: { lt: new Date() } }
-      });
-      
-      console.log(`[SCREENSHOT_CACHE] Cleaned up ${result.count} expired screenshots`);
-      return result.count;
+      const count = await ScreenshotDAL.deleteExpired();
+      console.log(`[SCREENSHOT_CACHE] Cleaned up ${count} expired screenshots`);
+      return count;
     } catch (error) {
       console.error('[SCREENSHOT_CACHE] Error cleaning up screenshots:', error);
       return 0;
@@ -223,17 +144,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
     accessCount: number;
   }> {
     try {
-      const stats = await this.prisma.screenshot.aggregate({
-        where: { projectId },
-        _count: { id: true },
-        _sum: { fileSize: true, accessCount: true }
-      });
-
-      return {
-        totalScreenshots: stats._count.id || 0,
-        totalSize: stats._sum.fileSize || 0,
-        accessCount: stats._sum.accessCount || 0
-      };
+      return await ScreenshotDAL.getProjectStats(projectId);
     } catch (error) {
       console.error('[SCREENSHOT_STORAGE] Error getting screenshot stats:', error);
       return {
@@ -249,9 +160,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
     contentType: string;
   } | null> {
     try {
-      const screenshotRecord = await this.prisma.screenshot.findUnique({
-        where: { id: screenshotId }
-      });
+      const screenshotRecord = await ScreenshotDAL.getById(screenshotId);
 
       if (!screenshotRecord || !screenshotRecord.data) {
         console.log(`[SCREENSHOT_STORAGE] Screenshot not found: ${screenshotId}`);
@@ -259,13 +168,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
       }
 
       // Update access tracking
-      await this.prisma.screenshot.update({
-        where: { id: screenshotId },
-        data: { 
-          accessedAt: new Date(),
-          accessCount: { increment: 1 }
-        }
-      });
+      await ScreenshotDAL.updateAccessTracking(screenshotId);
 
       console.log(`[SCREENSHOT_STORAGE] Retrieved screenshot ${screenshotId} (${screenshotRecord.fileSize} bytes)`);
       return {
@@ -279,7 +182,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
   }
 }
 
-// Factory function
-export function createScreenshotStorageService(prisma: PrismaClient): ScreenshotStorageService {
-  return new ScreenshotStorageServiceImpl(prisma);
+// Simplified factory function - no longer needs prisma parameter
+export function createScreenshotStorageService(): ScreenshotStorageService {
+  return new ScreenshotStorageServiceImpl();
 }

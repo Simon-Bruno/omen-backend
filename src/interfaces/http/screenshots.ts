@@ -1,7 +1,7 @@
 // Screenshot serving routes
 import type { FastifyInstance } from 'fastify/types/instance.js';
 import { serviceContainer } from '@app/container';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@infra/prisma';
 
 export async function screenshotRoutes(fastify: FastifyInstance) {
   // Serve database screenshots by ID
@@ -37,8 +37,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
   fastify.get('/screenshots/project/:projectId', async (request, reply) => {
     try {
       const { projectId } = request.params as { projectId: string };
-      
-      const prisma = new PrismaClient();
+
       const screenshots = await prisma.screenshot.findMany({
         where: { 
           projectId,
@@ -57,9 +56,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
         },
         orderBy: { createdAt: 'desc' }
       });
-      
-      await prisma.$disconnect();
-      
+
       return reply.send({
         projectId,
         screenshots: screenshots.map(s => ({
@@ -76,12 +73,11 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
   // Serve the latest screenshot for a project and page type
   fastify.get('/screenshots/project/:projectId/:pageType', async (request, reply) => {
     try {
-      const { projectId, pageType } = request.params as { 
-        projectId: string; 
-        pageType: 'home' | 'pdp' | 'about' | 'other' 
+      const { projectId, pageType } = request.params as {
+        projectId: string;
+        pageType: 'home' | 'pdp' | 'about' | 'other'
       };
-      
-      const prisma = new PrismaClient();
+
       const screenshot = await prisma.screenshot.findFirst({
         where: { 
           projectId,
@@ -90,9 +86,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
         },
         orderBy: { createdAt: 'desc' }
       });
-      
-      await prisma.$disconnect();
-      
+
       if (!screenshot) {
         return reply.code(404).send({ error: 'Screenshot not found' });
       }
@@ -109,8 +103,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
   fastify.get('/screenshots/debug/:screenshotId', async (request, reply) => {
     try {
       const { screenshotId } = request.params as { screenshotId: string };
-      
-      const prisma = new PrismaClient();
+
       const screenshot = await prisma.screenshot.findUnique({
         where: { id: screenshotId },
         select: {
@@ -123,9 +116,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
           htmlContent: true
         }
       });
-      
-      await prisma.$disconnect();
-      
+
       if (!screenshot) {
         return reply.code(404).send({ error: 'Screenshot not found' });
       }

@@ -1,7 +1,7 @@
-// @ts-nocheck 
+// @ts-nocheck
 // Brand Sources Tool - Get stored page content for reference
 import { tool } from 'ai';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@infra/prisma';
 import { getBrandAnalysisSchema } from './schemas';
 
 class GetBrandSourcesExecutor {
@@ -12,8 +12,6 @@ class GetBrandSourcesExecutor {
   }
 
   async execute(input: { projectId?: string }) {
-    const prisma = new PrismaClient();
-    
     try {
       console.log(`[BRAND_SOURCES] Using project ID: ${this.projectId}`);
       
@@ -62,8 +60,6 @@ class GetBrandSourcesExecutor {
         error: `Failed to retrieve brand sources: ${error instanceof Error ? error.message : 'Unknown error'}`,
         data: null
       };
-    } finally {
-      await prisma.$disconnect();
     }
   }
 }
