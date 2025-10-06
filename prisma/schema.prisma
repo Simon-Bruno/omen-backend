@@ -148,6 +148,7 @@ model ExperimentVariant {
   selector     String?
   html         String
   css          String?
+  js           String?
   position     InjectPosition
   experiment   Experiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 

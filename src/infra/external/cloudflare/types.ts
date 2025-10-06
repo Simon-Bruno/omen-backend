@@ -22,6 +22,7 @@ export interface PublishedVariant {
   selector: string;
   html: string;
   css: string;
+  js?: string;
   position: InjectPosition;
 }
 

@@ -149,6 +149,7 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             selector: z.string().optional(),
             html: z.string().default(''),
             css: z.string().optional(),
+            js: z.string().optional(),
             position: z.enum(['INNER', 'OUTER', 'BEFORE', 'AFTER', 'APPEND', 'PREPEND']).default('INNER')
         })).min(1, 'At least one variant is required'),
         trafficDistribution: z.record(z.string(), z.number().min(0).max(1))
@@ -244,6 +245,7 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                         selector: variant.selector || 'body',
                         html: variant.html,
                         css: variant.css || '',
+                        js: variant.js || '',
                         position: variant.position
                     }
                 });

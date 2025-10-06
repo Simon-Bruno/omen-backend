@@ -91,6 +91,7 @@ export interface VariantRender {
   position: RenderPosition;
   html: string;
   css?: string;
+  js?: string;
   oncePerResponse?: boolean;
 }
 
