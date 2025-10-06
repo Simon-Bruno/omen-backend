@@ -12,6 +12,8 @@ import {
   SQSAnalyticsMessage 
 } from '@domain/analytics/types';
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import https from 'https';
 import { ServiceConfig } from '@infra/config/services';
 
 export class AnalyticsServiceImpl implements AnalyticsService {
@@ -112,17 +114,34 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
   private pollInterval: any = null;
   private sqsClient: SQSClient;
   private analyticsService: AnalyticsService;
+  private isProcessing = false; // Backpressure flag
 
   constructor(
     private config: ServiceConfig['sqs'],
     analyticsService: AnalyticsService
   ) {
+    // Create custom HTTPS agent with increased socket pool
+    const agent = new https.Agent({
+      maxSockets: 250, // Increase from default 50
+      keepAlive: true,
+      // Limit queued requests waiting for a socket
+      maxFreeSockets: 10, // Keep 10 idle sockets for reuse
+      timeout: 60000, // Socket timeout: 60 seconds
+    });
+
     this.sqsClient = new SQSClient({
       region: config.region,
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
+      requestHandler: new NodeHttpHandler({
+        httpsAgent: agent,
+        connectionTimeout: 3000,
+        requestTimeout: 10000,
+        socketAcquisitionWarningTimeout: 3000, // Warn if waiting >3s for socket
+      }),
+      maxAttempts: 2, // Reduce retries to prevent queue buildup
     });
     this.analyticsService = analyticsService;
   }
@@ -164,7 +183,23 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
   }
 
   private async pollMessages(): Promise<void> {
+    // Skip polling if already processing (backpressure)
+    // This is normal with long polling (WaitTimeSeconds: 5)
+    if (this.isProcessing) {
+      return;
+    }
+
+    const startTime = Date.now();
+
+    // Set a timeout to force-reset if something hangs
+    const timeoutId = setTimeout(() => {
+      console.error('[SQS] TIMEOUT! Poll took longer than 60 seconds - force resetting');
+      this.isProcessing = false;
+    }, 60000); // 60 second timeout
+
     try {
+      this.isProcessing = true;
+
       const command = new ReceiveMessageCommand({
         QueueUrl: this.config.queueUrl,
         MaxNumberOfMessages: this.config.batchSize,
@@ -175,10 +210,11 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
       const response = await this.sqsClient.send(command);
 
       if (!response.Messages || response.Messages.length === 0) {
+        // Queue is empty - no need to log every time
         return;
       }
 
-      console.log(`Received ${response.Messages.length} messages from SQS`);
+      console.log(`[SQS] Received ${response.Messages.length} messages from queue`);
 
       // Process messages in batch
       const messages: SQSAnalyticsMessage[] = [];
@@ -188,7 +224,7 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
       for (const message of response.Messages) {
         try {
           const rawMessage = JSON.parse(message.Body || '{}');
-          
+
           // Validate that this looks like an analytics message
           if (this.isValidAnalyticsMessage(rawMessage)) {
             const analyticsMessage: SQSAnalyticsMessage = rawMessage;
@@ -196,7 +232,7 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
             receiptHandles.push(message.ReceiptHandle || '');
           } else {
             // Log malformed message for debugging
-            console.log('Skipping malformed SQS message:', {
+            console.log('[SQS] Skipping malformed message:', {
               messageId: message.MessageId,
               body: rawMessage,
               reason: 'Invalid analytics message format'
@@ -212,8 +248,8 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
             }
           }
         } catch (error) {
-          console.error('Failed to parse SQS message:', error);
-          console.log('Raw message body:', message.Body);
+          console.error('[SQS] Failed to parse message:', error);
+          console.log('[SQS] Raw message body:', message.Body);
           // Delete malformed messages
           if (message.ReceiptHandle) {
             await this.deleteMessage(message.ReceiptHandle);
@@ -221,16 +257,35 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
         }
       }
 
+      if (malformedMessages.length > 0) {
+        console.log(`[SQS] Filtered out ${malformedMessages.length} malformed messages`);
+      }
+
       if (messages.length > 0) {
+        const processingStart = Date.now();
         await this.analyticsService.processSQSBatch(messages);
-        
+        console.log(`[SQS] Batch processing took ${Date.now() - processingStart}ms`);
+
         // Delete successfully processed messages
+        const deleteStart = Date.now();
         for (const receiptHandle of receiptHandles) {
           await this.deleteMessage(receiptHandle);
         }
+        console.log(`[SQS] Deletion took ${Date.now() - deleteStart}ms`);
+      } else {
+        console.log('[SQS] No valid messages to process');
       }
+
+      const totalTime = Date.now() - startTime;
+      console.log(`[SQS] Poll completed in ${totalTime}ms`);
     } catch (error) {
-      console.error('Error polling SQS messages:', error);
+      console.error('[SQS] Error polling SQS messages:', error);
+      const totalTime = Date.now() - startTime;
+      console.error(`[SQS] Poll failed after ${totalTime}ms`);
+    } finally {
+      // Clear the timeout and reset processing flag
+      clearTimeout(timeoutId);
+      this.isProcessing = false;
     }
   }
 

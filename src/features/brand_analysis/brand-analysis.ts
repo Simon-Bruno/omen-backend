@@ -3,14 +3,12 @@ import type { BrandIntelligenceData } from './types';
 import { ProjectDAL } from '@infra/dal';
 import { FirecrawlService } from './firecrawl-service';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
-import { PrismaClient } from '@prisma/client';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 
 export async function analyzeProject(projectId: string, shopDomain: string): Promise<BrandIntelligenceData> {
-  // Initialize Prisma client and screenshot storage service
-  const prisma = new PrismaClient();
-  const screenshotStorage = createScreenshotStorageService(prisma);
+  // Initialize screenshot storage service
+  const screenshotStorage = createScreenshotStorageService();
 
   try {
     console.log(`[BRAND_ANALYSIS] Starting Firecrawl analysis for project ${projectId}, shop: ${shopDomain}`);
@@ -72,9 +70,6 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
   } catch (error) {
     console.error(`[BRAND_ANALYSIS] Brand analysis failed for project ${shopDomain}:`, error);
     throw error;
-  } finally {
-    // Clean up Prisma client
-    await prisma.$disconnect();
   }
 }
 

@@ -10,16 +10,11 @@ import { createJobCleanupService, type JobCleanupService } from '@services/job-c
 import { createAnalyticsService, createSQSConsumerService, type AnalyticsService, type SQSConsumerService } from '@services/analytics';
 import { PrismaAnalyticsRepository } from '@infra/dal/analytics';
 import { getServiceConfig } from '@infra/config/services';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@infra/prisma';
 
 class ServiceContainer {
   private services: Map<string, unknown> = new Map();
   private config = getServiceConfig();
-  private prisma: PrismaClient;
-
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
 
 
   getCrawlerService(): CrawlerService {
@@ -49,7 +44,7 @@ class ServiceContainer {
   getHypothesisGenerator(): HypothesesGenerationService {
     if (!this.services.has('hypothesesGeneration')) {
       const crawler = this.getCrawlerService();
-      const hypothesesGenerator = createHypothesesGenerationService(crawler, this.prisma);
+      const hypothesesGenerator = createHypothesesGenerationService(crawler, prisma);
       this.services.set('hypothesesGeneration', hypothesesGenerator);
     }
     return this.services.get('hypothesesGeneration') as HypothesesGenerationService;
@@ -57,7 +52,7 @@ class ServiceContainer {
 
   getScreenshotStorageService(): ScreenshotStorageService {
     if (!this.services.has('screenshotStorage')) {
-      const screenshotStorageService = createScreenshotStorageService(this.prisma);
+      const screenshotStorageService = createScreenshotStorageService();
       this.services.set('screenshotStorage', screenshotStorageService);
     }
     return this.services.get('screenshotStorage') as ScreenshotStorageService;
@@ -65,7 +60,7 @@ class ServiceContainer {
 
   getJobCleanupService(): JobCleanupService {
     if (!this.services.has('jobCleanup')) {
-      const jobCleanupService = createJobCleanupService(this.prisma);
+      const jobCleanupService = createJobCleanupService();
       this.services.set('jobCleanup', jobCleanupService);
     }
     return this.services.get('jobCleanup') as JobCleanupService;
@@ -73,7 +68,7 @@ class ServiceContainer {
 
   getScreenshotAnalyticsService(): ScreenshotAnalyticsService {
     if (!this.services.has('screenshotAnalytics')) {
-      const screenshotAnalyticsService = createScreenshotAnalyticsService(this.prisma);
+      const screenshotAnalyticsService = createScreenshotAnalyticsService();
       this.services.set('screenshotAnalytics', screenshotAnalyticsService);
     }
     return this.services.get('screenshotAnalytics') as ScreenshotAnalyticsService;
@@ -81,7 +76,7 @@ class ServiceContainer {
 
   getAnalyticsService(): AnalyticsService {
     if (!this.services.has('analytics')) {
-      const repository = new PrismaAnalyticsRepository(this.prisma);
+      const repository = new PrismaAnalyticsRepository(prisma);
       const analyticsService = createAnalyticsService(repository);
       this.services.set('analytics', analyticsService);
     }
@@ -104,8 +99,8 @@ class ServiceContainer {
       await crawler.close();
     }
 
-    // Close Prisma client
-    await this.prisma.$disconnect();
+    // Close Prisma client singleton
+    await prisma.$disconnect();
 
     this.services.clear();
   }

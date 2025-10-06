@@ -10,7 +10,7 @@ import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
 import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
 import { getAIConfig, getVariantGenerationAIConfig } from '@shared/ai-config';
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
@@ -47,7 +47,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private brandAnalysisCache: Map<string, { data: string; timestamp: number }> = new Map();
     private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-    
+
     // Hardcoded element focus configuration - matches hypothesis generation
     private readonly HARDCODE_ELEMENT_FOCUS = true;
     private readonly TARGET_ELEMENT = {
@@ -55,11 +55,11 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         description: 'Shop all button/link',
         html: '<a href="/collections/all">Shop all</a>'
     };
-    
-    constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService, prisma: PrismaClient) {
+
+    constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService) {
         this.crawlerService = crawler;
         this.screenshotStorage = screenshotStorage;
-        this.domAnalyzer = createDOMAnalyzer(crawler, prisma);
+        this.domAnalyzer = createDOMAnalyzer(crawler);
         this.codeGenerator = createVariantCodeGenerator();
     }
 
@@ -107,7 +107,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     }
 
     buildVariantGenerationPrompt(hypothesis: Hypothesis, variantIndex?: number): string {
-        return this.HARDCODE_ELEMENT_FOCUS 
+        return this.HARDCODE_ELEMENT_FOCUS
             ? buildButtonVariantGenerationPrompt(hypothesis, variantIndex)
             : buildVariantGenerationPrompt(hypothesis);
     }
@@ -133,7 +133,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
     async generateSingleVariant(variant: any, hypothesis: Hypothesis, projectId: string, screenshot: string, injectionPoints: any[], brandAnalysis: string): Promise<any> {
         console.log(`[VARIANTS] Starting single variant generation: ${variant.variant_label}`);
-        
+
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
             if (b64.startsWith('data:')) return b64;
@@ -153,18 +153,18 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         if (!project) {
             throw new Error(`Project not found: ${projectId}`);
         }
-        
+
         // Handle both Shopify domains and full URLs
         const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
             ? project.shopDomain
             : `https://${project.shopDomain}`;
-        
+
         // Initialize crawler for this variant
         const { createPlaywrightCrawler } = await import('@features/crawler');
         const { getServiceConfig } = await import('@infra/config/services');
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        
+
         try {
             // Generate code for this variant
             let codeResult;
@@ -175,7 +175,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                 console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
                 codeResult = null;
             }
-            
+
             // Take screenshot for this variant
             let variantScreenshotUrl = '';
             if (codeResult) {
@@ -193,7 +193,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         { width: 1920, height: 1080 },
                         { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                     );
-                    
+
                     // Save screenshot to database and get the screenshot ID
                     const variantId = `variant-${variant.variant_label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}`;
                     const screenshotId = await this.screenshotStorage.saveScreenshot(
@@ -205,7 +205,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         undefined, // No HTML content for variant screenshots
                         variantId // Unique variant ID to prevent duplicates
                     );
-                    
+
                     // Generate a proper URL for the screenshot
                     variantScreenshotUrl = `/api/screenshots/db/${screenshotId}`;
                     console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
@@ -214,7 +214,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     // Continue without screenshot rather than failing the entire variant
                 }
             }
-            
+
             // Create the final variant object
             const finalVariant = {
                 ...variant,
@@ -226,10 +226,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                 implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
                 screenshot: variantScreenshotUrl
             };
-            
+
             console.log(`[VARIANTS] Completed single variant: ${variant.variant_label}`);
             return finalVariant;
-            
+
         } finally {
             // Clean up the crawler
             await crawler.close();
@@ -239,20 +239,20 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     async generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult> {
         console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.title}`);
         console.log(`[VARIANTS] Using project ID: ${projectId}`);
-        
+
         // Get project data to fetch shop domain (with caching)
         console.log(`[VARIANTS] Fetching project data for project: ${projectId}`);
         const project = await this._getCachedProject(projectId);
         if (!project) {
             throw new Error(`Project not found: ${projectId}`);
         }
-        
+
         // Handle both Shopify domains and full URLs
         const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
             ? project.shopDomain
             : `https://${project.shopDomain}`;
         console.log(`[VARIANTS] Using shop domain: ${project.shopDomain}, URL: ${url}`);
-        
+
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
             if (b64.startsWith('data:')) return b64;
@@ -262,14 +262,14 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         // Check storage first for base screenshot and HTML (reuse from brand analysis or DOM analysis)
         const pageType = this.getPageType(url);
         const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
-            projectId, 
-            pageType, 
+            projectId,
+            pageType,
             HIGH_QUALITY_SCREENSHOT_OPTIONS
         );
-        
+
         let screenshot: string;
         let htmlContent: string | null = null;
-        
+
         if (cachedData.screenshot) {
             console.log(`[VARIANTS] Using stored screenshot and HTML for ${pageType} page`);
             screenshot = cachedData.screenshot;
@@ -282,16 +282,16 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                 screenshot: { fullPage: true, quality: 80 },
                 authentication: { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
             });
-            
+
             screenshot = crawlResult.screenshot || '';
             htmlContent = crawlResult.html || null;
-            
+
             // Store the new screenshot and HTML
             if (screenshot) {
                 const screenshotId = await this.screenshotStorage.saveScreenshot(
-                    projectId, 
+                    projectId,
                     pageType,
-                    url, 
+                    url,
                     HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot,
                     htmlContent ? htmlContent.substring(0, 50000) : undefined // Limit HTML size for storage
@@ -302,14 +302,14 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
         // PARALLEL OPTIMIZATION: Run DOM analysis and brand analysis in parallel
         console.log(`[VARIANTS] Starting parallel operations: DOM analysis and brand analysis`);
-        
+
         if (this.HARDCODE_ELEMENT_FOCUS) {
             console.log(`[VARIANTS] HARDCODED ELEMENT FOCUS ENABLED - Using hardcoded selector: ${this.TARGET_ELEMENT.selector}`);
         }
-        
+
         const [injectionPoints, brandAnalysis] = await Promise.all([
             // Use hardcoded selector if enabled, otherwise use normal analysis
-            this.HARDCODE_ELEMENT_FOCUS 
+            this.HARDCODE_ELEMENT_FOCUS
                 ? this.domAnalyzer.analyzeWithHardcodedSelector(
                     url,
                     hypothesis.description,
@@ -319,7 +319,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                 )
                 : this.domAnalyzer.analyzeForHypothesisWithHtml(
-                    url, 
+                    url,
                     hypothesis.description,
                     projectId,
                     htmlContent, // Pass the HTML we already have
@@ -332,7 +332,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         console.log(`[VARIANTS] - Screenshot length: ${screenshot.length}`);
         console.log(`[VARIANTS] - Injection points found: ${injectionPoints.length}`);
         console.log(`[VARIANTS] - Brand analysis: ${brandAnalysis ? `length: ${brandAnalysis.length} chars` : 'null'}`);
-        
+
         if (!brandAnalysis) {
             console.warn(`[VARIANTS] No brand analysis found for project: ${projectId}`);
             throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
@@ -340,14 +340,14 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
         console.log(`[VARIANTS] Generating AI response with Google Gemini 2.5 Pro`);
         const aiConfig = getVariantGenerationAIConfig();
-        
+
         // Use button-specific prompt when using hardcoded selector (targeting button/link)
-        const prompt = this.HARDCODE_ELEMENT_FOCUS 
+        const prompt = this.HARDCODE_ELEMENT_FOCUS
             ? buildButtonVariantGenerationPrompt(hypothesis)
             : buildVariantGenerationPrompt(hypothesis);
-            
+
         console.log(`[VARIANTS] Using ${this.HARDCODE_ELEMENT_FOCUS ? 'button-specific' : 'general'} prompt`);
-        
+
         const object = await generateObject({
             model: google(aiConfig.model, {
                 apiKey: aiConfig.apiKey,
@@ -370,18 +370,18 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         // SEQUENTIAL PROCESSING: Generate code and take screenshots for each variant one by one
         console.log(`[VARIANTS] Processing ${response.variants.length} variants sequentially`);
         const variantsWithScreenshots = [];
-        
+
         // Initialize a single crawler instance for all variants to reuse browser
         const { createPlaywrightCrawler } = await import('@features/crawler');
         const { getServiceConfig } = await import('@infra/config/services');
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        
+
         try {
             for (let index = 0; index < response.variants.length; index++) {
                 const variant = response.variants[index];
                 console.log(`[VARIANTS] Processing variant ${index + 1}/${response.variants.length}: ${variant.variant_label}`);
-                
+
                 // Generate code for this variant
                 let codeResult;
                 try {
@@ -391,7 +391,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
                     codeResult = null;
                 }
-                
+
                 // Take screenshot for this variant using the shared crawler instance
                 let variantScreenshotUrl = '';
                 if (codeResult) {
@@ -409,7 +409,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                             { width: 1920, height: 1080 },
                             { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                         );
-                        
+
                         // Save screenshot to database and get URL
                         const screenshotId = await this.screenshotStorage.saveScreenshot(
                             projectId,
@@ -427,7 +427,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                         // Continue without screenshot rather than failing the entire variant
                     }
                 }
-                
+
                 // Create the final variant object
                 const finalVariant = {
                     ...variant,
@@ -439,7 +439,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
                     screenshot: variantScreenshotUrl
                 };
-                
+
                 variantsWithScreenshots.push(finalVariant);
                 console.log(`[VARIANTS] Completed variant ${index + 1}/${response.variants.length}: ${variant.variant_label}`);
             }
@@ -458,32 +458,32 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
         const urlLower = url.toLowerCase();
-        
+
         // Check for product pages first
         if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
             return 'pdp';
         }
-        
+
         // Check for about pages
         if (urlLower.includes('/about')) {
             return 'about';
         }
-        
+
         // Check for home page - this should be the most common case
         // Home page is typically just the domain or domain with trailing slash
         const urlObj = new URL(url);
         const pathname = urlObj.pathname;
-        
+
         // If no path or just a trailing slash, it's the home page
         if (!pathname || pathname === '/' || pathname === '') {
             return 'home';
         }
-        
+
         // If path is just common home page indicators
         if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
             return 'home';
         }
-        
+
         return 'other';
     }
 }

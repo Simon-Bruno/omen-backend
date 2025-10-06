@@ -10,7 +10,7 @@ import { CrawlerService } from '@features/crawler';
 import { z } from 'zod'
 import { ProjectDAL, ExperimentDAL } from '@infra/dal'
 import { getAIConfig } from '@shared/ai-config'
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
 import { toReservedPayload } from '@features/conflict_guard';
@@ -64,9 +64,9 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         html: '<a href="/collections/all" class="size-style link link--ARGpDamJzVW9Gd2JMa__button_nazDaa" style="--size-style-width: fit-content;--size-style-height: ;--size-style-width-mobile: fit-content; --size-style-width-mobile-min: fit-content;">Shop all →</a>'
     };
 
-    constructor(crawler: CrawlerService, prisma: PrismaClient) {
+    constructor(crawler: CrawlerService, _prisma: PrismaClient) {
         this.crawlerService = crawler;
-        this.screenshotStorage = createScreenshotStorageService(prisma);
+        this.screenshotStorage = createScreenshotStorageService();
     }
 
     async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {

@@ -4,21 +4,19 @@ import { createVariantGenerationService } from '@features/variant_generation/var
 import { createPlaywrightCrawler } from '@features/crawler';
 import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@infra/prisma';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 import { getVariantGenerationAIConfig } from '@shared/ai-config';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
-    private prisma: PrismaClient;
     private screenshotStorage: any;
 
     constructor() {
-        this.prisma = new PrismaClient();
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        this.screenshotStorage = createScreenshotStorageService(this.prisma);
-        this.variantGenerationService = createVariantGenerationService(crawler, this.screenshotStorage, this.prisma);
+        this.screenshotStorage = createScreenshotStorageService();
+        this.variantGenerationService = createVariantGenerationService(crawler, this.screenshotStorage, prisma);
     }
 
     async processVariantJob(jobId: string, projectId: string, hypothesis: any): Promise<void> {

@@ -19,7 +19,7 @@ class GenerateVariantsExecutor {
         this.projectId = projectId;
         const config = getServiceConfig();
         const crawler = createPlaywrightCrawler(config.crawler);
-        const screenshotStorage = createScreenshotStorageService(prisma);
+        const screenshotStorage = createScreenshotStorageService();
         this.variantGenerationService = createVariantGenerationService(crawler, screenshotStorage, prisma);
     }
 

@@ -85,7 +85,7 @@ export function getServiceConfig(): ServiceConfig {
       region: process.env.AWS_REGION || 'eu-central-1',
       queueUrl: process.env.SQS_QUEUE_URL || '',
       batchSize: parseInt(process.env.SQS_BATCH_SIZE || '10'),
-      pollInterval: parseInt(process.env.SQS_POLL_INTERVAL || '5000'),
+      pollInterval: parseInt(process.env.SQS_POLL_INTERVAL || '10000'), // Increased from 5s to 10s
       visibilityTimeout: parseInt(process.env.SQS_VISIBILITY_TIMEOUT || '300'),
     },
   };

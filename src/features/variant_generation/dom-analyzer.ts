@@ -4,7 +4,6 @@ import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { CrawlerService } from '@features/crawler';
 import { getAIConfig } from '@shared/ai-config';
-import { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { simplifyHTML, simplifyHTMLForForensics, getHtmlInfo } from '@shared/utils/html-simplifier';
 import * as cheerio from 'cheerio';
@@ -369,10 +368,9 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   private screenshotStorage: ScreenshotStorageService;
 
   constructor(
-    private crawlerService: CrawlerService,
-    prisma: PrismaClient
+    private crawlerService: CrawlerService
   ) {
-    this.screenshotStorage = createScreenshotStorageService(prisma);
+    this.screenshotStorage = createScreenshotStorageService();
   }
 
   async analyzeForHypothesisWithHtml(
@@ -1008,6 +1006,6 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
 }
 
 // Factory function
-export function createDOMAnalyzer(crawler: CrawlerService, prisma: PrismaClient): DOMAnalyzerService {
-  return new DOMAnalyzerServiceImpl(crawler, prisma);
+export function createDOMAnalyzer(crawler: CrawlerService): DOMAnalyzerService {
+  return new DOMAnalyzerServiceImpl(crawler);
 }
