@@ -216,6 +216,9 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 minSessionsPerVariant: data.minSessionsPerVariant,
                 targetUrls: data.targetUrls || null
             });
+
+            // Create hypothesis
+            await prisma.experimentHypothesis.create({
                 data: {
                     experimentId: experiment.id,
                     hypothesis: data.hypothesis.hypothesis,
