@@ -1,8 +1,9 @@
 // Analytics Event Types - matches Prisma EventType enum
-export type AnalyticsEventType = 
+export type AnalyticsEventType =
   | 'EXPOSURE'
   | 'PAGEVIEW'
   | 'CONVERSION'
+  | 'PURCHASE'
   | 'CUSTOM';
 
 export interface AnalyticsEventData {
@@ -40,6 +41,19 @@ export interface ConversionEventProperties {
   goal: string;
   value?: number;
   properties?: Record<string, any>;
+  device?: 'desktop' | 'mobile' | 'tablet';
+}
+
+export interface PurchaseEventProperties {
+  orderId: string;
+  revenue: number;
+  currency: string;
+  items?: Array<{
+    productId: string;
+    name: string;
+    price: number;
+    quantity: number;
+  }>;
   device?: 'desktop' | 'mobile' | 'tablet';
 }
 
@@ -99,6 +113,17 @@ export interface ConversionRates {
   conversionRate: number;
   averageValue?: number;
   totalValue?: number;
+}
+
+export interface PurchaseStats {
+  experimentId: string;
+  variantId: string;
+  sessions: number;
+  purchases: number;
+  purchaseRate: number;
+  totalRevenue: number;
+  averageOrderValue: number;
+  revenuePerSession: number;
 }
 
 // SQS Message Types

@@ -1,15 +1,16 @@
-import { 
-  AnalyticsService, 
-  SQSConsumerService, 
-  AnalyticsRepository 
+import {
+  AnalyticsService,
+  SQSConsumerService,
+  AnalyticsRepository
 } from '@domain/analytics/analytics-service';
-import { 
-  AnalyticsEventData, 
-  AnalyticsQuery, 
+import {
+  AnalyticsEventData,
+  AnalyticsQuery,
   ExposureStats,
   FunnelAnalysis,
   ConversionRates,
-  SQSAnalyticsMessage 
+  PurchaseStats,
+  SQSAnalyticsMessage
 } from '@domain/analytics/types';
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
@@ -49,6 +50,10 @@ export class AnalyticsServiceImpl implements AnalyticsService {
 
   async getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]> {
     return this.repository.getConversionRates(projectId, experimentId);
+  }
+
+  async getPurchaseStats(projectId: string, experimentId: string): Promise<PurchaseStats[]> {
+    return this.repository.getPurchaseStats(projectId, experimentId);
   }
 
   async getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]> {
@@ -300,7 +305,7 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
       message.properties &&
       typeof message.properties === 'object' &&
       // Validate eventType is one of our supported types
-      ['EXPOSURE', 'PAGEVIEW', 'CONVERSION', 'CUSTOM'].includes(message.eventType)
+      ['EXPOSURE', 'PAGEVIEW', 'CONVERSION', 'PURCHASE', 'CUSTOM'].includes(message.eventType)
     );
   }
 

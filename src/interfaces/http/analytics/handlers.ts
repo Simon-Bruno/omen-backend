@@ -251,7 +251,7 @@ export function getConversionRatesHandler(analyticsService: AnalyticsService) {
     const projectId = request.projectId; // From middleware
 
     if (!projectId) {
-      return reply.status(400).send({ 
+      return reply.status(400).send({
         error: 'Project ID is required',
         message: 'User must have a project associated with their account to access analytics'
       });
@@ -267,6 +267,32 @@ export function getConversionRatesHandler(analyticsService: AnalyticsService) {
     } catch (error) {
       request.log.error(error, 'Failed to get conversion rates');
       return reply.status(500).send({ error: 'Failed to get conversion rates' });
+    }
+  };
+}
+
+export function getPurchaseStatsHandler(analyticsService: AnalyticsService) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const { experimentId } = request.params as { experimentId: string };
+    const projectId = request.projectId; // From middleware
+
+    if (!projectId) {
+      return reply.status(400).send({
+        error: 'Project ID is required',
+        message: 'User must have a project associated with their account to access analytics'
+      });
+    }
+
+    if (!experimentId) {
+      return reply.status(400).send({ error: 'Experiment ID is required' });
+    }
+
+    try {
+      const purchaseStats = await analyticsService.getPurchaseStats(projectId, experimentId);
+      return reply.send({ purchaseStats });
+    } catch (error) {
+      request.log.error(error, 'Failed to get purchase stats');
+      return reply.status(500).send({ error: 'Failed to get purchase stats' });
     }
   };
 }

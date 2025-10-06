@@ -214,6 +214,7 @@ enum EventType {
   EXPOSURE
   PAGEVIEW
   CONVERSION
+  PURCHASE
   CUSTOM
 }
 

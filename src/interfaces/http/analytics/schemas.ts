@@ -225,6 +225,39 @@ export const getConversionRatesSchema: FastifySchema = {
   }
 };
 
+export const getPurchaseStatsSchema: FastifySchema = {
+  params: {
+    type: 'object',
+    properties: {
+      experimentId: { type: 'string' }
+    },
+    required: ['experimentId']
+  },
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        purchaseStats: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              experimentId: { type: 'string' },
+              variantId: { type: 'string' },
+              sessions: { type: 'number' },
+              purchases: { type: 'number' },
+              purchaseRate: { type: 'number' },
+              totalRevenue: { type: 'number' },
+              averageOrderValue: { type: 'number' },
+              revenuePerSession: { type: 'number' }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 export const getExperimentSessionsSchema: FastifySchema = {
   params: {
     type: 'object',
