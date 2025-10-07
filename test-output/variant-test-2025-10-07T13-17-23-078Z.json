@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-10-07T13:17:23.079Z",
+  "project": {
+    "id": "cmgdwc7hb0000qv2eekxo49o9",
+    "shopDomain": "https://tallasextrasmexico.com",
+    "hasBrandAnalysis": true
+  },
+  "demoMode": false,
+  "hypothesis": {
+    "title": "Improve Category Slider Clickability",
+    "description": "Styling the category names in the image slider as clear, high-contrast buttons will encourage more users to explore product collections.",
+    "primary_outcome": "Click-through rate",
+    "current_problem": "The category names are simple text overlays on images, which may not be immediately perceived as clickable navigation elements.",
+    "why_it_works": [
+      {
+        "reason": "Creates a clearer call-to-action"
+      },
+      {
+        "reason": "Improves visual affordance"
+      },
+      {
+        "reason": "Reduces user hesitation"
+      }
+    ],
+    "baseline_performance": 16.5,
+    "predicted_lift_range": {
+      "min": 0.05,
+      "max": 0.15
+    }
+  },
+  "variants": [
+    {
+      "variant_label": "Solid Black Uppercase Category Buttons",
+      "description": "This variant transforms the category name text overlays within the image slider into visually distinct, solid rectangular buttons. Each button has a solid black background (#000000), features uppercase text in the brand's accent gold color (#f4a70e), and uses the 'Poppins' font. On hover, the button's background subtly shifts to a darker gray (#222222) and lifts upwards slightly with a smooth animation, enhancing interactivity.",
+      "rationale": "By converting simple text overlays into clear, high-contrast buttons, this design significantly improves visual affordance, making it immediately obvious that these are clickable elements. This change reduces user hesitation and directly guides them to explore product collections, addressing the core hypothesis that a stronger call-to-action will increase click-through rates.",
+      "javascript_code": "(function() {\n    'use strict';\n\n    function initVariant() {\n        try {\n            const variantStyleId = 'variant-pro-category-buttons';\n            if (document.getElementById(variantStyleId)) {\n                return; // Prevent re-injection\n            }\n\n            const selector = 'div.shopbrand .item'; // Target the parent for better context\n            const elements = document.querySelectorAll(selector);\n\n            if (!elements.length) {\n                console.warn('Variant \"Pro Category Buttons\": Target elements not found using selector:', selector);\n                return;\n            }\n\n            // Define a professional CSS implementation\n            const css = `\n                :root {\n                    --btn-bg: #000000;\n                    --btn-text: #f4a70e;\n                    --btn-hover-bg: #1a1a1a;\n                    --btn-font-family: 'Poppins', sans-serif;\n                    --btn-font-size: 14px;\n                    --btn-font-weight: 700;\n                    --btn-padding: 15px 24px;\n                    --btn-margin: 16px 0;\n                    --btn-transition-duration: 0.3s;\n                    --btn-easing: cubic-bezier(0.25, 0.8, 0.25, 1);\n                    --btn-shadow: 0 2px 5px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);\n                    --btn-hover-shadow: 0 6px 12px rgba(0, 0, 0, 0.15), 0 3px 6px rgba(0, 0, 0, 0.1);\n                    --btn-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);\n                }\n\n                /* Parent anchor setup for interaction and layout */\n                ${selector} a {\n                    text-decoration: none !important;\n                    display: flex;\n                    justify-content: center;\n                    align-items: center;\n                    -webkit-tap-highlight-color: transparent; /* Remove tap flash on mobile */\n                }\n                \n                /* Core button styles applied to the H3 element */\n                ${selector} h3 {\n                    background-color: var(--btn-bg);\n                    color: var(--btn-text);\n                    font-family: var(--btn-font-family);\n                    font-size: var(--btn-font-size);\n                    font-weight: var(--btn-font-weight);\n                    text-transform: uppercase;\n                    letter-spacing: 0.05em; /* Add slight letter spacing for uppercase text */\n                    padding: var(--btn-padding);\n                    margin: var(--btn-margin) !important;\n                    border-radius: 0px;\n                    box-shadow: var(--btn-shadow);\n                    line-height: 1.2;\n                    text-align: center;\n                    display: inline-block;\n                    min-height: 44px; /* Ensure minimum touch target size */\n                    min-width: 44px;\n                    box-sizing: border-box;\n\n                    /* Performance optimizations */\n                    will-change: transform, box-shadow, background-color;\n                    transform: translateZ(0); /* Promote to own layer for hardware acceleration */\n                    transition: \n                        transform var(--btn-transition-duration) var(--btn-easing),\n                        box-shadow var(--btn-transition-duration) var(--btn-easing),\n                        background-color var(--btn-transition-duration) var(--btn-easing);\n                }\n\n                /* Hover state */\n                ${selector} a:hover > h3 {\n                    background-color: var(--btn-hover-bg);\n                    box-shadow: var(--btn-hover-shadow);\n                    transform: translateY(-3px) translateZ(0);\n                    color: var(--btn-text); /* Ensure color persistence */\n                }\n\n                /* Focus state for keyboard accessibility */\n                ${selector} a:focus-visible > h3 {\n                    outline: 2px solid var(--btn-text);\n                    outline-offset: 3px;\n                    background-color: var(--btn-hover-bg);\n                    box-shadow: var(--btn-hover-shadow);\n                    transform: translateY(-3px) translateZ(0);\n                }\n\n                /* Active (click/tap) state for immediate feedback */\n                ${selector} a:active > h3 {\n                    transform: translateY(1px) translateZ(0);\n                    box-shadow: var(--btn-active-shadow);\n                    transition-duration: 0.1s; /* Make the press feel faster */\n                }\n\n                /* Accessibility: Respect user's motion preferences */\n                @media (prefers-reduced-motion: reduce) {\n                    ${selector} h3 {\n                        transition: none;\n                        transform: none !important;\n                    }\n                }\n\n                /* Responsive adjustments for smaller screens */\n                @media (max-width: 768px) {\n                    ${selector} h3 {\n                        font-size: 13px;\n                        padding: 12px 20px;\n                    }\n                }\n            `;\n\n            const styleElement = document.createElement('style');\n            styleElement.id = variantStyleId;\n            styleElement.textContent = css;\n            document.head.appendChild(styleElement);\n\n        } catch (error) {\n            console.error('Error in variant \"Pro Category Buttons\":', error);\n        }\n    }\n\n    // Standard initialization logic\n    if (document.readyState === 'loading') {\n        document.addEventListener('DOMContentLoaded', initVariant);\n    } else {\n        initVariant();\n    }\n})();",
+      "target_selector": "div.shopbrand .item h3",
+      "execution_timing": "dom_ready",
+      "implementation_instructions": "This code targets all category name headings within the image slider and transforms them into high-contrast buttons. It injects a CSS stylesheet into the page's <head> to apply the new styles. This method efficiently restyles all target elements, including their hover and focus states, to match the variant's design system values for a polished, professional appearance and improved user interaction."
+    }
+  ],
+  "summary": {
+    "totalVariants": 1,
+    "hasJavaScriptCode": true,
+    "targetSelectors": [
+      "div.shopbrand .item h3"
+    ],
+    "averageCodeLength": 5626
+  }
+}

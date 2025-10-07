@@ -22,7 +22,7 @@ export class CSSPathGenerator {
    * 4. Semantic attributes (aria-label, name, etc.)
    * 5. Full path with nth-child
    */
-  generateSelector(element: cheerio.Cheerio): string {
+  generateSelector(element: cheerio.Cheerio<any>): string {
     // Try ID first (only if really unique and not generated)
     const id = element.attr('id');
     if (id && this.isValidId(id) && id.length > 5) {
@@ -48,7 +48,7 @@ export class CSSPathGenerator {
     if (classSelector) {
       // Even if we find a unique class, prefer full path for better specificity
       const classes = element.attr('class')?.split(' ') || [];
-      const hasSemanticClass = classes.some(cls =>
+      const hasSemanticClass = classes.some((cls: string) =>
         cls.includes('-') || cls.includes('_') || cls.includes('__')
       );
 
@@ -70,7 +70,7 @@ export class CSSPathGenerator {
    * Generate the full CSS path with nth-child selectors
    * This always generates a unique selector
    */
-  generateFullPath(element: cheerio.Cheerio): string {
+  generateFullPath(element: cheerio.Cheerio<any>): string {
     const path: string[] = [];
     let current = element;
 
@@ -136,7 +136,7 @@ export class CSSPathGenerator {
   /**
    * Try to generate selector using data attributes
    */
-  private tryDataAttributes(element: cheerio.Cheerio): string | null {
+  private tryDataAttributes(element: cheerio.Cheerio<any>): string | null {
     const dataAttrs = ['data-testid', 'data-test', 'data-cy', 'data-qa', 'data-id'];
 
     for (const attr of dataAttrs) {
@@ -160,7 +160,7 @@ export class CSSPathGenerator {
   /**
    * Try to generate selector using unique class combinations
    */
-  private tryUniqueClasses(element: cheerio.Cheerio): string | null {
+  private tryUniqueClasses(element: cheerio.Cheerio<any>): string | null {
     const classes = this.getImportantClasses(element);
     if (classes.length === 0) return null;
 
@@ -194,7 +194,7 @@ export class CSSPathGenerator {
   /**
    * Try semantic attributes like aria-label, name, etc.
    */
-  private trySemanticAttributes(element: cheerio.Cheerio): string | null {
+  private trySemanticAttributes(element: cheerio.Cheerio<any>): string | null {
     const attrs = ['aria-label', 'name', 'title', 'alt', 'placeholder'];
     const tagName = element[0].name;
 
@@ -214,11 +214,11 @@ export class CSSPathGenerator {
   /**
    * Get important classes (filter out utility classes)
    */
-  private getImportantClasses(element: cheerio.Cheerio): string[] {
+  private getImportantClasses(element: cheerio.Cheerio<any>): string[] {
     const classStr = element.attr('class');
     if (!classStr) return [];
 
-    const classes = classStr.split(/\s+/).filter(cls => {
+    const classes = classStr.split(/\s+/).filter((cls: string) => {
       // Filter out common utility classes
       const utilityPatterns = [
         /^m[tlrb]?-\d+$/,  // margin utilities
@@ -286,7 +286,7 @@ export class CSSPathGenerator {
 /**
  * Generate a unique CSS selector for an element in HTML
  */
-export function generateUniqueSelector(html: string, element: cheerio.Cheerio): string {
+export function generateUniqueSelector(html: string, element: cheerio.Cheerio<any>): string {
   const generator = new CSSPathGenerator(html);
   return generator.generateSelector(element);
 }

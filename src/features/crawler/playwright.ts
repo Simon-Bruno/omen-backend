@@ -1,7 +1,6 @@
 // Playwright Web Crawler Service Implementation
 import { chromium, Browser, Page } from 'playwright';
 import type { CrawlerService, CrawlResult, CrawlOptions, CrawlerConfig } from './types';
-import { createSmartScreenshotStrategy } from '@features/variant_generation/smart-screenshot-strategy';
 
 export class PlaywrightCrawlerService implements CrawlerService {
   private browser: Browser | null = null;
@@ -91,13 +90,15 @@ export class PlaywrightCrawlerService implements CrawlerService {
         await lazyImage.scrollIntoViewIfNeeded();
       }
 
-      page.evaluate((_) => window.scrollTo(0, 0), 0);
+      /* eslint-disable no-undef */
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.evaluate(() => {
         const selectors = ['.needsClick', '.needsclick'];
         for (const sel of selectors) {
           document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
         }
       });
+      /* eslint-enable no-undef */
 
       // Handle cookie consent banners and popups
       await this.dismissCookieBanners(page);
@@ -197,13 +198,15 @@ export class PlaywrightCrawlerService implements CrawlerService {
         await lazyImage.scrollIntoViewIfNeeded();
       }
 
-      page.evaluate((_) => window.scrollTo(0, 0), 0);
+      /* eslint-disable no-undef */
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.evaluate(() => {
         const selectors = ['.needsClick', '.needsclick'];
         for (const sel of selectors) {
           document.querySelectorAll(sel).forEach(el => (el as HTMLElement).remove());
         }
       });
+      /* eslint-enable no-undef */
 
       // Handle cookie consent banners and popups
       await this.dismissCookieBanners(page);
@@ -338,7 +341,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
           await lazyImage.scrollIntoViewIfNeeded();
         }
 
-        page.evaluate((_) => window.scrollTo(0, 0), 0);
+        await page.evaluate(() => window.scrollTo(0, 0));
         await page.evaluate(() => {
           const selectors = ['.needsClick', '.needsclick'];
           for (const sel of selectors) {
@@ -538,7 +541,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
                   buttonClicked = true;
                   break;
                 }
-              } catch (buttonError) {
+              } catch (_buttonError) {
                 // Continue to next button selector
                 continue;
               }
@@ -562,7 +565,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
               break;
             }
           }
-        } catch (error) {
+        } catch (_error) {
           // Continue to next banner selector
           continue;
         }
@@ -573,6 +576,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
       }
 
       // Additional cleanup: remove any remaining cookie-related elements
+      /* eslint-disable no-undef */
       await page.evaluate(() => {
         const cookieSelectors = [
           '[id*="cookie"]',
@@ -586,23 +590,24 @@ export class PlaywrightCrawlerService implements CrawlerService {
           '[id*="banner"]',
           '[class*="banner"]',
         ];
-        
+
         cookieSelectors.forEach(selector => {
           try {
             document.querySelectorAll(selector).forEach(el => {
               const element = el as HTMLElement;
-              if (element.style.position === 'fixed' || 
+              if (element.style.position === 'fixed' ||
                   element.style.position === 'absolute' ||
                   element.classList.contains('fixed') ||
                   element.classList.contains('absolute')) {
                 element.remove();
               }
             });
-          } catch (e) {
+          } catch (_e) {
             // Ignore errors
           }
         });
       });
+      /* eslint-enable no-undef */
 
     } catch (error) {
       console.warn('[CRAWLER] Error dismissing cookie banners:', error);
