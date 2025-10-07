@@ -37,57 +37,57 @@ export class ElementDetector {
   // Main detection method - tries multiple strategies
   async detectElement(hypothesis: string): Promise<ElementDetectionResult> {
     console.log(`[ELEMENT_DETECTOR] Detecting element for hypothesis: "${hypothesis}"`);
-    
+
     const candidates: ElementCandidate[] = [];
-    
+
     // Strategy 1: Role-based detection (most reliable)
     const roleCandidates = this.detectByRole(hypothesis);
     candidates.push(...roleCandidates);
-    
+
     // Strategy 2: Text-based detection
     const textCandidates = this.detectByText(hypothesis);
     candidates.push(...textCandidates);
-    
+
     // Strategy 3: Data attributes
     const testIdCandidates = this.detectByTestId(hypothesis);
     candidates.push(...testIdCandidates);
-    
+
     // Strategy 4: Label-based detection
     const labelCandidates = this.detectByLabel(hypothesis);
     candidates.push(...labelCandidates);
-    
+
     // Strategy 5: Placeholder-based detection
     const placeholderCandidates = this.detectByPlaceholder(hypothesis);
     candidates.push(...placeholderCandidates);
-    
+
     // Strategy 6: Title-based detection
     const titleCandidates = this.detectByTitle(hypothesis);
     candidates.push(...titleCandidates);
-    
+
     // Strategy 7: Alt text detection
     const altCandidates = this.detectByAltText(hypothesis);
     candidates.push(...altCandidates);
-    
+
     // Strategy 8: Semantic class detection
     const classCandidates = this.detectBySemanticClass(hypothesis);
     candidates.push(...classCandidates);
-    
+
     // Strategy 9: Stable ID detection
     const idCandidates = this.detectByStableId(hypothesis);
     candidates.push(...idCandidates);
-    
+
     // Strategy 10: Position-based detection (last resort)
     const positionCandidates = this.detectByPosition(hypothesis);
     candidates.push(...positionCandidates);
-    
+
     // Remove duplicates and validate selectors
     const uniqueCandidates = this.deduplicateAndValidate(candidates);
-    
+
     // Sort by confidence and strategy priority
     const sortedCandidates = this.sortCandidates(uniqueCandidates);
-    
+
     const bestMatch = sortedCandidates.length > 0 ? sortedCandidates[0] : undefined;
-    
+
     return {
       found: sortedCandidates.length > 0,
       candidates: sortedCandidates,
@@ -100,7 +100,7 @@ export class ElementDetector {
   private detectByRole(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const roleKeywords = this.extractRoleKeywords(hypothesis);
-    
+
     // Common role mappings
     const roleMap: Record<string, string[]> = {
       'button': ['button', 'link', 'summary'],
@@ -116,18 +116,18 @@ export class ElementDetector {
       'section': ['section'],
       'form': ['form']
     };
-    
+
     for (const keyword of roleKeywords) {
       const roles = roleMap[keyword.toLowerCase()] || [];
-      
+
       for (const role of roles) {
         const elements = this.$(role);
-        
+
         elements.each((_, el) => {
           const $el = this.$(el);
           const text = $el.text().trim();
           const attributes = this.getElementAttributes($el);
-          
+
           // Check if element has explicit role attribute
           const explicitRole = attributes.role;
           if (explicitRole && explicitRole.toLowerCase().includes(keyword.toLowerCase())) {
@@ -166,7 +166,7 @@ export class ElementDetector {
         });
       }
     }
-    
+
     return candidates;
   }
 
@@ -174,14 +174,14 @@ export class ElementDetector {
   private detectByText(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const textKeywords = this.extractTextKeywords(hypothesis);
-    
+
     for (const keyword of textKeywords) {
       // Instead of using :contains() which can break with special chars,
       // iterate through all elements and check text content
       this.$('*').each((_, el) => {
         const $el = this.$(el);
         const text = $el.text().trim();
-        
+
         // Only consider elements where the text matches exactly or is contained
         if (text.toLowerCase().includes(keyword.toLowerCase())) {
           const attributes = this.getElementAttributes($el);
@@ -204,24 +204,24 @@ export class ElementDetector {
         }
       });
     }
-    
+
     return candidates;
   }
 
   // Strategy 3: Data attributes (Playwright's getByTestId)
   private detectByTestId(_hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
-    
+
     // Look for data-testid attributes
     const testIdElements = this.$('[data-testid]');
-    
+
     testIdElements.each((_, el) => {
       const $el = this.$(el);
       const testId = $el.attr('data-testid');
       const text = $el.text().trim();
       const attributes = this.getElementAttributes($el);
       const tagName = el.type === 'tag' ? el.name : 'unknown';
-      
+
       if (testId) {
         candidates.push({
           selector: `[data-testid="${testId}"]`,
@@ -236,7 +236,7 @@ export class ElementDetector {
         });
       }
     });
-    
+
     return candidates;
   }
 
@@ -244,22 +244,22 @@ export class ElementDetector {
   private detectByLabel(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const labelKeywords = this.extractLabelKeywords(hypothesis);
-    
+
     for (const keyword of labelKeywords) {
       // Iterate through all labels to avoid :contains() breaking with special chars
       const labels = this.$('label');
-      
+
       labels.each((_, labelEl) => {
         const $label = this.$(labelEl);
         const labelText = $label.text().trim();
-        
+
         // Skip if label doesn't contain keyword
         if (!labelText.toLowerCase().includes(keyword.toLowerCase())) {
           return;
         }
-        
+
         const forAttr = $label.attr('for');
-        
+
         if (forAttr) {
           // Find the associated input
           const input = this.$(`#${forAttr}`);
@@ -280,7 +280,7 @@ export class ElementDetector {
         }
       });
     }
-    
+
     return candidates;
   }
 
@@ -288,17 +288,17 @@ export class ElementDetector {
   private detectByPlaceholder(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const placeholderKeywords = this.extractPlaceholderKeywords(hypothesis);
-    
+
     for (const keyword of placeholderKeywords) {
       // Escape special characters in the keyword for CSS selector
       const escapedKeyword = keyword.replace(/[\\"']/g, '\\$&');
       const inputs = this.$(`input[placeholder*="${escapedKeyword}"]`);
-      
+
       inputs.each((_, el) => {
         const $el = this.$(el);
         const placeholder = $el.attr('placeholder');
         const attributes = this.getElementAttributes($el);
-        
+
         candidates.push({
           selector: `input[placeholder="${placeholder}"]`,
           confidence: 0.85,
@@ -312,7 +312,7 @@ export class ElementDetector {
         });
       });
     }
-    
+
     return candidates;
   }
 
@@ -320,15 +320,15 @@ export class ElementDetector {
   private detectByTitle(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const titleKeywords = this.extractTitleKeywords(hypothesis);
-    
+
     for (const keyword of titleKeywords) {
       const elements = this.$(`[title*="${keyword}"]`);
-      
+
       elements.each((_, el) => {
         const $el = this.$(el);
         const title = $el.attr('title');
         const attributes = this.getElementAttributes($el);
-        
+
         candidates.push({
           selector: `[title="${title}"]`,
           confidence: 0.8,
@@ -342,7 +342,7 @@ export class ElementDetector {
         });
       });
     }
-    
+
     return candidates;
   }
 
@@ -350,15 +350,15 @@ export class ElementDetector {
   private detectByAltText(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const altKeywords = this.extractAltKeywords(hypothesis);
-    
+
     for (const keyword of altKeywords) {
       const images = this.$(`img[alt*="${keyword}"]`);
-      
+
       images.each((_, el) => {
         const $el = this.$(el);
         const alt = $el.attr('alt');
         const attributes = this.getElementAttributes($el);
-        
+
         candidates.push({
           selector: `img[alt="${alt}"]`,
           confidence: 0.85,
@@ -372,7 +372,7 @@ export class ElementDetector {
         });
       });
     }
-    
+
     return candidates;
   }
 
@@ -380,18 +380,18 @@ export class ElementDetector {
   private detectBySemanticClass(hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
     const classKeywords = this.extractClassKeywords(hypothesis);
-    
+
     for (const keyword of classKeywords) {
       // Look for classes that contain the keyword
       const elements = this.$(`[class*="${keyword}"]`);
-      
+
       elements.each((_, el) => {
         const $el = this.$(el);
         const classes = $el.attr('class')?.split(' ') || [];
-        const matchingClasses = classes.filter(cls => 
+        const matchingClasses = classes.filter(cls =>
           cls.toLowerCase().includes(keyword.toLowerCase())
         );
-        
+
         if (matchingClasses.length > 0) {
           const attributes = this.getElementAttributes($el);
 
@@ -412,24 +412,24 @@ export class ElementDetector {
         }
       });
     }
-    
+
     return candidates;
   }
 
   // Strategy 9: Stable ID detection
   private detectByStableId(_hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
-    
+
     // Find elements with IDs that don't look generated
     const elementsWithIds = this.$('[id]');
-    
+
     elementsWithIds.each((_, el) => {
       const $el = this.$(el);
       const id = $el.attr('id');
-      
+
       if (id && this.isStableId(id)) {
         const attributes = this.getElementAttributes($el);
-        
+
         candidates.push({
           selector: `#${id}`,
           confidence: 0.8,
@@ -443,24 +443,24 @@ export class ElementDetector {
         });
       }
     });
-    
+
     return candidates;
   }
 
   // Strategy 10: Position-based detection (last resort)
   private detectByPosition(_hypothesis: string): ElementCandidate[] {
     const candidates: ElementCandidate[] = [];
-    
+
     // This would be implemented based on specific needs
     // For now, return empty array as position-based detection is fragile
-    
+
     return candidates;
   }
 
   // Helper methods
   private extractRoleKeywords(hypothesis: string): string[] {
     const roleKeywords = ['button', 'heading', 'textbox', 'link', 'image', 'list', 'navigation', 'form'];
-    return roleKeywords.filter(keyword => 
+    return roleKeywords.filter(keyword =>
       hypothesis.toLowerCase().includes(keyword.toLowerCase())
     );
   }
@@ -468,8 +468,8 @@ export class ElementDetector {
   private extractTextKeywords(hypothesis: string): string[] {
     // Extract meaningful text from hypothesis
     const words = hypothesis.toLowerCase().split(/\s+/);
-    return words.filter(word => 
-      word.length > 2 && 
+    return words.filter(word =>
+      word.length > 2 &&
       !['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'].includes(word)
     );
   }
@@ -494,16 +494,16 @@ export class ElementDetector {
     return this.extractTextKeywords(hypothesis);
   }
 
-  private getElementAttributes($el: cheerio.Cheerio<cheerio.Element>): Record<string, string> {
+  private getElementAttributes($el: cheerio.Cheerio<any>): Record<string, string> {
     const attributes: Record<string, string> = {};
     const el = $el[0];
-    
+
     if (el && el.type === 'tag') {
       Object.keys(el.attribs || {}).forEach(key => {
         attributes[key] = el.attribs[key];
       });
     }
-    
+
     return attributes;
   }
 
@@ -522,14 +522,14 @@ export class ElementDetector {
       /-\d{10,}$/,
       /^[a-z]+-\d+-\d+/
     ];
-    
+
     return !generatedPatterns.some(pattern => pattern.test(id));
   }
 
   private deduplicateAndValidate(candidates: ElementCandidate[]): ElementCandidate[] {
     const seen = new Set<string>();
     const valid: ElementCandidate[] = [];
-    
+
     for (const candidate of candidates) {
       if (!seen.has(candidate.selector)) {
         // Validate selector
@@ -537,13 +537,13 @@ export class ElementDetector {
           this.$(candidate.selector);
           seen.add(candidate.selector);
           valid.push(candidate);
-        } catch (error) {
+        } catch (_error) {
           // Skip invalid selectors
           console.warn(`[ELEMENT_DETECTOR] Invalid selector: ${candidate.selector}`);
         }
       }
     }
-    
+
     return valid;
   }
 
@@ -561,16 +561,16 @@ export class ElementDetector {
       'class': 1,
       'position': 0
     };
-    
+
     return candidates.sort((a, b) => {
       // First by strategy priority
       const aPriority = strategyPriority[a.strategy] || 0;
       const bPriority = strategyPriority[b.strategy] || 0;
-      
+
       if (aPriority !== bPriority) {
         return bPriority - aPriority;
       }
-      
+
       // Then by confidence
       return b.confidence - a.confidence;
     });
@@ -578,7 +578,7 @@ export class ElementDetector {
 
   private generateSuggestions(_hypothesis: string, candidates: ElementCandidate[]): string[] {
     const suggestions: string[] = [];
-    
+
     if (candidates.length === 0) {
       suggestions.push('Try adding data-testid attributes to elements for more reliable targeting');
       suggestions.push('Consider using more specific text content in the hypothesis');
@@ -587,7 +587,7 @@ export class ElementDetector {
       suggestions.push(`Found ${candidates.length} potential elements using multiple strategies`);
       suggestions.push(`Best match: ${candidates[0].strategy} strategy with ${candidates[0].confidence * 100}% confidence`);
     }
-    
+
     return suggestions;
   }
 }

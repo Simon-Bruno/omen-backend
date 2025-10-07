@@ -38,7 +38,7 @@ export class VariantCodeGenerator {
     ): Promise<CodeGenerationResult> {
         // Extract only essential brand info to reduce tokens
         const brandSummary = this.extractBrandSummary(brandAnalysis);
-        
+
         // Use demo selector if enabled, otherwise use injection points
         if (DEMO_CONDITION) {
             console.log(`[CODE_GENERATOR] Using demo selector for: ${variant.variant_label}`);
@@ -51,14 +51,14 @@ export class VariantCodeGenerator {
             };
             return this.generateCodeWithSelector(variant, brandSummary, screenshot, [demoTarget], htmlContent);
         }
-        
+
         // Use injection points for dynamic approach
         const topPoints = injectionPoints.slice(0, 3);
         const bestPoint = topPoints[0];
         if (!bestPoint) {
             throw new Error(`No injection points found for variant: ${variant.variant_label}`);
         }
-        
+
         return this.generateCodeWithSelector(variant, brandSummary, screenshot, topPoints, htmlContent);
     }
 
@@ -192,7 +192,7 @@ Return JSON with: javascript_code, target_selector, execution_timing, implementa
         const aiConfig = getVariantGenerationAIConfig();
         console.log(`[CODE_GENERATOR] Generating code for variant: ${variant.variant_label}`);
         console.log(`[CODE_GENERATOR] Using ${points.length} selector options with context`);
-        
+
         try {
             const codeObject = await generateObject({
                 model: google(aiConfig.model),
@@ -305,34 +305,6 @@ ${htmlContent ? `- HTML Context: ${this.extractEnhancedHtmlContext(point.selecto
 
         } catch (error) {
             return `Error extracting context: ${error}`;
-        }
-    }
-
-    private extractHtmlForSelector(selector: string, htmlContent: string): string {
-        try {
-            const cheerio = require('cheerio');
-            const $ = cheerio.load(htmlContent);
-            const elements = $(selector);
-            
-            if (elements.length === 0) {
-                return 'No elements found with this selector';
-            }
-            
-            // Return HTML of first few elements (limit to avoid token overflow)
-            const maxElements = 3;
-            const htmlSnippets = [];
-            
-            for (let i = 0; i < Math.min(elements.length, maxElements); i++) {
-                const element = elements.eq(i);
-                const outerHtml = element.prop('outerHTML') || element.html();
-                // Truncate if too long
-                const truncated = outerHtml.length > 500 ? outerHtml.substring(0, 500) + '...' : outerHtml;
-                htmlSnippets.push(`Element ${i + 1}: ${truncated}`);
-            }
-            
-            return htmlSnippets.join('\n\n');
-        } catch (error) {
-            return `Error extracting HTML: ${error instanceof Error ? error.message : String(error)}`;
         }
     }
 

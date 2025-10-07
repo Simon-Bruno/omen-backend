@@ -2,6 +2,7 @@
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
+import fetch from 'node-fetch';
 import { CrawlerService } from '@features/crawler';
 import { getAIConfig } from '@shared/ai-config';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
@@ -9,15 +10,15 @@ import { simplifyHTML, simplifyHTMLForForensics, getHtmlInfo } from '@shared/uti
 import * as cheerio from 'cheerio';
 import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 import { createElementDetector } from './element-detector';
-import { createHypothesisAwareSelector, HypothesisSelector } from './hypothesis-aware-selector';
+import { createHypothesisAwareSelector } from './hypothesis-aware-selector';
 
-// CSS selector validation utility
+// CSS selector validation utility using cheerio
 function isValidCSSSelector(selector: string): boolean {
   try {
-    // Create a temporary element to test the selector
-    const testElement = document.createElement('div');
-    testElement.querySelector(selector);
-    return true;
+    // Use a simple regex check for basic CSS selector validation
+    // This covers most common selectors
+    const validSelectorPattern = /^[a-zA-Z0-9[\].#:\-\s,>+~()="'*^$|]+$/;
+    return validSelectorPattern.test(selector);
   } catch {
     return false;
   }
@@ -29,19 +30,19 @@ function getSelectorMatchInfo(selector: string, html: string): { found: boolean;
   try {
     const $ = cheerio.load(html);
     let elements = $(selector);
-    
+
     // If selector targets a[href="/collections/all"], filter by text content to be more precise
     if (selector === 'a[href="/collections/all"]') {
       elements = elements.filter((_, el) => {
         const text = $(el).text().trim().toLowerCase();
         // More precise matching - must contain "shop all" as a phrase
-        return text === 'shop all' || 
-               text === 'shop all →' || 
-               text === 'shop all>' ||
-               text.includes('shop all') && text.length < 20; // Short text containing "shop all"
+        return text === 'shop all' ||
+          text === 'shop all →' ||
+          text === 'shop all>' ||
+          text.includes('shop all') && text.length < 20; // Short text containing "shop all"
       });
     }
-    
+
     const elementInfo = elements.map((_, el) => {
       const tagName = el.type === 'tag' ? el.name : 'unknown';
       const classes = $(el).attr('class') || '';
@@ -49,13 +50,13 @@ function getSelectorMatchInfo(selector: string, html: string): { found: boolean;
       const text = $(el).text().trim();
       return `${tagName}${id ? `#${id}` : ''}${classes ? `.${classes.split(' ').join('.')}` : ''} "${text}"`;
     }).get();
-    
+
     return {
       found: elements.length > 0,
       count: elements.length,
       elements: elementInfo
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       found: false,
       count: 0,
@@ -79,7 +80,7 @@ function isGeneratedId(id: string): boolean {
     /-\d{10,}$/, // Ends with long numbers
     /^[a-z]+-\d+-\d+/, // Pattern like "slide-123-456"
   ];
-  
+
   return generatedPatterns.some(pattern => pattern.test(id));
 }
 
@@ -93,7 +94,7 @@ function isStableClass(className: string): boolean {
     /^[a-z]+$/, // simple words like "button", "card"
     /^[a-z]+-[a-z]+-[a-z]+$/, // triple kebab like "cart-drawer-form"
   ];
-  
+
   // Avoid generated patterns
   const generatedPatterns = [
     /^\d+$/, // Pure numbers
@@ -103,18 +104,18 @@ function isStableClass(className: string): boolean {
     /^[a-z]+-\d+/, // Pattern like "card-123"
     /template--\d+/, // Template patterns
   ];
-  
-  return stablePatterns.some(pattern => pattern.test(className)) && 
-         !generatedPatterns.some(pattern => pattern.test(className));
+
+  return stablePatterns.some(pattern => pattern.test(className)) &&
+    !generatedPatterns.some(pattern => pattern.test(className));
 }
 
 // Generate multiple fallback selectors for better reliability
 function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string[] {
   const selectors: string[] = [];
   const el = element[0];
-  
+
   if (!el || el.type !== 'tag') return selectors;
-  
+
   const tagName = el.name;
   const id = $(el).attr('id');
   const classes = $(el).attr('class');
@@ -122,54 +123,54 @@ function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.Che
   const role = $(el).attr('role');
   const ariaLabel = $(el).attr('aria-label');
   const textContent = $(el).text?.()?.trim();
-  
+
   // Strategy 1: Data attributes (most reliable - never generated)
   if (dataTestId) {
     selectors.push(`[data-testid="${dataTestId}"]`);
   }
-  
+
   // Strategy 2: Role attribute (very reliable - semantic)
   if (role) {
     selectors.push(`${tagName}[role="${role}"]`);
   }
-  
+
   // Strategy 3: Aria-label (very reliable - semantic)
   if (ariaLabel) {
     selectors.push(`${tagName}[aria-label="${ariaLabel}"]`);
   }
-  
+
   // Strategy 4: ID selector (only if not generated)
   if (id && !isGeneratedId(id)) {
     selectors.push(`#${id}`);
   }
-  
+
   // Strategy 5: Stable class-based selectors (prioritize semantic classes)
   if (classes) {
     const classList = classes.split(' ').filter(c => c.trim());
     const stableClasses = classList.filter(isStableClass);
-    
+
     // Use only stable classes
     if (stableClasses.length > 0) {
       // Single most stable class
       selectors.push(`${tagName}.${stableClasses[0]}`);
-      
+
       // Two most stable classes
       if (stableClasses.length > 1) {
         selectors.push(`${tagName}.${stableClasses.slice(0, 2).join('.')}`);
       }
-      
+
       // All stable classes (if not too many)
       if (stableClasses.length <= 3) {
         selectors.push(`${tagName}.${stableClasses.join('.')}`);
       }
     }
   }
-  
+
   // Strategy 6: Text content with tag (for unique text)
   if (textContent && textContent.length < 50 && textContent.length > 3) {
     selectors.push(`${tagName}:contains("${textContent}")`);
   }
-  
+
   // Strategy 7: Parent-child relationships with stable classes
   const parent = $(el).parent();
   if (parent.length > 0) {
@@ -177,12 +178,12 @@ function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.Che
     if (parentClasses) {
       const parentClassList = parentClasses.split(' ').filter(c => c.trim());
       const stableParentClasses = parentClassList.filter(isStableClass);
-      
+
       if (stableParentClasses.length > 0) {
         // Use most stable parent class
         selectors.push(`.${stableParentClasses[0]} ${tagName}`);
         selectors.push(`.${stableParentClasses[0]} > ${tagName}`);
-        
+
         // Add current element's stable class if available
         if (classes) {
           const stableClasses = classes.split(' ').filter(c => c.trim()).filter(isStableClass);
@@ -193,7 +194,7 @@ function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.Che
       }
     }
   }
-  
+
   // Strategy 8: Grandparent relationships (more stable than direct parent)
   const grandparent = $(el).parent().parent();
   if (grandparent.length > 0) {
@@ -201,20 +202,20 @@ function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.Che
     if (grandparentClasses) {
       const grandparentClassList = grandparentClasses.split(' ').filter(c => c.trim());
       const stableGrandparentClasses = grandparentClassList.filter(isStableClass);
-      
+
       if (stableGrandparentClasses.length > 0) {
         selectors.push(`.${stableGrandparentClasses[0]} ${tagName}`);
       }
     }
   }
-  
+
   // Strategy 9: Sibling relationships (avoid position-based)
   const siblings = $(el).siblings(tagName);
   if (siblings.length === 0) {
     // If it's the only element of its type, use tag alone
     selectors.push(tagName);
   }
-  
+
   // Remove duplicates and invalid selectors
   return [...new Set(selectors)].filter(selector => {
     try {
@@ -229,28 +230,28 @@ function generateFallbackSelectors(element: cheerio.Cheerio<any>, $: cheerio.Che
 // Test selector reliability by checking if it still works
 function testSelectorReliability(selector: string, html: string): { works: boolean; confidence: number; reason: string } {
   const matchInfo = getSelectorMatchInfo(selector, html);
-  
+
   if (!matchInfo.found) {
     return { works: false, confidence: 0, reason: 'Selector does not match any elements' };
   }
-  
+
   if (matchInfo.count > 1) {
     return { works: false, confidence: 0.3, reason: `Selector matches ${matchInfo.count} elements, should match exactly 1` };
   }
-  
+
   // Check for generated/unstable patterns
   const hasGeneratedId = /#.*template--\d+|#.*slide-\d+|#.*section-\d+|#.*block-\d+|#.*shopify-section/.test(selector);
   const hasGeneratedClass = /\.\d+\.|\.\w+\d{10,}\.|\.\w+-\d{10,}\./.test(selector);
   const hasComplexChain = selector.split('.').length > 3 || selector.split(' ').length > 4;
-  
+
   if (hasGeneratedId || hasGeneratedClass) {
     return { works: false, confidence: 0.1, reason: 'Selector contains generated/unstable patterns' };
   }
-  
+
   // Check selector stability
   let confidence = 0.8; // Base confidence
   let reason = 'Selector works and matches exactly 1 element';
-  
+
   // Prefer more stable selectors
   if (selector.includes('[data-testid=')) {
     confidence = 0.95;
@@ -274,7 +275,7 @@ function testSelectorReliability(selector: string, html: string): { works: boole
     confidence = 0.3;
     reason += ' (position-based - very fragile)';
   }
-  
+
   return { works: true, confidence, reason };
 }
 
@@ -386,20 +387,20 @@ const injectionPointSchema = z.union([elementFoundSchema, elementNotFoundSchema]
 
 export interface DOMAnalyzerService {
   analyzeForHypothesis(
-    url: string, 
+    url: string,
     hypothesis: string,
     projectId: string,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]>;
-  
+
   analyzeForHypothesisWithHtml(
-    url: string, 
+    url: string,
     hypothesis: string,
     projectId: string,
     htmlContent: string | null,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]>;
-  
+
   analyzeWithHardcodedSelector(
     url: string,
     hypothesis: string,
@@ -572,7 +573,7 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
           insertionStrategy // Add the insertion strategy
         };
       });
-      
+
       console.log(`[DOM_ANALYZER] Generated ${injectionPoints.length} injection points`);
       return injectionPoints;
 
@@ -591,7 +592,7 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
 
         // Convert to injection points (simplified)
         return detectionResult.candidates.map(candidate => ({
-          type: 'element',
+          type: 'text',
           selector: candidate.selector,
           confidence: candidate.confidence,
           description: candidate.reasoning,
@@ -618,21 +619,21 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   }
 
   async analyzeForHypothesis(
-    url: string, 
+    url: string,
     hypothesis: string,
     projectId: string,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]> {
     console.log(`[DOM_ANALYZER] Analyzing page for hypothesis: "${hypothesis}"`);
-    
+
     // Check storage first for both screenshot and HTML
     const pageType = this.getPageType(url);
     const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
-      projectId, 
-      pageType, 
+      projectId,
+      pageType,
       STANDARD_SCREENSHOT_OPTIONS
     );
-    
+
     let crawlResult;
     if (cachedData.screenshot && cachedData.html) {
       console.log(`[DOM_ANALYZER] Using stored screenshot and HTML for ${pageType} page`);
@@ -654,14 +655,14 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
       });
       // Use stored screenshot instead of crawled one
       crawlResult.screenshot = cachedData.screenshot;
-      
+
       // Store the new HTML content
       if (crawlResult.html) {
         const simplifiedHtml = simplifyHTML(crawlResult.html);
         const screenshotId = await this.screenshotStorage.saveScreenshot(
-          projectId, 
+          projectId,
           pageType,
-          url, 
+          url,
           STANDARD_SCREENSHOT_OPTIONS,
           cachedData.screenshot!, // Use the cached screenshot
           simplifiedHtml
@@ -676,14 +677,14 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
         screenshot: { fullPage: true, quality: 80 },
         authentication
       });
-      
+
       // Store the new screenshot and HTML
       if (crawlResult.screenshot && crawlResult.html) {
         const simplifiedHtml = simplifyHTML(crawlResult.html);
         const screenshotId = await this.screenshotStorage.saveScreenshot(
-          projectId, 
+          projectId,
           pageType,
-          url, 
+          url,
           STANDARD_SCREENSHOT_OPTIONS,
           crawlResult.screenshot,
           simplifiedHtml
@@ -703,7 +704,7 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
 
     // Clear large HTML from memory before AI processing
     crawlResult.html = ''; // Free memory
-    
+
     // Force garbage collection if available
     if (global.gc) {
       global.gc();
@@ -718,13 +719,13 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
         {
           role: 'user',
           content: [
-            { 
-              type: 'text', 
-              text: this.buildHypothesisFocusedPrompt(hypothesis) 
+            {
+              type: 'text',
+              text: this.buildHypothesisFocusedPrompt(hypothesis)
             },
-            { 
-              type: 'text', 
-              text: `HTML Content:\n${optimizedHTML}` 
+            {
+              type: 'text',
+              text: `HTML Content:\n${optimizedHTML}`
             }
           ]
         }
@@ -735,46 +736,46 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
 
     // Process the simplified result
     const forensicsResult = result.object;
-    
+
     // Check if element was found
     if ('NOT_FOUND' in forensicsResult && forensicsResult.NOT_FOUND === true) {
       console.log(`[DOM_ANALYZER] Element not found: ${forensicsResult.reason}`);
       console.log(`[DOM_ANALYZER] Suggestions:`, forensicsResult.suggestions);
       return []; // Return empty array if not found
     }
-    
+
     // Type guard to ensure we have the success result
     if (!('css_selector' in forensicsResult)) {
       console.error(`[DOM_ANALYZER] Invalid response format from AI`);
       return [];
     }
-    
+
     // Validate that the selector exists in the HTML
     const selector = forensicsResult.css_selector;
     const matchInfo = getSelectorMatchInfo(selector, optimizedHTML);
     let finalSelector = selector;
     let alternativeSelectors: string[] = [];
     let reliability = testSelectorReliability(selector, optimizedHTML);
-    
+
     if (!matchInfo.found) {
       console.warn(`[DOM_ANALYZER] Generated selector "${selector}" does not match any elements in HTML.`);
       console.warn(`[DOM_ANALYZER] Available classes in HTML:`, this.extractAvailableClasses(optimizedHTML).slice(0, 10));
-      
+
       // Try to find the element using text content or other methods
       console.log(`[DOM_ANALYZER] Attempting to find element using fallback methods...`);
       const $ = cheerio.load(optimizedHTML);
       const elementText = forensicsResult.element_text;
-      
+
       if (elementText) {
         // Try to find by text content
         const textElements = $(`*:contains("${elementText}")`).filter((_, el) => {
           return $(el).text().trim() === elementText.trim();
         });
-        
+
         if (textElements.length > 0) {
           const targetElement = textElements.first();
           alternativeSelectors = generateFallbackSelectors(targetElement, $);
-          
+
           // Find the best working selector
           for (const altSelector of alternativeSelectors) {
             const altMatchInfo = getSelectorMatchInfo(altSelector, optimizedHTML);
@@ -787,12 +788,12 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
           }
         }
       }
-      
+
       // Still return the result but with lower confidence
       forensicsResult.confidence = Math.min(forensicsResult.confidence || 0.5, 0.3);
     } else {
       console.log(`[DOM_ANALYZER] Selector validation passed: "${selector}" found ${matchInfo.count} element(s):`, matchInfo.elements);
-      
+
       // Generate fallback selectors for the working selector
       const $ = cheerio.load(optimizedHTML);
       const elements = $(selector);
@@ -802,15 +803,15 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
         alternativeSelectors = alternativeSelectors.filter(s => s !== selector);
       }
     }
-    
+
     // Clean the CSS selector
     const cleanedSelector = cleanCSSSelector(finalSelector);
-    
+
     // Validate selector and log warnings for invalid ones
     if (!isValidCSSSelector(cleanedSelector)) {
       console.warn(`[DOM_ANALYZER] Invalid CSS selector detected: "${finalSelector}" -> cleaned to: "${cleanedSelector}"`);
     }
-    
+
     // Transform the result to InjectionPoint format
     const injectionPoint: InjectionPoint = {
       type: 'button', // Default type, could be enhanced based on element analysis
@@ -849,21 +850,21 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     // Process HTML in chunks to reduce memory usage
     const chunkSize = 10000; // Process 10KB at a time
     const chunks = this.splitIntoChunks(html, chunkSize);
-    
+
     let optimized = '';
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      
+
       // Process chunk with minimal memory operations
       const processedChunk = this.processHTMLChunk(chunk);
       optimized += processedChunk;
-      
+
       // Force garbage collection hint for large chunks
       if (i % 5 === 0 && global.gc) {
         global.gc();
       }
     }
-    
+
     // Use the full HTML with intelligent truncation if needed
     const maxLength = 50000; // ~12k tokens (increased significantly)
     if (optimized.length > maxLength) {
@@ -876,7 +877,7 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
       }
       return truncated + '\n\n... [HTML truncated for analysis]';
     }
-    
+
     return optimized;
   }
 
@@ -893,28 +894,12 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     return simplifyHTMLForForensics(chunk);
   }
 
-  // Minimal HTML processing for the new multi-strategy detector
-  private minimalHTMLProcessing(html: string): string {
-    // Only remove the most unnecessary elements, keep everything else
-    return html
-      // Remove only script and style tags (keep everything else)
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      // Remove comments
-      .replace(/<!--[\s\S]*?-->/g, '')
-      // Normalize whitespace but keep structure
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-
-
 
   private extractAvailableClasses(html: string): string[] {
     try {
       const $ = cheerio.load(html);
       const classes = new Set<string>();
-      
+
       // Extract all class attributes from all elements
       $('[class]').each((_, element) => {
         const classAttr = $(element).attr('class');
@@ -927,7 +912,7 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
           });
         }
       });
-      
+
       return Array.from(classes);
     } catch (error) {
       console.warn(`[DOM_ANALYZER] Error extracting classes:`, error);
@@ -1025,7 +1010,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     }
   }
 
-  private getRatingsInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+  private getRatingsInsertionStrategy(element: cheerio.Cheerio<any>, _$: cheerio.CheerioAPI): InsertionStrategy {
     // For product cards, find the best place for ratings
     const isProductCard = element.attr('class')?.includes('product') || element.attr('class')?.includes('card');
 
@@ -1086,7 +1071,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     };
   }
 
-  private getButtonInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+  private getButtonInsertionStrategy(element: cheerio.Cheerio<any>, _$: cheerio.CheerioAPI): InsertionStrategy {
     // Look for existing action areas
     const actions = element.find('.card__actions, .product-actions, [class*="action"]').first();
     if (actions.length > 0) {
@@ -1120,7 +1105,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     };
   }
 
-  private getBadgeInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+  private getBadgeInsertionStrategy(element: cheerio.Cheerio<any>, _$: cheerio.CheerioAPI): InsertionStrategy {
     // Badges typically go on images or at the start
     const image = element.find('.card__media, img, picture').first();
     if (image.length > 0) {
@@ -1142,7 +1127,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     };
   }
 
-  private getReplacementStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+  private getReplacementStrategy(_element: cheerio.Cheerio<any>, _$: cheerio.CheerioAPI): InsertionStrategy {
     return {
       method: 'replace',
       targetSelector: '',
@@ -1152,7 +1137,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     };
   }
 
-  private getDefaultInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+  private getDefaultInsertionStrategy(_element: cheerio.Cheerio<any>, _$: cheerio.CheerioAPI): InsertionStrategy {
     return {
       method: 'append',
       targetSelector: '',
@@ -1219,7 +1204,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
           const $sibling = $(sibling);
           return {
             selector: this.generateSelectorForElement($sibling, $),
-            position: $sibling.index() < element.index() ? 'before' : 'after',
+            position: ($sibling.index() < element.index() ? 'before' : 'after') as 'before' | 'after',
             distance: 0 // Would need real rendering to calculate
           };
         }).get().slice(0, 3), // Limit to 3 nearest siblings
@@ -1252,7 +1237,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     }
   }
 
-  private generateSelectorForElement($el: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string {
+  private generateSelectorForElement($el: cheerio.Cheerio<any>, _$: cheerio.CheerioAPI): string {
     const element = $el[0];
     if (!element || element.type !== 'tag') return '';
 
@@ -1320,7 +1305,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     return handlers;
   }
 
-  private detectAnimations($el: cheerio.Cheerio<any>): Array<{property: string; duration: string; timing: string}> {
+  private detectAnimations($el: cheerio.Cheerio<any>): Array<{ property: string; duration: string; timing: string }> {
     // This is simplified - would need CSS parsing for full implementation
     const transition = $el.css('transition');
     if (transition && transition !== 'none') {
@@ -1375,77 +1360,77 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
       if (role.includes('navigation')) return 'navigation';
       if (role.includes('form')) return 'form';
     }
-    
+
     // Check tag name
     if (tagName === 'button' || tagName === 'input' && attributes.type === 'button') {
       return 'button';
     }
-    
+
     if (tagName === 'img') {
       return 'image';
     }
-    
+
     if (tagName === 'form') {
       return 'form';
     }
-    
+
     if (tagName === 'nav') {
       return 'navigation';
     }
-    
+
     if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
       return 'title';
     }
-    
+
     // Check for price-related classes or attributes
     const classList = attributes.class?.toLowerCase() || '';
     const text = attributes.text?.toLowerCase() || '';
-    
+
     if (classList.includes('price') || classList.includes('cost') || text.includes('$') || text.includes('€') || text.includes('£')) {
       return 'price';
     }
-    
+
     if (classList.includes('description') || classList.includes('content') || classList.includes('text')) {
       return 'description';
     }
-    
+
     // Default to container for divs, spans, etc.
     if (['div', 'span', 'section', 'article', 'aside'].includes(tagName)) {
       return 'container';
     }
-    
+
     // Default to text for other elements
     return 'text';
   }
 
   private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
     const urlLower = url.toLowerCase();
-    
+
     // Check for product pages first
     if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
       return 'pdp';
     }
-    
+
     // Check for about pages
     if (urlLower.includes('/about')) {
       return 'about';
     }
-    
+
     // Check for home page - this should be the most common case
     // Home page is typically just the domain or domain with trailing slash
     const urlObj = new URL(url);
     const pathname = urlObj.pathname;
-    
+
     // If no path or just a trailing slash, it's the home page
     if (!pathname || pathname === '/' || pathname === '') {
       return 'home';
     }
-    
+
     // If path is just common home page indicators
     if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
       return 'home';
     }
-    
+
     return 'other';
   }
 
@@ -1458,9 +1443,9 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]> {
     console.log(`[DOM_ANALYZER] Using hardcoded selector: ${hardcodedSelector}`);
-    
+
     let html: string;
-    
+
     if (htmlContent) {
       console.log(`[DOM_ANALYZER] Using provided HTML content (${htmlContent.length} chars)`);
       html = htmlContent;
@@ -1471,60 +1456,60 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
         waitFor: 3000,
         authentication
       });
-      
+
       if (crawlResult.error) {
         throw new Error(`Failed to crawl page: ${crawlResult.error}`);
       }
-      
+
       html = crawlResult.html || '';
     }
-    
+
     // Validate the hardcoded selector exists in the HTML
     const matchInfo = getSelectorMatchInfo(hardcodedSelector, html);
     console.log(`[DOM_ANALYZER] Hardcoded selector validation:`, matchInfo);
-    
+
     if (!matchInfo.found) {
       console.warn(`[DOM_ANALYZER] Hardcoded selector not found in HTML: ${hardcodedSelector}`);
       return [];
     }
-    
+
     if (matchInfo.count > 1) {
       console.warn(`[DOM_ANALYZER] Hardcoded selector matches ${matchInfo.count} elements, using first one`);
     }
-    
+
     // Create injection point from hardcoded selector
     const $ = cheerio.load(html);
     let element = $(hardcodedSelector);
-    
+
     // If selector targets a[href="/collections/all"], filter by text content to be more precise
     if (hardcodedSelector === 'a[href="/collections/all"]') {
       element = element.filter((_, el) => {
         const text = $(el).text().trim().toLowerCase();
         // More precise matching - must contain "shop all" as a phrase
-        return text === 'shop all' || 
-               text === 'shop all →' || 
-               text === 'shop all>' ||
-               text.includes('shop all') && text.length < 20; // Short text containing "shop all"
+        return text === 'shop all' ||
+          text === 'shop all →' ||
+          text === 'shop all>' ||
+          text.includes('shop all') && text.length < 20; // Short text containing "shop all"
       });
     }
-    
+
     const targetElement = element.first();
-    
+
     if (targetElement.length === 0) {
       console.warn(`[DOM_ANALYZER] Element not found with hardcoded selector: ${hardcodedSelector}`);
       return [];
     }
-    
+
     const elementText = targetElement.text()?.trim() || '';
     const elementNode = targetElement[0];
     const elementType = this.determineElementType(
-      elementNode && elementNode.type === 'tag' ? elementNode.name : 'div', 
+      elementNode && elementNode.type === 'tag' ? elementNode.name : 'div',
       targetElement.attr() || {}
     );
-    
+
     // Generate alternative selectors for fallback
     const alternativeSelectors = generateFallbackSelectors(targetElement, $);
-    
+
     // Get bounding box (simplified - just use 0,0,100,50 as placeholder)
     const boundingBox = {
       x: 0,
@@ -1532,7 +1517,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
       width: 100,
       height: 50
     };
-    
+
     const injectionPoint: InjectionPoint = {
       type: elementType,
       selector: hardcodedSelector,
@@ -1548,7 +1533,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
       tested: false,
       originalText: elementText
     };
-    
+
     console.log(`[DOM_ANALYZER] Created injection point from hardcoded selector:`, {
       selector: injectionPoint.selector,
       confidence: injectionPoint.confidence,
@@ -1556,7 +1541,7 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
       description: injectionPoint.description?.substring(0, 50) + '...',
       context: injectionPoint.context
     });
-    
+
     return [injectionPoint];
   }
 }

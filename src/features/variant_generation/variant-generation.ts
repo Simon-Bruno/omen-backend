@@ -11,7 +11,7 @@ import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generat
 import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
 import { getAIConfig, getVariantGenerationAIConfig } from '@shared/ai-config';
 import type { PrismaClient } from '@prisma/client';
-import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
+import { ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 import { DEMO_CONDITION, getDemoSelector } from '@shared/demo-config';
 import { DesignSystemExtractor } from './design-system-extractor';
