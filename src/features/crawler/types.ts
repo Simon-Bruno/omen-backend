@@ -3,18 +3,6 @@ export interface CrawlerService {
   crawlPage(url: string, options?: CrawlOptions): Promise<CrawlResult>;
   crawlMultiplePages(urls: string[], options?: CrawlOptions): Promise<CrawlResult[]>;
   takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: boolean, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string>;
-  takeVariantScreenshot(
-    url: string, 
-    variant: {
-      css_code: string;
-      html_code: string;
-      injection_method: 'selector' | 'new_element' | 'modify_existing';
-      target_selector?: string;
-      new_element_html?: string;
-    },
-    viewport?: { width: number, height: number },
-    authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
-  ): Promise<string>;
 }
 
 export interface CrawlResult {

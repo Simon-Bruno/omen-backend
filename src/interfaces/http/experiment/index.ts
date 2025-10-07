@@ -53,17 +53,27 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 variants = variants.filter((v: any) => requestedLabels.has(v.variant_label));
             }
 
+            // Map fields for SDK compatibility
+            const mappedVariants = variants.map((v: any) => ({
+                variantId: v.variant_label,
+                selector: v.target_selector || '',
+                position: 'INNER',
+                css: v.css_code || '',
+                html: v.html_code || '',
+                js: v.javascript_code || v.js || '' // Map javascript_code to js for SDK
+            }));
+
             fastify.log.info({
                 jobId,
-                variantCount: variants.length,
-                variantLabels: variants.map((v: any) => v.variant_label)
+                variantCount: mappedVariants.length,
+                variantLabels: mappedVariants.map((v: any) => v.variantId)
             }, 'Returning job preview');
 
             return {
                 jobId,
                 status: job.status,
                 completedAt: job.completedAt,
-                variants
+                variants: mappedVariants
             };
 
         } catch (error) {

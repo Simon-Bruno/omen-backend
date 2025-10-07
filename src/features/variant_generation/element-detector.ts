@@ -2,6 +2,7 @@
 // Based on Playwright's locator strategy and industry best practices
 
 import * as cheerio from 'cheerio';
+import { CSSPathGenerator } from './css-path-generator';
 
 export interface ElementCandidate {
   selector: string;
@@ -26,9 +27,11 @@ export interface ElementDetectionResult {
 // Playwright-inspired locator strategies
 export class ElementDetector {
   private $: cheerio.CheerioAPI;
+  private cssPathGenerator: CSSPathGenerator;
 
   constructor(html: string) {
     this.$ = cheerio.load(html);
+    this.cssPathGenerator = new CSSPathGenerator(html);
   }
 
   // Main detection method - tries multiple strategies
@@ -129,8 +132,10 @@ export class ElementDetector {
           const explicitRole = attributes.role;
           if (explicitRole && explicitRole.toLowerCase().includes(keyword.toLowerCase())) {
             const tagName = el.type === 'tag' ? el.name : 'unknown';
+            // Generate specific CSS path instead of generic selector
+            const specificSelector = this.cssPathGenerator.generateSelector($el);
             candidates.push({
-              selector: `${tagName}[role="${explicitRole}"]`,
+              selector: specificSelector,
               confidence: 0.95,
               strategy: 'role',
               element: {
@@ -141,11 +146,13 @@ export class ElementDetector {
               reasoning: `Element with explicit role="${explicitRole}" matches "${keyword}"`
             });
           }
-          
+
           // Check if element type matches role
           if (el.type === 'tag' && roles.includes(el.name)) {
+            // Generate specific CSS path instead of generic tag name
+            const specificSelector = this.cssPathGenerator.generateSelector($el);
             candidates.push({
-              selector: el.name,
+              selector: specificSelector,
               confidence: 0.8,
               strategy: 'role',
               element: {
@@ -179,23 +186,21 @@ export class ElementDetector {
         if (text.toLowerCase().includes(keyword.toLowerCase())) {
           const attributes = this.getElementAttributes($el);
           const tagName = el.type === 'tag' ? el.name : 'unknown';
-          
-          // Generate multiple selectors for this element
-          const selectors = this.generateTextSelectors($el, keyword);
-          
-          for (const selector of selectors) {
-            candidates.push({
-              selector,
-              confidence: text.toLowerCase() === keyword.toLowerCase() ? 0.9 : 0.7,
-              strategy: 'text',
-              element: {
-                tagName,
-                text,
-                attributes
-              },
-              reasoning: `Element contains text "${keyword}"`
-            });
-          }
+
+          // Generate specific CSS path instead of generic selector
+          const specificSelector = this.cssPathGenerator.generateSelector($el);
+
+          candidates.push({
+            selector: specificSelector,
+            confidence: text.toLowerCase() === keyword.toLowerCase() ? 0.9 : 0.7,
+            strategy: 'text',
+            element: {
+              tagName,
+              text,
+              attributes
+            },
+            reasoning: `Element contains text "${keyword}"`
+          });
         }
       });
     }
@@ -389,21 +394,21 @@ export class ElementDetector {
         
         if (matchingClasses.length > 0) {
           const attributes = this.getElementAttributes($el);
-          
-          // Generate selectors for matching classes
-          for (const className of matchingClasses) {
-            candidates.push({
-              selector: `.${className}`,
-              confidence: 0.7,
-              strategy: 'class',
-              element: {
-                tagName: el.name,
-                text: $el.text().trim(),
-                attributes
-              },
-              reasoning: `Element with class containing "${keyword}"`
-            });
-          }
+
+          // Generate specific CSS path instead of generic class selector
+          const specificSelector = this.cssPathGenerator.generateSelector($el);
+
+          candidates.push({
+            selector: specificSelector,
+            confidence: 0.7,
+            strategy: 'class',
+            element: {
+              tagName: el.name,
+              text: $el.text().trim(),
+              attributes
+            },
+            reasoning: `Element with class containing "${keyword}"`
+          });
         }
       });
     }
@@ -489,7 +494,7 @@ export class ElementDetector {
     return this.extractTextKeywords(hypothesis);
   }
 
-  private getElementAttributes($el: cheerio.Cheerio<any>): Record<string, string> {
+  private getElementAttributes($el: cheerio.Cheerio<cheerio.Element>): Record<string, string> {
     const attributes: Record<string, string> = {};
     const el = $el[0];
     
@@ -502,34 +507,6 @@ export class ElementDetector {
     return attributes;
   }
 
-  private generateTextSelectors($el: cheerio.Cheerio<any>, _keyword: string): string[] {
-    const selectors: string[] = [];
-    const el = $el[0];
-    
-    if (el && el.type === 'tag') {
-      const tagName = el.name;
-      const classes = $el.attr('class');
-      const id = $el.attr('id');
-      
-      // Prioritize ID if available
-      if (id && this.isStableId(id)) {
-        selectors.push(`#${id}`);
-      }
-      
-      // Tag + class (don't use :contains() - it breaks with special chars)
-      if (classes) {
-        const classList = classes.split(' ').filter(c => c.trim());
-        if (classList.length > 0) {
-          selectors.push(`${tagName}.${classList[0]}`);
-        }
-      }
-      
-      // Just tag name as fallback
-      selectors.push(tagName);
-    }
-    
-    return selectors;
-  }
 
   private isStableId(id: string): boolean {
     // Check if ID looks stable (not generated)

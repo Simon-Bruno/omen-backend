@@ -9,6 +9,7 @@ import { simplifyHTML, simplifyHTMLForForensics, getHtmlInfo } from '@shared/uti
 import * as cheerio from 'cheerio';
 import { STANDARD_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 import { createElementDetector } from './element-detector';
+import { createHypothesisAwareSelector, HypothesisSelector } from './hypothesis-aware-selector';
 
 // CSS selector validation utility
 function isValidCSSSelector(selector: string): boolean {
@@ -288,6 +289,43 @@ function cleanCSSSelector(selector: string): string {
 
 // Removed unused DOMAnalysisResult interface
 
+export interface ElementSpatialContext {
+  parentContainer?: {
+    selector: string;
+    layout: 'grid' | 'flex' | 'block' | 'inline' | 'table';
+    styles: Record<string, string>; // Key computed styles
+  };
+  siblings?: Array<{
+    selector: string;
+    position: 'before' | 'after';
+    distance: number; // pixels
+  }>;
+  children?: Array<{
+    selector: string;
+    type: string; // tag name
+    hasInteractions: boolean;
+  }>;
+}
+
+export interface ElementInteractionContext {
+  existingHandlers: string[]; // ["click", "hover", "focus"]
+  animations: Array<{
+    property: string;
+    duration: string;
+    timing: string;
+  }>;
+  hoveredAncestors: string[]; // Parent elements with hover effects
+  zIndex: number;
+}
+
+export interface InsertionStrategy {
+  method: 'before' | 'after' | 'prepend' | 'append' | 'replace' | 'wrap';
+  targetSelector: string; // More specific selector for insertion
+  reasoning: string;
+  example: string; // Example code snippet
+  fallbacks: InsertionStrategy[]; // Alternative strategies if primary fails
+}
+
 export interface InjectionPoint {
   type: 'button' | 'text' | 'image' | 'container' | 'form' | 'navigation' | 'price' | 'title' | 'description';
   selector: string;
@@ -313,6 +351,14 @@ export interface InjectionPoint {
     confidence: number;
     reason: string;
   };
+  // NEW: Rich element context for better variant generation
+  elementContext?: {
+    computedStyles?: Record<string, string>; // Important styles like position, overflow, display
+    spatial?: ElementSpatialContext;
+    interactions?: ElementInteractionContext;
+  };
+  // NEW: Insertion strategies based on variant type
+  insertionStrategy?: InsertionStrategy;
 }
 
 // Removed unused PageStructure interface
@@ -374,38 +420,128 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   }
 
   async analyzeForHypothesisWithHtml(
-    url: string, 
+    url: string,
     hypothesis: string,
     projectId: string,
     htmlContent: string | null,
     authentication?: { type: 'shopify_password'; password: string, shopDomain: string }
   ): Promise<InjectionPoint[]> {
-    console.log(`[DOM_ANALYZER] Starting analysis with provided HTML for hypothesis: ${hypothesis}`);
-    
-    // If we have HTML content, use the new multi-strategy approach
+    console.log(`[DOM_ANALYZER] Starting analysis for hypothesis: ${hypothesis}`);
+
+    // If we already have HTML content (from screenshot service), use it
+    // Otherwise fetch fresh page source
+    let pageSource: string;
+
     if (htmlContent) {
-      console.log(`[DOM_ANALYZER] Using multi-strategy element detection (${htmlContent.length} chars)`);
-      
-      // Use raw HTML for better element detection - minimal processing
-      const rawHTML = this.minimalHTMLProcessing(htmlContent);
-      console.log(`[DOM_ANALYZER] Raw HTML processed: ${rawHTML.length} chars (${Math.round((1 - rawHTML.length / htmlContent.length) * 100)}% reduction)`);
-      
-      // Use the new element detector with raw HTML
-      const elementDetector = createElementDetector(rawHTML);
+      console.log(`[DOM_ANALYZER] Using provided HTML content: ${htmlContent.length} chars`);
+      pageSource = htmlContent;
+    } else {
+      console.log(`[DOM_ANALYZER] No HTML provided, fetching fresh page source from: ${url}`);
+
+      try {
+        // Use simple fetch - authentication already handled by screenshot service
+        const response = await fetch(url);
+        pageSource = await response.text();
+        console.log(`[DOM_ANALYZER] Fetched page source: ${pageSource.length} chars`);
+      } catch (fetchError) {
+        console.error(`[DOM_ANALYZER] Failed to fetch page source:`, fetchError);
+        return [];
+      }
+    }
+
+    try {
+
+      // Clean up the HTML with cheerio - remove scripts, styles, comments
+      const cheerio = require('cheerio');
+      const $ = cheerio.load(pageSource);
+
+      // Remove script tags, style tags, and comments
+      $('script').remove();
+      $('style').remove();
+      $('noscript').remove();
+      $('link[rel="stylesheet"]').remove();
+
+      // Get the cleaned HTML
+      const cleanedHTML = $.html();
+      console.log(`[DOM_ANALYZER] Cleaned HTML: ${cleanedHTML.length} chars`);
+
+      // First try the new hypothesis-aware selector generation
+      console.log(`[DOM_ANALYZER] Trying hypothesis-aware selector generation`);
+      const hypothesisSelector = createHypothesisAwareSelector(cleanedHTML);
+      const hypothesisCandidates = await hypothesisSelector.generateSelector(hypothesis);
+
+      if (hypothesisCandidates.length > 0) {
+        console.log(`[DOM_ANALYZER] Found ${hypothesisCandidates.length} candidates using hypothesis-aware approach`);
+
+        // Convert hypothesis candidates to injection points
+        const injectionPoints: InjectionPoint[] = hypothesisCandidates.map(candidate => {
+          const type = this.determineElementType(
+            candidate.context.elementType,
+            {}
+          );
+
+          // Extract rich element context for this candidate
+          const elementContext = this.extractElementContext(candidate.selector, cleanedHTML);
+
+          // Generate insertion strategy based on hypothesis
+          const insertionStrategy = this.generateInsertionStrategy(candidate.selector, hypothesis, cleanedHTML);
+
+          return {
+            type,
+            selector: candidate.selector,
+            confidence: candidate.confidence,
+            description: candidate.reasoning,
+            boundingBox: {
+              x: 0,
+              y: 0,
+              width: 0,
+              height: 0
+            },
+            alternativeSelectors: candidate.alternativeSelectors,
+            context: candidate.context.htmlSnippet.substring(0, 200),
+            reasoning: candidate.reasoning,
+            hypothesis,
+            url,
+            timestamp: new Date().toISOString(),
+            tested: false,
+            originalText: candidate.context.elementText,
+            selectorReliability: {
+              works: candidate.validation.exists && candidate.validation.unique,
+              confidence: candidate.confidence,
+              reason: `Hypothesis-aware: ${candidate.validation.stable ? 'stable' : 'unstable'} selector`
+            },
+            elementContext, // Add the rich context
+            insertionStrategy // Add the insertion strategy
+          };
+        });
+
+        console.log(`[DOM_ANALYZER] Generated ${injectionPoints.length} injection points from hypothesis-aware approach`);
+        return injectionPoints;
+      }
+
+      // Fallback to the multi-strategy element detector
+      console.log(`[DOM_ANALYZER] Falling back to multi-strategy element detector`);
+      const elementDetector = createElementDetector(cleanedHTML);
       const detectionResult = await elementDetector.detectElement(hypothesis);
-      
+
       if (!detectionResult.found) {
         console.log(`[DOM_ANALYZER] No elements found using multi-strategy approach`);
         console.log(`[DOM_ANALYZER] Suggestions:`, detectionResult.suggestions);
         return [];
       }
-      
+
       console.log(`[DOM_ANALYZER] Found ${detectionResult.candidates.length} element candidates`);
-      
+
       // Convert candidates to injection points
       const injectionPoints: InjectionPoint[] = detectionResult.candidates.map((candidate, index) => {
         const type = this.determineElementType(candidate.element.tagName, candidate.element.attributes);
-        
+
+        // Extract rich element context for this candidate
+        const elementContext = this.extractElementContext(candidate.selector, cleanedHTML);
+
+        // Generate insertion strategy based on hypothesis
+        const insertionStrategy = this.generateInsertionStrategy(candidate.selector, hypothesis, cleanedHTML);
+
         return {
           type,
           selector: candidate.selector,
@@ -431,17 +567,54 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
             works: true,
             confidence: candidate.confidence,
             reason: `${candidate.strategy} strategy - ${candidate.reasoning}`
-          }
+          },
+          elementContext, // Add the rich context
+          insertionStrategy // Add the insertion strategy
         };
       });
       
       console.log(`[DOM_ANALYZER] Generated ${injectionPoints.length} injection points`);
       return injectionPoints;
+
+    } catch (error) {
+      console.error(`[DOM_ANALYZER] Error fetching page source:`, error);
+      console.log(`[DOM_ANALYZER] Falling back to provided HTML content`);
+
+      // Fallback to using provided HTML if fetch fails
+      if (htmlContent) {
+        const elementDetector = createElementDetector(htmlContent);
+        const detectionResult = await elementDetector.detectElement(hypothesis);
+
+        if (!detectionResult.found) {
+          return [];
+        }
+
+        // Convert to injection points (simplified)
+        return detectionResult.candidates.map(candidate => ({
+          type: 'element',
+          selector: candidate.selector,
+          confidence: candidate.confidence,
+          description: candidate.reasoning,
+          boundingBox: { x: 0, y: 0, width: 0, height: 0 },
+          alternativeSelectors: [],
+          context: candidate.strategy,
+          reasoning: candidate.reasoning,
+          hypothesis,
+          url,
+          timestamp: new Date().toISOString(),
+          tested: false,
+          originalText: candidate.element.text,
+          selectorReliability: {
+            works: true,
+            confidence: candidate.confidence,
+            reason: candidate.reasoning
+          }
+        }));
+      }
+
+      // Final fallback
+      return this.analyzeForHypothesis(url, hypothesis, projectId, authentication);
     }
-    
-    // Fallback to regular analysis if no HTML provided
-    console.log(`[DOM_ANALYZER] No HTML content provided, falling back to regular analysis`);
-    return this.analyzeForHypothesis(url, hypothesis, projectId, authentication);
   }
 
   async analyzeForHypothesis(
@@ -809,6 +982,389 @@ Hypothesis: "Change the 'Get waxy now' button in the 'Stay hydrated' section"
 → Look for actual HTML containing "Stay hydrated" text, then find the button with "Get waxy now" text
 → Use simple selectors like "button:contains('Get waxy now')" or ".button--primary"
 → Avoid complex chains with generated IDs or classes`;
+  }
+
+  private generateInsertionStrategy(
+    selector: string,
+    hypothesis: string,
+    html: string
+  ): InsertionStrategy | undefined {
+    try {
+      const $ = cheerio.load(html);
+      const element = $(selector).first();
+      if (element.length === 0) return undefined;
+
+      // Determine what type of change based on hypothesis keywords
+      const hypothesisLower = hypothesis.toLowerCase();
+
+      // For ratings/reviews
+      if (hypothesisLower.includes('rating') || hypothesisLower.includes('review') || hypothesisLower.includes('star')) {
+        return this.getRatingsInsertionStrategy(element, $);
+      }
+
+      // For buttons/CTAs
+      if (hypothesisLower.includes('button') || hypothesisLower.includes('cta') || hypothesisLower.includes('call-to-action')) {
+        return this.getButtonInsertionStrategy(element, $);
+      }
+
+      // For badges/labels
+      if (hypothesisLower.includes('badge') || hypothesisLower.includes('label') || hypothesisLower.includes('tag')) {
+        return this.getBadgeInsertionStrategy(element, $);
+      }
+
+      // For replacing text/content
+      if (hypothesisLower.includes('replac') || hypothesisLower.includes('chang')) {
+        return this.getReplacementStrategy(element, $);
+      }
+
+      // Default strategy
+      return this.getDefaultInsertionStrategy(element, $);
+    } catch (error) {
+      console.warn(`[DOM_ANALYZER] Error generating insertion strategy: ${error}`);
+      return undefined;
+    }
+  }
+
+  private getRatingsInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+    // For product cards, find the best place for ratings
+    const isProductCard = element.attr('class')?.includes('product') || element.attr('class')?.includes('card');
+
+    if (isProductCard) {
+      // Look for info section within the card
+      const infoSection = element.find('.card__information, .card__content, .product-info').first();
+      if (infoSection.length > 0) {
+        // Find title within info section
+        const title = infoSection.find('h3, h4, .card__heading, [class*="title"]').first();
+        if (title.length > 0) {
+          return {
+            method: 'before',
+            targetSelector: this.makeSelector(title, element),
+            reasoning: 'Ratings should appear right before the product title in the info section',
+            example: 'titleElement.parentNode.insertBefore(ratingsElement, titleElement)',
+            fallbacks: [
+              {
+                method: 'prepend',
+                targetSelector: this.makeSelector(infoSection, element),
+                reasoning: 'If title not found, prepend to info section',
+                example: 'infoSection.prepend(ratingsElement)',
+                fallbacks: []
+              }
+            ]
+          };
+        }
+
+        // No title found, prepend to info section
+        return {
+          method: 'prepend',
+          targetSelector: this.makeSelector(infoSection, element),
+          reasoning: 'Add ratings at the start of the info section',
+          example: 'infoSection.prepend(ratingsElement)',
+          fallbacks: []
+        };
+      }
+
+      // No info section, look for image to insert after
+      const image = element.find('.card__media, img, picture').first();
+      if (image.length > 0) {
+        return {
+          method: 'after',
+          targetSelector: this.makeSelector(image, element),
+          reasoning: 'Add ratings after the product image',
+          example: 'imageElement.insertAdjacentElement("afterend", ratingsElement)',
+          fallbacks: []
+        };
+      }
+    }
+
+    // Default for non-product cards
+    return {
+      method: 'prepend',
+      targetSelector: '',
+      reasoning: 'Add ratings at the beginning of the element',
+      example: 'element.prepend(ratingsElement)',
+      fallbacks: []
+    };
+  }
+
+  private getButtonInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+    // Look for existing action areas
+    const actions = element.find('.card__actions, .product-actions, [class*="action"]').first();
+    if (actions.length > 0) {
+      return {
+        method: 'append',
+        targetSelector: this.makeSelector(actions, element),
+        reasoning: 'Add button to existing actions section',
+        example: 'actionsSection.append(buttonElement)',
+        fallbacks: []
+      };
+    }
+
+    // Look for info section to append to
+    const info = element.find('.card__information, .card__content').first();
+    if (info.length > 0) {
+      return {
+        method: 'append',
+        targetSelector: this.makeSelector(info, element),
+        reasoning: 'Add button at the end of the info section',
+        example: 'infoSection.append(buttonElement)',
+        fallbacks: []
+      };
+    }
+
+    return {
+      method: 'append',
+      targetSelector: '',
+      reasoning: 'Add button at the end of the element',
+      example: 'element.append(buttonElement)',
+      fallbacks: []
+    };
+  }
+
+  private getBadgeInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+    // Badges typically go on images or at the start
+    const image = element.find('.card__media, img, picture').first();
+    if (image.length > 0) {
+      return {
+        method: 'prepend',
+        targetSelector: this.makeSelector(image.parent(), element),
+        reasoning: 'Badges overlay on product images',
+        example: 'imageContainer.style.position = "relative"; imageContainer.prepend(badgeElement)',
+        fallbacks: []
+      };
+    }
+
+    return {
+      method: 'prepend',
+      targetSelector: '',
+      reasoning: 'Add badge at the start of the element',
+      example: 'element.prepend(badgeElement)',
+      fallbacks: []
+    };
+  }
+
+  private getReplacementStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+    return {
+      method: 'replace',
+      targetSelector: '',
+      reasoning: 'Replace the entire content of the element',
+      example: 'element.innerHTML = newContent',
+      fallbacks: []
+    };
+  }
+
+  private getDefaultInsertionStrategy(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): InsertionStrategy {
+    return {
+      method: 'append',
+      targetSelector: '',
+      reasoning: 'Default strategy: append to element',
+      example: 'element.append(newElement)',
+      fallbacks: []
+    };
+  }
+
+  private makeSelector(target: cheerio.Cheerio<any>, container: cheerio.Cheerio<any>): string {
+    // Generate a selector for target relative to container
+    if (target.length === 0) return '';
+
+    const targetClasses = target.attr('class');
+    if (targetClasses) {
+      const firstClass = targetClasses.split(' ')[0];
+      if (firstClass && !firstClass.match(/\d{5,}/)) {
+        return `.${firstClass}`;
+      }
+    }
+
+    const tag = target[0].name;
+    const index = container.find(tag).index(target);
+    if (index > 0) {
+      return `${tag}:nth-of-type(${index + 1})`;
+    }
+
+    return tag;
+  }
+
+  private extractElementContext(selector: string, html: string): InjectionPoint['elementContext'] {
+    try {
+      const $ = cheerio.load(html);
+      const element = $(selector).first();
+
+      if (element.length === 0) return undefined;
+
+      // Extract computed styles (from inline styles and classes)
+      const computedStyles: Record<string, string> = {};
+      const importantStyles = ['position', 'overflow', 'display', 'z-index', 'padding', 'margin'];
+      const style = element.attr('style');
+      if (style) {
+        // Parse inline styles
+        style.split(';').forEach(rule => {
+          const [prop, value] = rule.split(':').map(s => s.trim());
+          if (prop && value && importantStyles.some(s => prop.includes(s))) {
+            computedStyles[prop] = value;
+          }
+        });
+      }
+
+      // Extract spatial context
+      const parent = element.parent();
+      const siblings = element.siblings();
+      const children = element.children();
+
+      const spatial: ElementSpatialContext = {
+        parentContainer: parent.length > 0 ? {
+          selector: this.generateSelectorForElement(parent, $),
+          layout: this.detectLayoutType(parent),
+          styles: this.extractKeyStyles(parent)
+        } : undefined,
+        siblings: siblings.map((_, sibling) => {
+          const $sibling = $(sibling);
+          return {
+            selector: this.generateSelectorForElement($sibling, $),
+            position: $sibling.index() < element.index() ? 'before' : 'after',
+            distance: 0 // Would need real rendering to calculate
+          };
+        }).get().slice(0, 3), // Limit to 3 nearest siblings
+        children: children.map((_, child) => {
+          const $child = $(child);
+          return {
+            selector: this.generateSelectorForElement($child, $),
+            type: child.name,
+            hasInteractions: this.hasInteractionHandlers($child)
+          };
+        }).get().slice(0, 5) // Limit to 5 children
+      };
+
+      // Extract interaction context
+      const interactions: ElementInteractionContext = {
+        existingHandlers: this.detectEventHandlers(element),
+        animations: this.detectAnimations(element),
+        hoveredAncestors: this.findHoveredAncestors(element, $),
+        zIndex: parseInt(element.css('z-index') || '0') || 0
+      };
+
+      return {
+        computedStyles,
+        spatial,
+        interactions
+      };
+    } catch (error) {
+      console.warn(`[DOM_ANALYZER] Error extracting element context: ${error}`);
+      return undefined;
+    }
+  }
+
+  private generateSelectorForElement($el: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string {
+    const element = $el[0];
+    if (!element || element.type !== 'tag') return '';
+
+    // Try to generate a simple, reliable selector
+    const id = $el.attr('id');
+    if (id && !this.isGeneratedId(id)) {
+      return `#${id}`;
+    }
+
+    const classes = $el.attr('class');
+    if (classes) {
+      const classList = classes.split(' ').filter(c => c.trim() && !this.isGeneratedClass(c));
+      if (classList.length > 0) {
+        return `${element.name}.${classList[0]}`;
+      }
+    }
+
+    return element.name;
+  }
+
+  private detectLayoutType($el: cheerio.Cheerio<any>): 'grid' | 'flex' | 'block' | 'inline' | 'table' {
+    const display = $el.css('display') || '';
+    if (display.includes('grid')) return 'grid';
+    if (display.includes('flex')) return 'flex';
+    if (display.includes('table')) return 'table';
+    if (display.includes('inline')) return 'inline';
+    return 'block';
+  }
+
+  private extractKeyStyles($el: cheerio.Cheerio<any>): Record<string, string> {
+    const keyProps = ['display', 'position', 'overflow', 'gap', 'padding', 'grid-template-columns'];
+    const styles: Record<string, string> = {};
+
+    keyProps.forEach(prop => {
+      const value = $el.css(prop);
+      if (value) {
+        styles[prop] = value;
+      }
+    });
+
+    return styles;
+  }
+
+  private hasInteractionHandlers($el: cheerio.Cheerio<any>): boolean {
+    // Check for common interaction attributes
+    const interactionAttrs = ['onclick', 'onhover', 'onfocus', 'href', 'data-action'];
+    return interactionAttrs.some(attr => $el.attr(attr) !== undefined);
+  }
+
+  private detectEventHandlers($el: cheerio.Cheerio<any>): string[] {
+    const handlers: string[] = [];
+
+    // Check for inline handlers
+    ['onclick', 'onmouseover', 'onfocus', 'onchange'].forEach(handler => {
+      if ($el.attr(handler)) {
+        handlers.push(handler.replace('on', ''));
+      }
+    });
+
+    // Check if it's a clickable element
+    if ($el.is('a, button') || $el.attr('href')) {
+      handlers.push('click');
+    }
+
+    return handlers;
+  }
+
+  private detectAnimations($el: cheerio.Cheerio<any>): Array<{property: string; duration: string; timing: string}> {
+    // This is simplified - would need CSS parsing for full implementation
+    const transition = $el.css('transition');
+    if (transition && transition !== 'none') {
+      return [{
+        property: 'all',
+        duration: '0.3s',
+        timing: 'ease'
+      }];
+    }
+    return [];
+  }
+
+  private findHoveredAncestors($el: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string[] {
+    const ancestors: string[] = [];
+    let current = $el.parent();
+
+    while (current.length > 0 && ancestors.length < 3) {
+      // Check if parent has hover pseudo-class (simplified check)
+      const classes = current.attr('class');
+      if (classes && classes.includes('hover')) {
+        ancestors.push(this.generateSelectorForElement(current, $));
+      }
+      current = current.parent();
+    }
+
+    return ancestors;
+  }
+
+  private isGeneratedId(id: string): boolean {
+    const patterns = [
+      /template--\d+/,
+      /\d{10,}/,
+      /^[a-f0-9]{8,}$/i
+    ];
+    return patterns.some(p => p.test(id));
+  }
+
+  private isGeneratedClass(className: string): boolean {
+    const patterns = [
+      /^\d+$/,
+      /^[a-f0-9]{8,}$/i,
+      /-\d{10,}$/
+    ];
+    return patterns.some(p => p.test(className));
   }
 
   private determineElementType(tagName: string, attributes: Record<string, string>): 'button' | 'text' | 'image' | 'container' | 'form' | 'navigation' | 'price' | 'title' | 'description' {

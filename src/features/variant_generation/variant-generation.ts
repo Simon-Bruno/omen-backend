@@ -1,4 +1,4 @@
-// @ts-nocheck 
+// @ts-nocheck
 // Variant Generation Service
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
@@ -13,6 +13,9 @@ import { getAIConfig, getVariantGenerationAIConfig } from '@shared/ai-config';
 import type { PrismaClient } from '@prisma/client';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { DEMO_CONDITION, getDemoSelector } from '@shared/demo-config';
+import { DesignSystemExtractor } from './design-system-extractor';
+import { VisualRefinementService } from './visual-refinement';
 
 export interface VariantGenerationService {
     generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult>;
@@ -44,23 +47,21 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private codeGenerator: VariantCodeGenerator;
     private screenshotStorage: ScreenshotStorageService;
     private domAnalyzer: DOMAnalyzerService;
+    private designSystemExtractor: DesignSystemExtractor;
+    private visualRefinement: VisualRefinementService;
     private brandAnalysisCache: Map<string, { data: string; timestamp: number }> = new Map();
     private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
+    private designSystemCache: Map<string, { data: any; timestamp: number }> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-    // Hardcoded element focus configuration - matches hypothesis generation
-    private readonly HARDCODE_ELEMENT_FOCUS = true;
-    private readonly TARGET_ELEMENT = {
-        selector: 'a[href="/collections/all"]', // Will be filtered by text content
-        description: 'Shop all button/link',
-        html: '<a href="/collections/all">Shop all</a>'
-    };
 
     constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService) {
         this.crawlerService = crawler;
         this.screenshotStorage = screenshotStorage;
         this.domAnalyzer = createDOMAnalyzer(crawler);
         this.codeGenerator = createVariantCodeGenerator();
+        this.designSystemExtractor = new DesignSystemExtractor();
+        this.visualRefinement = new VisualRefinementService();
     }
 
     private async _getCachedProject(projectId: string): Promise<any> {
@@ -107,7 +108,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     }
 
     buildVariantGenerationPrompt(hypothesis: Hypothesis, variantIndex?: number): string {
-        return this.HARDCODE_ELEMENT_FOCUS
+        return DEMO_CONDITION
             ? buildButtonVariantGenerationPrompt(hypothesis, variantIndex)
             : buildVariantGenerationPrompt(hypothesis);
     }
@@ -170,59 +171,23 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             let codeResult;
             try {
                 console.log(`[VARIANTS] Generating code for variant: ${variant.variant_label}`);
-                codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
+                // We need to get HTML content for this variant - for now pass null
+                codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints, null);
             } catch (error) {
                 console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
                 codeResult = null;
             }
 
-            // Take screenshot for this variant
+            // Skip screenshot for variants - takeVariantScreenshot method was removed
+            // Variants now use JavaScript code instead of CSS/HTML injection
             let variantScreenshotUrl = '';
-            if (codeResult) {
-                try {
-                    console.log(`[VARIANTS] Taking screenshot for variant: ${variant.variant_label}`);
-                    const variantScreenshotBase64 = await crawler.takeVariantScreenshot(
-                        url,
-                        {
-                            css_code: codeResult.css_code,
-                            html_code: codeResult.html_code,
-                            injection_method: codeResult.injection_method,
-                            target_selector: codeResult.target_selector,
-                            new_element_html: codeResult.new_element_html
-                        },
-                        { width: 1920, height: 1080 },
-                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                    );
 
-                    // Save screenshot to database and get the screenshot ID
-                    const variantId = `variant-${variant.variant_label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}`;
-                    const screenshotId = await this.screenshotStorage.saveScreenshot(
-                        projectId,
-                        'other', // Variant screenshots are categorized as 'other'
-                        url,
-                        HIGH_QUALITY_SCREENSHOT_OPTIONS,
-                        variantScreenshotBase64,
-                        undefined, // No HTML content for variant screenshots
-                        variantId // Unique variant ID to prevent duplicates
-                    );
-
-                    // Generate a proper URL for the screenshot
-                    variantScreenshotUrl = `/api/screenshots/db/${screenshotId}`;
-                    console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
-                } catch (screenshotError) {
-                    console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
-                    // Continue without screenshot rather than failing the entire variant
-                }
-            }
-
-            // Create the final variant object
+            // Create the final variant object with JavaScript code
             const finalVariant = {
                 ...variant,
-                css_code: codeResult?.css_code || '',
-                html_code: codeResult?.html_code || '',
-                injection_method: codeResult?.injection_method || 'selector' as const,
+                javascript_code: codeResult?.javascript_code || '',
                 target_selector: codeResult?.target_selector || '',
-                new_element_html: codeResult?.new_element_html || '',
+                execution_timing: codeResult?.execution_timing || 'dom_ready' as const,
                 implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
                 screenshot: variantScreenshotUrl
             };
@@ -300,21 +265,29 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             }
         }
 
-        // PARALLEL OPTIMIZATION: Run DOM analysis and brand analysis in parallel
-        console.log(`[VARIANTS] Starting parallel operations: DOM analysis and brand analysis`);
+        // PARALLEL OPTIMIZATION: Extract design system along with DOM analysis and brand analysis
+        console.log(`[VARIANTS] Starting parallel operations: DOM analysis, brand analysis, and design system extraction`);
 
-        if (this.HARDCODE_ELEMENT_FOCUS) {
-            console.log(`[VARIANTS] HARDCODED ELEMENT FOCUS ENABLED - Using hardcoded selector: ${this.TARGET_ELEMENT.selector}`);
+        if (DEMO_CONDITION) {
+            console.log(`[VARIANTS] DEMO MODE ENABLED - Using demo selector: ${getDemoSelector('variants')}`);
         }
 
-        const [injectionPoints, brandAnalysis] = await Promise.all([
-            // Use hardcoded selector if enabled, otherwise use normal analysis
-            this.HARDCODE_ELEMENT_FOCUS
+        // Try to get cached design system first
+        let designSystem = null;
+        const cachedDesignSystem = this.designSystemCache.get(projectId);
+        if (cachedDesignSystem && Date.now() - cachedDesignSystem.timestamp < this.CACHE_TTL) {
+            console.log(`[VARIANTS] Using cached design system for ${projectId}`);
+            designSystem = cachedDesignSystem.data;
+        }
+
+        const [injectionPoints, brandAnalysis, extractedDesignSystem] = await Promise.all([
+            // Use demo selector if enabled, otherwise use normal analysis
+            DEMO_CONDITION
                 ? this.domAnalyzer.analyzeWithHardcodedSelector(
                     url,
                     hypothesis.description,
                     projectId,
-                    this.TARGET_ELEMENT.selector,
+                    getDemoSelector('variants'),
                     htmlContent,
                     { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                 )
@@ -325,28 +298,52 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     htmlContent, // Pass the HTML we already have
                     { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
                 ),
-            this._getCachedBrandAnalysis(projectId)
+            this._getCachedBrandAnalysis(projectId),
+            // Extract design system if not cached
+            designSystem ? Promise.resolve(null) : this.designSystemExtractor.extractDesignSystem(screenshot, htmlContent)
         ]);
+
+        // Use extracted design system or cached one
+        if (extractedDesignSystem) {
+            designSystem = extractedDesignSystem;
+            // Cache it for future use
+            this.designSystemCache.set(projectId, { data: designSystem, timestamp: Date.now() });
+            console.log(`[VARIANTS] Design system extracted and cached`);
+        }
+
+        // Set design system in code generator
+        this.codeGenerator.setDesignSystem(designSystem);
 
         console.log(`[VARIANTS] Parallel operations completed:`);
         console.log(`[VARIANTS] - Screenshot length: ${screenshot.length}`);
         console.log(`[VARIANTS] - Injection points found: ${injectionPoints.length}`);
         console.log(`[VARIANTS] - Brand analysis: ${brandAnalysis ? `length: ${brandAnalysis.length} chars` : 'null'}`);
+        console.log(`[VARIANTS] - Design system: ${designSystem ? 'extracted' : 'not available'}`);
+
+        // Log the injection points for debugging
+        if (injectionPoints.length > 0) {
+            console.log(`[VARIANTS] Injection points:`);
+            injectionPoints.slice(0, 3).forEach((point, i) => {
+                console.log(`  ${i + 1}. Selector: ${point.selector || 'N/A'}`);
+                console.log(`     Confidence: ${point.confidence || 0}`);
+                console.log(`     Type: ${point.elementType || point.type || 'unknown'}`);
+            });
+        }
 
         if (!brandAnalysis) {
             console.warn(`[VARIANTS] No brand analysis found for project: ${projectId}`);
             throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
         }
 
-        console.log(`[VARIANTS] Generating AI response with Google Gemini 2.5 Pro`);
+        console.log(`[VARIANTS] Generating variant ideas with Google Gemini 2.5 Pro`);
         const aiConfig = getVariantGenerationAIConfig();
 
-        // Use button-specific prompt when using hardcoded selector (targeting button/link)
-        const prompt = this.HARDCODE_ELEMENT_FOCUS
+        // Use button-specific prompt when in demo mode (targeting button/link)
+        const prompt = DEMO_CONDITION
             ? buildButtonVariantGenerationPrompt(hypothesis)
-            : buildVariantGenerationPrompt(hypothesis);
+            : buildVariantGenerationPrompt(hypothesis, designSystem);
 
-        console.log(`[VARIANTS] Using ${this.HARDCODE_ELEMENT_FOCUS ? 'button-specific' : 'general'} prompt`);
+        console.log(`[VARIANTS] Using ${DEMO_CONDITION ? 'button-specific (demo mode)' : 'general'} prompt`);
 
         const object = await generateObject({
             model: google(aiConfig.model, {
@@ -365,94 +362,93 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             ]
         });
         const response = object.object;
-        console.log(`[VARIANTS] AI response generated: ${response.variants.length} variants`);
+        console.log(`[VARIANTS] AI response generated: ${response.variants.length} variant ideas`);
 
-        // SEQUENTIAL PROCESSING: Generate code and take screenshots for each variant one by one
-        console.log(`[VARIANTS] Processing ${response.variants.length} variants sequentially`);
-        const variantsWithScreenshots = [];
+        // For testing, only use the first variant
+        const variantsToProcess = process.env.TEST_MODE === 'true' ? response.variants.slice(0, 1) : response.variants;
 
-        // Initialize a single crawler instance for all variants to reuse browser
-        const { createPlaywrightCrawler } = await import('@features/crawler');
-        const { getServiceConfig } = await import('@infra/config/services');
-        const config = getServiceConfig();
-        const crawler = createPlaywrightCrawler(config.crawler);
+        // PARALLEL PROCESSING: Generate JavaScript code for each variant
+        console.log(`[VARIANTS] Generating JavaScript code for ${variantsToProcess.length} variants${process.env.TEST_MODE === 'true' ? ' (TEST MODE - limited to 1)' : ''}`);
 
-        try {
-            for (let index = 0; index < response.variants.length; index++) {
-                const variant = response.variants[index];
-                console.log(`[VARIANTS] Processing variant ${index + 1}/${response.variants.length}: ${variant.variant_label}`);
+        const variantsWithCode = await Promise.all(
+            variantsToProcess.map(async (variant, index) => {
+                console.log(`[VARIANTS] Processing variant ${index + 1}/${variantsToProcess.length}: ${variant.variant_label}`);
 
-                // Generate code for this variant
+                // Generate JavaScript code for this variant
                 let codeResult;
                 try {
-                    console.log(`[VARIANTS] Generating code for variant ${index + 1}: ${variant.variant_label}`);
-                    codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints);
+                    console.log(`[VARIANTS] Generating JavaScript for: ${variant.variant_label}`);
+                    codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints, htmlContent);
+
+                    // STAGE 2: Visual refinement if design system is available
+                    if (designSystem && codeResult?.javascript_code) {
+                        console.log(`[VARIANTS] Applying visual refinement for: ${variant.variant_label}`);
+                        try {
+                            const refinedResult = await this.visualRefinement.refineVariantCode(
+                                codeResult.javascript_code,
+                                variant.description,
+                                designSystem,
+                                toDataUrl(screenshot)
+                            );
+
+                            if (refinedResult.javascript_code && refinedResult.javascript_code !== codeResult.javascript_code) {
+                                console.log(`[VARIANTS] Visual refinement applied successfully`);
+                                console.log(`[VARIANTS] Improvements: ${refinedResult.improvements.slice(0, 3).join(', ')}`);
+                                codeResult.javascript_code = refinedResult.javascript_code;
+                            }
+                        } catch (refineError) {
+                            console.warn(`[VARIANTS] Visual refinement failed, using original code:`, refineError);
+                        }
+                    }
+
+                    // Validate that the selector exists in the cleaned HTML (same as used for detection)
+                    if (htmlContent && codeResult?.target_selector) {
+                        try {
+                            // Clean the HTML the same way the DOM analyzer does
+                            const cheerio = require('cheerio');
+                            const $ = cheerio.load(htmlContent);
+
+                            // Remove script tags, style tags, and comments (same as DOM analyzer)
+                            $('script').remove();
+                            $('style').remove();
+                            $('noscript').remove();
+                            $('link[rel="stylesheet"]').remove();
+
+                            // Now check if selector exists in cleaned HTML
+                            const elements = $(codeResult.target_selector);
+
+                            if (elements.length === 0) {
+                                console.warn(`[VARIANTS] Selector not found in cleaned HTML: ${codeResult.target_selector}`);
+                            } else {
+                                console.log(`[VARIANTS] Selector validated in cleaned HTML: ${codeResult.target_selector} (${elements.length} matches)`);
+                            }
+                        } catch (selectorError) {
+                            console.warn(`[VARIANTS] Invalid selector: ${codeResult.target_selector}`, selectorError);
+                        }
+                    }
                 } catch (error) {
                     console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
                     codeResult = null;
                 }
 
-                // Take screenshot for this variant using the shared crawler instance
-                let variantScreenshotUrl = '';
-                if (codeResult) {
-                    try {
-                        console.log(`[VARIANTS] Taking screenshot for variant ${index + 1}: ${variant.variant_label}`);
-                        const variantScreenshotBase64 = await crawler.takeVariantScreenshot(
-                            url,
-                            {
-                                css_code: codeResult.css_code,
-                                html_code: codeResult.html_code,
-                                injection_method: codeResult.injection_method,
-                                target_selector: codeResult.target_selector,
-                                new_element_html: codeResult.new_element_html
-                            },
-                            { width: 1920, height: 1080 },
-                            { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                        );
-
-                        // Save screenshot to database and get URL
-                        const screenshotId = await this.screenshotStorage.saveScreenshot(
-                            projectId,
-                            'other', // Variant screenshots are categorized as 'other'
-                            url,
-                            HIGH_QUALITY_SCREENSHOT_OPTIONS,
-                            variantScreenshotBase64,
-                            undefined, // No HTML content for variant screenshots
-                            `variant-${index + 1}-${variant.variant_label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}` // Unique variant ID
-                        );
-                        variantScreenshotUrl = `/api/screenshots/db/${screenshotId}`;
-                        console.log(`[VARIANTS] Screenshot saved for variant ${variant.variant_label}: ${variantScreenshotUrl}`);
-                    } catch (screenshotError) {
-                        console.error(`[VARIANTS] Failed to take screenshot for variant ${variant.variant_label}:`, screenshotError);
-                        // Continue without screenshot rather than failing the entire variant
-                    }
-                }
-
-                // Create the final variant object
+                // Create the final variant object with JavaScript code
                 const finalVariant = {
                     ...variant,
-                    css_code: codeResult?.css_code || '',
-                    html_code: codeResult?.html_code || '',
-                    injection_method: codeResult?.injection_method || 'selector' as const,
+                    javascript_code: codeResult?.javascript_code || '',
+                    execution_timing: codeResult?.execution_timing || 'dom_ready',
                     target_selector: codeResult?.target_selector || '',
-                    new_element_html: codeResult?.new_element_html || '',
-                    implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
-                    screenshot: variantScreenshotUrl
+                    implementation_instructions: codeResult?.implementation_instructions || variant.description
                 };
 
-                variantsWithScreenshots.push(finalVariant);
-                console.log(`[VARIANTS] Completed variant ${index + 1}/${response.variants.length}: ${variant.variant_label}`);
-            }
-        } finally {
-            // Clean up the crawler
-            await crawler.close();
-        }
+                return finalVariant;
+            })
+        );
 
-        console.log(`[VARIANTS] All variants with code and screenshots generated successfully`);
+        console.log(`[VARIANTS] All variants with JavaScript code generated successfully`);
         const result = {
-            variantsSchema: JSON.stringify({ variants: variantsWithScreenshots })
+            variantsSchema: JSON.stringify({ variants: variantsWithCode })
         };
-        console.log(`[VARIANTS] Final result: ${variantsWithScreenshots.length} variants, schema length: ${result.variantsSchema.length} chars`);
+        console.log(`[VARIANTS] Final result: ${variantsWithCode.length} variants, schema length: ${result.variantsSchema.length} chars`);
         return result;
     }
 
