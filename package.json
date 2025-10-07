@@ -18,7 +18,9 @@
     "db:studio": "prisma studio",
     "seed": "tsx -r tsconfig-paths/register scripts/seed.ts",
     "seed:reset": "tsx -r tsconfig-paths/register scripts/seed.ts --reset",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:variants": "tsx -r tsconfig-paths/register tests/integration/variant-pipeline.test.ts",
+    "test:variants:simple": "tsx -r tsconfig-paths/register tests/integration/variant-simple.test.ts"
   },
   "keywords": [],
   "author": "",

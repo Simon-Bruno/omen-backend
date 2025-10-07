@@ -7,6 +7,7 @@ import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 import { getVariantGenerationAIConfig } from '@shared/ai-config';
+import { DEMO_CONDITION, getDemoSelector } from '@shared/demo-config';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
@@ -68,15 +69,23 @@ export class VariantJobProcessor {
             }
             
             const [injectionPoints, brandAnalysis] = await Promise.all([
-                // Use hardcoded selector logic (same as variant generation)
-                this.variantGenerationService.domAnalyzer.analyzeWithHardcodedSelector(
-                    url,
-                    hypothesis.description,
-                    projectId,
-                    'a[href="/collections/all"]', // Hardcoded selector
-                    htmlContent,
-                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                ),
+                // Use demo selector if enabled (same as variant generation)
+                DEMO_CONDITION
+                    ? this.variantGenerationService.domAnalyzer.analyzeWithHardcodedSelector(
+                        url,
+                        hypothesis.description,
+                        projectId,
+                        getDemoSelector('variants'),
+                        htmlContent,
+                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                    )
+                    : this.variantGenerationService.domAnalyzer.analyzeForHypothesisWithHtml(
+                        url,
+                        hypothesis.description,
+                        projectId,
+                        htmlContent,
+                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                    ),
                 this.variantGenerationService.getCachedBrandAnalysis(projectId)
             ]);
 
@@ -146,12 +155,10 @@ export class VariantJobProcessor {
             // Create the final variant object (screenshots are already taken by the main process)
             const finalVariant = {
                 ...variant,
-                css_code: codeResult?.css_code || '',
-                html_code: codeResult?.html_code || '',
-                injection_method: codeResult?.injection_method || 'selector' as const,
+                javascript_code: codeResult?.javascript_code || '',
+                execution_timing: codeResult?.execution_timing || 'dom_ready',
                 target_selector: codeResult?.target_selector || '',
-                new_element_html: codeResult?.new_element_html || '',
-                implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
+                implementation_instructions: codeResult?.implementation_instructions || variant.description,
                 screenshot: '' // Screenshots are handled by the main process
             };
 

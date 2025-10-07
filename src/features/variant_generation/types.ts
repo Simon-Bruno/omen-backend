@@ -1,29 +1,23 @@
 // Types for variant generation
 import { z } from 'zod';
 
-// Basic variant schema for initial generation (without code)
+// Simplified variant schema - JavaScript handles everything
+export const variantSchema = z.object({
+    variant_label: z.string().describe('Unique name for this variant'),
+    description: z.string().describe('What this variant does'),
+    rationale: z.string().describe('Why this will improve conversions'),
+    javascript_code: z.string().describe('JavaScript code that implements the variant'),
+    target_selector: z.string().describe('Main CSS selector this variant targets'),
+    execution_timing: z.enum(['immediate', 'dom_ready']).default('dom_ready').describe('When to run the JavaScript')
+});
+
+// Legacy basic variant schema (for backwards compatibility)
 export const basicVariantSchema = z.object({
     variant_label: z.string(),
     description: z.string(),
     rationale: z.string(),
-    accessibility_consideration: z.string(),
-    implementation_notes: z.string()
-});
-
-// Full variant schema with code generation
-export const variantSchema = z.object({
-    variant_label: z.string(),
-    description: z.string(),
-    rationale: z.string(),
-    accessibility_consideration: z.string(),
-    implementation_notes: z.string(),
-    css_code: z.string().describe('CSS code to implement this variant'),
-    html_code: z.string().describe('HTML code changes for this variant'),
-    injection_method: z.enum(['selector', 'new_element', 'modify_existing']).describe('How to inject this code'),
-    target_selector: z.string().optional().describe('CSS selector to target existing element'),
-    new_element_html: z.string().optional().describe('Complete HTML for new element'),
-    implementation_instructions: z.string().describe('Step-by-step implementation instructions'),
-    screenshot: z.string().optional().describe('URL to the screenshot of the variant applied to the page')
+    javascript_code: z.string().optional(),
+    target_selector: z.string().optional()
 });
 
 export const basicVariantsResponseSchema = z.object({
