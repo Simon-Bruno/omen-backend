@@ -357,6 +357,7 @@ class CreateExperimentExecutor {
             selector: variant.target_selector || 'body',
             html: variant.html_code || '',
             css: variant.css_code || '',
+            js: variant.javascript_code || '', // Map javascript_code to js field
             position: 'INNER' // Default position
           }
         });
