@@ -18,7 +18,7 @@ import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 import { DEMO_CONDITION, DEMO_TARGET_ELEMENT, getDemoSelector, getDemoHtml } from '@shared/demo-config';
 
 export interface HypothesesGenerationService {
-    generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult>;
+    generateHypotheses(url: string, projectId: string, userInput?: string): Promise<HypothesesGenerationResult>;
 }
 
 export interface HypothesesGenerationResult {
@@ -62,9 +62,13 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         this.screenshotStorage = createScreenshotStorageService();
     }
 
-    async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
+    async generateHypotheses(url: string, projectId: string, userInput?: string): Promise<HypothesesGenerationResult> {
         console.log(`[HYPOTHESES] Starting generation for URL: ${url}, Project: ${projectId}`);
-        
+
+        if (userInput) {
+            console.log(`[HYPOTHESES] User provided input: "${userInput}"`);
+        }
+
         if (DEMO_CONDITION) {
             console.log(`[HYPOTHESES] DEMO MODE ENABLED - Targeting: ${DEMO_TARGET_ELEMENT.description}`);
             console.log(`[HYPOTHESES] Target selector: ${getDemoSelector('hypotheses')}`);
@@ -149,7 +153,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 {
                     role: 'user',
                     content: [
-                        { type: "text", text: this.buildHypothesesGenerationPrompt(reservedPayload) },
+                        { type: "text", text: this.buildHypothesesGenerationPrompt(reservedPayload, userInput) },
                         { type: "text", text: brandAnalysis },
                         { type: "image", image: toDataUrl(screenshot) }
                     ]
@@ -164,7 +168,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 
     }
 
-    private buildHypothesesGenerationPrompt(reservedPayload?: any): string {
+    private buildHypothesesGenerationPrompt(reservedPayload?: any, userInput?: string): string {
         const hasReservedTargets = reservedPayload?.reserved_targets?.length > 0;
 
         const conflictSection = hasReservedTargets ? `
@@ -190,11 +194,31 @@ You MUST focus your hypothesis on this specific element:
 Your hypothesis should specifically address this element and suggest improvements to it. Look for this element in the screenshot and base your hypothesis on what you observe about its current state, visibility, styling, or positioning.
 ` : '';
 
+        const userInputSection = userInput ? `
+
+**USER PROVIDED HYPOTHESIS DIRECTION (MANDATORY - HIGHEST PRIORITY):**
+The user has specifically requested to test the following:
+"${userInput}"
+
+CRITICAL REQUIREMENTS - YOU MUST FOLLOW THESE:
+1. Your hypothesis MUST directly address the user's specific request
+2. If they mention "footer" - the hypothesis MUST focus on the footer
+3. If they mention "CTA" or "call to action" - the hypothesis MUST include adding or improving CTAs
+4. If they mention a specific element or area - that MUST be the focus of your hypothesis
+5. DO NOT generate a generic hypothesis that ignores their input
+6. Refine and structure their idea professionally while keeping their core intent
+7. Make it specific, measurable, and aligned with CRO best practices
+8. Incorporate brand analysis to strengthen the hypothesis
+9. If conflicts exist with reserved targets, adapt while maintaining the user's core idea
+
+The user's input is the HIGHEST PRIORITY - your hypothesis must clearly reflect what they asked for.
+` : '';
+
         return `
 You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze one or two screenshots of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
 
 Your analysis must prioritize **clarity, testability, and accessibility**. You are not writing vague advice—you are producing **hypotheses that can be tested in A/B experiments** without requiring advanced CRO expertise.
-${conflictSection}${hardcodedElementSection}
+${conflictSection}${hardcodedElementSection}${userInputSection}
 
 \n**Temporary Focus Exclusions (for now):**
 Do NOT focus the hypothesis on the homepage hero section or any primary/above-the-fold CTA (e.g., main "Shop now" or the dominant hero button). Prioritize other UI opportunities.

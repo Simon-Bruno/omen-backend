@@ -19,11 +19,11 @@ class GenerateHypothesesExecutor {
         this.hypothesesGenerationService = createHypothesesGenerationService(crawler, prisma);
     }
 
-    private async generateHypotheses(url: string, projectId: string): Promise<HypothesesGenerationResult> {
-        return await this.hypothesesGenerationService.generateHypotheses(url, projectId);
+    private async generateHypotheses(url: string, projectId: string, userInput?: string): Promise<HypothesesGenerationResult> {
+        return await this.hypothesesGenerationService.generateHypotheses(url, projectId, userInput);
     }
 
-    async execute(input: { projectId?: string; url?: string }): Promise<HypothesesGenerationResult> {
+    async execute(input: { projectId?: string; url?: string; userInput?: string }): Promise<HypothesesGenerationResult> {
         // Get the project's URL if not provided
         let url = input.url;
         if (!url) {
@@ -37,8 +37,12 @@ class GenerateHypothesesExecutor {
             url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
         }
         console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url} with project ${this.projectId}`);
-        
-        const result = await this.generateHypotheses(url, this.projectId);
+
+        if (input.userInput) {
+            console.log(`[HYPOTHESES_TOOL] User input provided: "${input.userInput}"`);
+        }
+
+        const result = await this.generateHypotheses(url, this.projectId, input.userInput);
         
         console.log(`[HYPOTHESES_TOOL] Result structure: ${result.hypotheses ? result.hypotheses.length : 0} hypotheses, schema: ${result.hypothesesSchema ? 'Yes' : 'No'}`);
         

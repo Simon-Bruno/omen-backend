@@ -163,7 +163,7 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         selector: v.selector || 'body',
         html: v.html,
         css: v.css || '',
-        js: v.js || undefined,
+        js: v.js || '', // Always include js field, even if empty
         position: v.position,
       };
     });

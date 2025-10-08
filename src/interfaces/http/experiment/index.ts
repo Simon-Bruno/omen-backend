@@ -3,12 +3,13 @@ import '@shared/fastify.d';
 import { VariantJobDAL } from '@infra/dal/variant-job';
 import { ExperimentDAL } from '@infra/dal/experiment';
 import { betterAuthMiddleware } from '../middleware/better-auth';
-import { requireProject } from '../middleware/authorization';
+import { requireProject, requireProjectOwnership } from '../middleware/authorization';
 import { z } from 'zod';
 import { prisma } from '@infra/prisma';
 import { createExperimentPublisherService } from '@services/experiment-publisher';
 import { createCloudflarePublisher } from '@infra/external/cloudflare';
 import { getServiceConfig } from '@infra/config/services';
+import { createVariantImprovementService } from '@features/variant_generation/variant-improvement';
 
 export async function experimentRoutes(fastify: FastifyInstance) {
     // GET /v1/jobs/:jobId/preview - Simple job-based preview
@@ -621,6 +622,137 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             return reply.status(500).send({
                 error: 'INTERNAL_ERROR',
                 message: 'Failed to delete experiment'
+            });
+        }
+    });
+
+    // POST /project/:projectId/jobs/:jobId/variants/:variantIndex/improve - Improve a variant based on user feedback
+    fastify.post('/project/:projectId/jobs/:jobId/variants/:variantIndex/improve', {
+        preHandler: [betterAuthMiddleware, requireProject, requireProjectOwnership]
+    }, async (request, reply) => {
+        try {
+            const { projectId, jobId, variantIndex } = request.params as { projectId: string; jobId: string; variantIndex: string };
+            const { feedback } = request.body as { feedback: string };
+
+            // Validate feedback
+            if (!feedback || typeof feedback !== 'string' || feedback.trim().length === 0) {
+                return reply.status(400).send({
+                    error: 'INVALID_FEEDBACK',
+                    message: 'Feedback is required and must be a non-empty string'
+                });
+            }
+
+            // Get the job
+            const job = await VariantJobDAL.getJobById(jobId);
+            if (!job) {
+                return reply.status(404).send({
+                    error: 'NOT_FOUND',
+                    message: 'Job not found'
+                });
+            }
+
+            // Verify job belongs to the specified project
+            if (job.projectId !== projectId) {
+                return reply.status(403).send({
+                    error: 'FORBIDDEN',
+                    message: 'Job does not belong to the specified project'
+                });
+            }
+
+            if (job.status !== 'COMPLETED') {
+                return reply.status(400).send({
+                    error: 'JOB_NOT_COMPLETED',
+                    message: `Job is not completed yet. Current status: ${job.status}`
+                });
+            }
+
+            // Parse variant index
+            const index = parseInt(variantIndex, 10);
+            if (isNaN(index) || index < 0) {
+                return reply.status(400).send({
+                    error: 'INVALID_VARIANT_INDEX',
+                    message: 'Variant index must be a non-negative integer'
+                });
+            }
+
+            // Get variants from job result
+            const variants = job.result?.variantsSchema?.variants;
+            if (!variants || !Array.isArray(variants)) {
+                return reply.status(404).send({
+                    error: 'NO_VARIANTS',
+                    message: 'No variants found in job result'
+                });
+            }
+
+            if (index >= variants.length) {
+                return reply.status(404).send({
+                    error: 'VARIANT_NOT_FOUND',
+                    message: `Variant at index ${index} not found. Job has ${variants.length} variants.`
+                });
+            }
+
+            const variant = variants[index];
+
+            // Initialize improvement service
+            const improvementService = createVariantImprovementService();
+
+            // Improve the variant
+            fastify.log.info({ jobId, variantIndex: index, feedback }, 'Improving variant based on feedback');
+
+            const improvement = await improvementService.improveVariant({
+                originalCode: variant.javascript_code || '',
+                targetSelector: variant.target_selector || '',
+                variantDescription: variant.description || '',
+                userFeedback: feedback,
+                // Screenshot with variant applied would be passed from frontend if available
+                screenshot: undefined
+            });
+
+            // Update the variant in the job result
+            variants[index] = {
+                ...variant,
+                javascript_code: improvement.javascript_code,
+                improvement_notes: improvement.improvements_made
+            };
+
+            // Update the job with the improved variant
+            await VariantJobDAL.updateJob(jobId, {
+                result: {
+                    ...job.result,
+                    variantsSchema: {
+                        ...job.result.variantsSchema,
+                        variants
+                    }
+                }
+            });
+
+            fastify.log.info({
+                jobId,
+                variantIndex: index,
+                improvements: improvement.improvements_made,
+                confidence: improvement.confidence
+            }, 'Variant improved successfully');
+
+            return reply.send({
+                success: true,
+                variant: variants[index],
+                improvements: improvement.improvements_made,
+                confidence: improvement.confidence
+            });
+
+        } catch (error) {
+            fastify.log.error({ err: error }, 'Failed to improve variant');
+
+            if (error instanceof Error) {
+                return reply.status(500).send({
+                    error: 'INTERNAL_ERROR',
+                    message: error.message
+                });
+            }
+
+            return reply.status(500).send({
+                error: 'INTERNAL_ERROR',
+                message: 'Failed to improve variant'
             });
         }
     });

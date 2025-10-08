@@ -36,7 +36,7 @@ export interface PublishedVariant {
   selector: string;
   html: string;
   css: string;
-  js?: string;
+  js: string; // Always included, even if empty
   position: InjectPosition;
 }
 
