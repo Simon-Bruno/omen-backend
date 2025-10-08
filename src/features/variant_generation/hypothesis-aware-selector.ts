@@ -266,42 +266,6 @@ The confidence field must be a decimal value between 0 and 1.`;
     return path.join(' > ');
   }
 
-  private async refineSelector(selector: string, targetDescription: string): Promise<string | null> {
-    try {
-      const elements = this.$(selector);
-      if (elements.length <= 1) return null;
-
-      // Try to find the most relevant element based on the description
-      let bestMatch: cheerio.Cheerio<any> | null = null;
-      let bestScore = 0;
-
-      elements.each((_, el) => {
-        const $el = this.$(el);
-        const text = $el.text().trim().toLowerCase();
-        const description = targetDescription.toLowerCase();
-
-        // Simple relevance scoring
-        let score = 0;
-        const descWords = description.split(/\s+/);
-        for (const word of descWords) {
-          if (text.includes(word)) score++;
-        }
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = $el;
-        }
-      });
-
-      if (bestMatch) {
-        return this.generateSelectorForElement(bestMatch);
-      }
-    } catch (error) {
-      console.log(`[HYPOTHESIS_SELECTOR] Error refining selector: ${error}`);
-    }
-
-    return null;
-  }
 
   private createCandidate(
     $el: cheerio.Cheerio<any>,
