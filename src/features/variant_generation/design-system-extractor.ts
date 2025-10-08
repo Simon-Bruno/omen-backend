@@ -121,7 +121,8 @@ Return a JSON object with the exact CSS values found in the site.`;
       return result.object;
     } catch (error) {
       console.error('[DESIGN_SYSTEM] Failed to extract design system:', error);
-      throw new Error(`Failed to extract design system: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to extract design system: ${errorMessage}`);
     }
   }
 
