@@ -179,6 +179,10 @@ model ExperimentGoal {
   itemCountSelector String?    // CSS selector to extract number of items purchased
   currency          String?    // Currency code for the purchase (default: USD)
   
+  // Goal-specific targeting (optional - overrides experiment targeting)
+  targetUrls        String[]   // URLs where this goal should be applied (empty = same as experiment)
+  targeting         Json?      // DOM targeting rules for this specific goal (empty = no targeting)
+  
   createdAt    DateTime   @default(now())
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
