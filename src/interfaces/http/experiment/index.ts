@@ -181,6 +181,14 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             js: z.string().optional(),
             position: z.enum(['INNER', 'OUTER', 'BEFORE', 'AFTER', 'APPEND', 'PREPEND']).default('INNER')
         })).min(1, 'At least one variant is required'),
+        goals: z.array(z.object({
+            name: z.string().min(1, 'Goal name is required'),
+            type: z.enum(['conversion', 'custom']),
+            selector: z.string().optional(),
+            eventType: z.string().optional(),
+            customJs: z.string().optional(),
+            value: z.number().optional()
+        })).optional(),
         trafficDistribution: z.record(z.string(), z.number().min(0).max(1))
             .optional()
             .refine((traffic) => {
@@ -205,10 +213,15 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 });
             }
 
+            // DEBUG: Log incoming request
+            fastify.log.info({ body: request.body }, '[Backend] Raw request body received');
+            fastify.log.info({ goals: (request.body as any)?.goals }, '[Backend] Goals in request');
+
             // Validate request body
             const validationResult = createExperimentSchema.safeParse(request.body);
 
             if (!validationResult.success) {
+                fastify.log.error({ errors: validationResult.error.errors }, '[Backend] Validation failed');
                 return reply.status(400).send({
                     error: 'VALIDATION_ERROR',
                     message: 'Invalid request body',
@@ -217,6 +230,10 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             }
 
             const data = validationResult.data;
+
+            // DEBUG: Log validated data
+            fastify.log.info({ validatedGoals: data.goals }, '[Backend] Goals after validation');
+            fastify.log.info({ validatedData: data }, '[Backend] Full validated data');
 
             // Create experiment
             const experiment = await ExperimentDAL.createExperiment({
@@ -281,13 +298,36 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 });
             }
 
+            // Create goals if provided
+            if (data.goals && data.goals.length > 0) {
+                fastify.log.info({ goalsCount: data.goals.length }, '[Backend] Creating goals for experiment');
+                for (const goal of data.goals) {
+                    fastify.log.info({ goal }, '[Backend] Creating goal');
+                    const createdGoal = await prisma.experimentGoal.create({
+                        data: {
+                            experimentId: experiment.id,
+                            name: goal.name,
+                            type: goal.type,
+                            selector: goal.selector || null,
+                            eventType: goal.eventType || null,
+                            customJs: goal.customJs || null,
+                            value: goal.value || null
+                        }
+                    });
+                    fastify.log.info({ createdGoal }, '[Backend] Goal created successfully');
+                }
+            } else {
+                fastify.log.info('[Backend] No goals to create');
+            }
+
             // Fetch complete experiment with relations
             const completeExperiment = await prisma.experiment.findUnique({
                 where: { id: experiment.id },
                 include: {
                     hypothesis: true,
                     traffic: true,
-                    variants: true
+                    variants: true,
+                    goals: true
                 }
             });
 

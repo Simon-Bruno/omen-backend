@@ -67,6 +67,7 @@ model Experiment {
   variants              ExperimentVariant[]
   project               Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   analyticsEvents       AnalyticsEvent[]
+  goals                 ExperimentGoal[]
 
   @@index([projectId, status])
   @@map("experiments")
@@ -156,6 +157,33 @@ model ExperimentVariant {
   @@unique([experimentId, variantId])
   @@index([experimentId])
   @@map("experiment_variants")
+}
+
+model ExperimentGoal {
+  id           String     @id @default(cuid())
+  experimentId String
+  name         String     // Goal name for analytics (e.g., "signup_completed", "video_watched")
+  type         String     // "conversion" | "custom" | "purchase" - determines analytics event type
+
+  // DOM-based tracking (optional - when you want to track element interactions)
+  selector     String?    // CSS selector: "button.signup", "#add-to-cart" (optional)
+  eventType    String?    // DOM event: "click", "submit", "change", etc. (required if selector is set)
+
+  // Custom JavaScript (optional - for complex tracking logic)
+  customJs     String?    // Custom JS to determine when to fire the event (e.g., "window.scrollY > 1000")
+
+  value        Float?     // Optional value for the event (e.g., cart value, progress percentage)
+  
+  // Purchase-specific fields
+  valueSelector     String?    // CSS selector to extract purchase value from DOM
+  itemCountSelector String?    // CSS selector to extract number of items purchased
+  currency          String?    // Currency code for the purchase (default: USD)
+  
+  createdAt    DateTime   @default(now())
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId])
+  @@map("experiment_goals")
 }
 
 model Screenshot {
