@@ -10,7 +10,8 @@ import {
   getFunnelAnalysisHandler,
   getConversionRatesHandler,
   getPurchaseStatsHandler,
-  getExperimentSessionsHandler
+  getExperimentSessionsHandler,
+  resetExperimentEventsHandler
 } from './handlers';
 import {
   getExposureStatsSchema,
@@ -20,7 +21,8 @@ import {
   getFunnelAnalysisSchema,
   getConversionRatesSchema,
   getPurchaseStatsSchema,
-  getExperimentSessionsSchema
+  getExperimentSessionsSchema,
+  resetExperimentEventsSchema
 } from './schemas';
 
 export async function analyticsRoutes(fastify: FastifyInstance) {
@@ -83,5 +85,12 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
     schema: getExperimentSessionsSchema,
     preHandler: [betterAuthMiddleware, requireProject],
     handler: getExperimentSessionsHandler(analyticsService)
+  });
+
+  // Reset analytics events for an experiment
+  fastify.delete('/experiments/:experimentId/reset', {
+    schema: resetExperimentEventsSchema,
+    preHandler: [betterAuthMiddleware, requireProject],
+    handler: resetExperimentEventsHandler(analyticsService)
   });
 }

@@ -858,4 +858,17 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       createdAt: event.createdAt,
     };
   }
+
+  async deleteExperimentEvents(projectId: string, experimentId: string): Promise<number> {
+    // Delete all analytics events for the given experiment
+    const result = await this.prisma.analyticsEvent.deleteMany({
+      where: {
+        projectId,
+        experimentId,
+      },
+    });
+
+    console.log(`[ANALYTICS] Deleted ${result.count} events for experiment ${experimentId} in project ${projectId}`);
+    return result.count;
+  }
 }

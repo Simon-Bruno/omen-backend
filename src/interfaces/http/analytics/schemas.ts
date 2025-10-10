@@ -294,3 +294,23 @@ export const getExperimentSessionsSchema: FastifySchema = {
     }
   }
 };
+
+export const resetExperimentEventsSchema: FastifySchema = {
+  params: {
+    type: 'object',
+    properties: {
+      experimentId: { type: 'string' }
+    },
+    required: ['experimentId']
+  },
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        deletedCount: { type: 'number' },
+        message: { type: 'string' }
+      }
+    }
+  }
+};
