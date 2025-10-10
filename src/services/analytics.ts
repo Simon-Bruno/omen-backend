@@ -64,6 +64,11 @@ export class AnalyticsServiceImpl implements AnalyticsService {
     return this.repository.getExperimentSessions(projectId, experimentId, limit, offset);
   }
 
+  async resetExperimentEvents(projectId: string, experimentId: string): Promise<{ deletedCount: number }> {
+    const deletedCount = await this.repository.deleteExperimentEvents(projectId, experimentId);
+    return { deletedCount };
+  }
+
   async processSQSEvent(message: SQSAnalyticsMessage): Promise<void> {
     try {
       await this.createEvent({

@@ -307,7 +307,7 @@ export function getExperimentSessionsHandler(analyticsService: AnalyticsService)
     const projectId = request.projectId; // From middleware
 
     if (!projectId) {
-      return reply.status(400).send({ 
+      return reply.status(400).send({
         error: 'Project ID is required',
         message: 'User must have a project associated with their account to access analytics'
       });
@@ -320,9 +320,9 @@ export function getExperimentSessionsHandler(analyticsService: AnalyticsService)
     try {
       const limit = query.limit || 100;
       const offset = query.offset || 0;
-      
+
       const result = await analyticsService.getExperimentSessions(projectId, experimentId, limit, offset);
-      
+
       return reply.send({
         sessions: result.sessions,
         total: result.total,
@@ -332,6 +332,39 @@ export function getExperimentSessionsHandler(analyticsService: AnalyticsService)
     } catch (error) {
       request.log.error(error, 'Failed to get experiment sessions');
       return reply.status(500).send({ error: 'Failed to get experiment sessions' });
+    }
+  };
+}
+
+export function resetExperimentEventsHandler(analyticsService: AnalyticsService) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const { experimentId } = request.params as { experimentId: string };
+    const projectId = request.projectId; // From middleware
+
+    if (!projectId) {
+      return reply.status(400).send({
+        error: 'Project ID is required',
+        message: 'User must have a project associated with their account to reset analytics'
+      });
+    }
+
+    if (!experimentId) {
+      return reply.status(400).send({ error: 'Experiment ID is required' });
+    }
+
+    try {
+      const result = await analyticsService.resetExperimentEvents(projectId, experimentId);
+
+      request.log.info(`Reset analytics events for experiment ${experimentId}: deleted ${result.deletedCount} events`);
+
+      return reply.send({
+        success: true,
+        deletedCount: result.deletedCount,
+        message: `Successfully deleted ${result.deletedCount} analytics events for experiment ${experimentId}`
+      });
+    } catch (error) {
+      request.log.error(error, 'Failed to reset experiment events');
+      return reply.status(500).send({ error: 'Failed to reset experiment events' });
     }
   };
 }
