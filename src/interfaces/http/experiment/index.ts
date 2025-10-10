@@ -183,11 +183,14 @@ export async function experimentRoutes(fastify: FastifyInstance) {
         })).min(1, 'At least one variant is required'),
         goals: z.array(z.object({
             name: z.string().min(1, 'Goal name is required'),
-            type: z.enum(['conversion', 'custom']),
+            type: z.enum(['conversion', 'custom', 'purchase']),
             selector: z.string().optional(),
             eventType: z.string().optional(),
             customJs: z.string().optional(),
-            value: z.number().optional()
+            value: z.number().optional(),
+            valueSelector: z.string().optional(),
+            itemCountSelector: z.string().optional(),
+            currency: z.string().optional()
         })).optional(),
         trafficDistribution: z.record(z.string(), z.number().min(0).max(1))
             .optional()
@@ -311,7 +314,10 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                             selector: goal.selector || null,
                             eventType: goal.eventType || null,
                             customJs: goal.customJs || null,
-                            value: goal.value || null
+                            value: goal.value || null,
+                            valueSelector: goal.valueSelector || null,
+                            itemCountSelector: goal.itemCountSelector || null,
+                            currency: goal.currency || null
                         }
                     });
                     fastify.log.info({ createdGoal }, '[Backend] Goal created successfully');
