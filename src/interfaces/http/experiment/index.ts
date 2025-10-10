@@ -385,7 +385,8 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 include: {
                     hypothesis: true,
                     traffic: true,
-                    variants: true
+                    variants: true,
+                    goals: true
                 }
             });
 
