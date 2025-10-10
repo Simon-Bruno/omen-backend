@@ -7,6 +7,15 @@ export interface CloudflareConfig {
   namespaceId: string;
 }
 
+export interface PublishedGoal {
+  name: string;
+  type: 'conversion' | 'custom';
+  selector?: string | null;
+  eventType?: string | null;
+  customJs?: string | null;
+  value?: number | null;
+}
+
 export interface PublishedExperiment {
   id: string;
   projectId: string;
@@ -15,6 +24,7 @@ export interface PublishedExperiment {
   oec: string;
   traffic: Record<string, number>;
   variants: Record<string, PublishedVariant>;
+  goals?: PublishedGoal[]; // Universal conversion tracking goals
   targetUrls?: string[]; // URL patterns for targeting
   targeting?: {
     match?: 'all' | 'any';

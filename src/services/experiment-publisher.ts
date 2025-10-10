@@ -26,6 +26,7 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
           hypothesis: true,
           traffic: true,
           variants: true,
+          goals: true,
         },
       });
 
@@ -58,6 +59,14 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         oec: experiment.oec,
         traffic: this.buildTrafficDistribution(experiment.traffic),
         variants: this.buildVariants(experiment.variants),
+        goals: experiment.goals?.map(goal => ({
+          name: goal.name,
+          type: goal.type as 'conversion' | 'custom',
+          selector: goal.selector,
+          eventType: goal.eventType,
+          customJs: goal.customJs,
+          value: goal.value ? Number(goal.value) : null,
+        })),
         targetUrls: this.parseTargetUrls(experiment.targetUrls), // Include URL targeting data
         targeting: (experiment as any).targeting as any | undefined,
       };
