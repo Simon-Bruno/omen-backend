@@ -44,19 +44,19 @@ class GenerateHypothesesExecutor {
 
         const result = await this.generateHypotheses(url, this.projectId, input.userInput);
         
-        console.log(`[HYPOTHESES_TOOL] Result structure: ${result.hypotheses ? result.hypotheses.length : 0} hypotheses, schema: ${result.hypothesesSchema ? 'Yes' : 'No'}`);
-        
         // Parse the hypotheses from the result structure
         let hypotheses = result.hypotheses;
         if (!hypotheses && result.hypothesesSchema) {
             try {
                 const parsed = JSON.parse(result.hypothesesSchema);
                 hypotheses = parsed.hypotheses;
-                console.log(`[HYPOTHESES_TOOL] Parsed hypotheses from schema:`, hypotheses?.length || 0);
+                console.log(`[HYPOTHESES_TOOL] Parsed hypotheses from schema: ${hypotheses?.length || 0}`);
             } catch (error) {
                 console.error(`[HYPOTHESES_TOOL] Failed to parse hypothesesSchema:`, error);
             }
         }
+        
+        console.log(`[HYPOTHESES_TOOL] Result structure: ${hypotheses ? hypotheses.length : 0} hypotheses, schema: ${result.hypothesesSchema ? 'Yes' : 'No'}`);
         
         console.log(`[HYPOTHESES_TOOL] Hypotheses array length:`, hypotheses?.length || 0);
         

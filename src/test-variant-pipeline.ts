@@ -20,7 +20,6 @@ import { createScreenshotStorageService } from './services/screenshot-storage';
 import { getServiceConfig } from './infra/config/services';
 import { prisma } from './infra/prisma';
 import { ProjectDAL } from './infra/dal';
-import { DEMO_CONDITION } from './shared/demo-config';
 
 async function selectProject(): Promise<string> {
     // If project ID is provided via env, use it
@@ -100,7 +99,6 @@ async function testPipeline() {
         const hypothesesService = createHypothesesGenerationService(crawler, prisma);
 
         console.log('✅ Services initialized');
-        console.log(`  • Demo Mode: ${DEMO_CONDITION ? 'ENABLED' : 'DISABLED'}`);
 
         // Step 3: Generate hypothesis from the project URL
         console.log('\n🎯 Step 3: Generating hypothesis...');
@@ -132,7 +130,7 @@ async function testPipeline() {
         console.log('\n🎨 Step 4: Generating variants...');
 
         const variantResult = await variantService.generateVariants(hypothesis, projectId);
-        const variants = JSON.parse(variantResult.variantsSchema).variants;
+        const variants = variantResult.variants;
 
         console.log(`✅ Generated ${variants.length} variants`);
 
@@ -187,7 +185,6 @@ async function testPipeline() {
                 shopDomain: project.shopDomain,
                 hasBrandAnalysis: !!brandAnalysis
             },
-            demoMode: DEMO_CONDITION,
             hypothesis,
             variants,
             summary: {
@@ -271,7 +268,6 @@ ${variant.javascript_code}
         console.log(`  • Hypothesis: "${hypothesis.title}"`);
         console.log(`  • Variants Generated: ${variants.length}`);
         console.log(`  • Average Code Length: ${testResults.summary.averageCodeLength} chars`);
-        console.log(`  • Demo Mode: ${DEMO_CONDITION ? 'ON' : 'OFF'}`);
         console.log(`  • Brand Analysis: ${brandAnalysis ? 'YES' : 'NO'}`);
 
     } catch (error) {

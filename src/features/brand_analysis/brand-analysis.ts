@@ -4,6 +4,7 @@ import { ProjectDAL } from '@infra/dal';
 import { FirecrawlService } from './firecrawl-service';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { DesignSystemService } from '@features/design_system/design-system-service';
 
 
 export async function analyzeProject(projectId: string, shopDomain: string): Promise<BrandIntelligenceData> {
@@ -65,6 +66,22 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
     // Store the analysis results without sources (sources are now in screenshots table)
     await ProjectDAL.updateProjectBrandAnalysis(projectId, finalBrandIntelligence);
     console.log(`[BRAND_ANALYSIS] Brand analysis completed successfully for project ${projectId}`);
+
+    // Step 6: Extract design system separately (parallel to brand analysis)
+    console.log(`[BRAND_ANALYSIS] Step 6: Extracting design system for: ${baseUrl}`);
+    try {
+      const designSystemService = new DesignSystemService();
+      const designSystemResult = await designSystemService.extractAndSaveDesignSystem(projectId, baseUrl);
+      
+      if (designSystemResult.success) {
+        console.log(`[BRAND_ANALYSIS] Design system extracted and saved successfully for project ${projectId}`);
+      } else {
+        console.warn(`[BRAND_ANALYSIS] Design system extraction failed for project ${projectId}: ${designSystemResult.error}`);
+      }
+    } catch (error) {
+      console.error(`[BRAND_ANALYSIS] Design system extraction failed for project ${projectId}:`, error);
+      // Don't fail the entire brand analysis if design system extraction fails
+    }
 
     return finalBrandIntelligence;
   } catch (error) {

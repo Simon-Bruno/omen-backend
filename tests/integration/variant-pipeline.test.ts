@@ -13,14 +13,14 @@
  * This script tests the complete pipeline using real projects from the database
  */
 
-import { createVariantGenerationService } from './features/variant_generation/variant-generation';
-import { createHypothesesGenerationService } from './features/hypotheses_generation/hypotheses-generation';
-import { createPlaywrightCrawler } from './features/crawler';
-import { createScreenshotStorageService } from './services/screenshot-storage';
-import { getServiceConfig } from './infra/config/services';
-import { prisma } from './infra/prisma';
-import { ProjectDAL } from './infra/dal';
-import { DEMO_CONDITION } from './shared/demo-config';
+import { createVariantGenerationService } from '../../src/features/variant_generation/variant-generation';
+import { createHypothesesGenerationService } from '../../src/features/hypotheses_generation/hypotheses-generation';
+import { createPlaywrightCrawler } from '../../src/features/crawler';
+import { createScreenshotStorageService } from '../../src/services/screenshot-storage';
+import { getServiceConfig } from '../../src/infra/config/services';
+import { prisma } from '../../src/infra/prisma';
+import { ProjectDAL } from '../../src/infra/dal';
+import { DEMO_CONDITION } from '../../src/shared/demo-config';
 
 async function selectProject(): Promise<string> {
     // If project ID is provided via env, use it
@@ -102,42 +102,98 @@ async function testPipeline() {
         console.log('✅ Services initialized');
         console.log(`  • Demo Mode: ${DEMO_CONDITION ? 'ENABLED' : 'DISABLED'}`);
 
-        // Step 3: Generate hypothesis from the project URL
-        console.log('\n🎯 Step 3: Generating hypothesis...');
+        // Step 3: Use hardcoded hypothesis for faster testing
+        console.log('\n🎯 Step 3: Using hardcoded hypothesis...');
 
-        // Build URL from shop domain
-        const url = project.shopDomain.startsWith('http')
-            ? project.shopDomain
-            : `https://${project.shopDomain}`;
+        // Alternative hypothesis example (more specific):
+        // const hypothesis = {
+        //     title: "Add Customer Testimonials Section",
+        //     description: "Adding a customer testimonials section will increase trust and conversion rates by showcasing social proof.",
+        //     current_problem: "The homepage lacks social proof and customer validation, making it harder for new visitors to trust the brand and make a purchase decision.",
+        //     predicted_lift_range: {
+        //         min: 0.1,
+        //         max: 0.3
+        //     }
+        // };
 
-        console.log(`  • URL: ${url}`);
-        console.log('  • Generating hypothesis from homepage...');
+        const hypothesis = {
+            title: "Transform the hero section into a modern, engaging experience",
+            description: "The current hero section feels bland and doesn't capture attention. We need to completely redesign it with modern visual elements, better typography hierarchy, and compelling visual design that makes visitors want to explore more.",
+            current_problem: "The hero section lacks visual impact and fails to create excitement or emotional connection with visitors.",
+            predicted_lift_range: {
+                min: 0.15,
+                max: 0.35
+            }
+        };
 
-        const hypothesisResult = await hypothesesService.generateHypotheses(url, projectId);
-        const hypotheses = JSON.parse(hypothesisResult.hypothesesSchema);
-        const hypothesis = hypotheses.hypotheses[0];
-
-        console.log('\n✅ Generated hypothesis:');
+        console.log('\n✅ Using hardcoded hypothesis:');
         console.log(`  • Title: ${hypothesis.title}`);
         console.log(`  • Description: ${hypothesis.description}`);
         console.log(`  • Problem: ${hypothesis.current_problem}`);
         console.log(`  • Expected Lift: ${hypothesis.predicted_lift_range.min}-${hypothesis.predicted_lift_range.max}%`);
 
-        // Display all generated hypotheses
-        if (hypotheses.hypotheses.length > 1) {
-            console.log(`\n  (Generated ${hypotheses.hypotheses.length} total hypotheses, using the first one)`);
-        }
-
-        // Step 4: Generate variants
-        console.log('\n🎨 Step 4: Generating variants...');
+        // Step 4: Generate variant ideas
+        console.log('\n🎨 Step 4: Generating variant ideas...');
 
         const variantResult = await variantService.generateVariants(hypothesis, projectId);
-        const variants = JSON.parse(variantResult.variantsSchema).variants;
+        const variantIdeas = variantResult.variants;
+        const injectionPoints = variantResult.injectionPoints;
+        const screenshot = variantResult.screenshot;
+        const brandAnalysisFromVariants = variantResult.brandAnalysis;
+        const designSystem = variantResult.designSystem;
 
-        console.log(`✅ Generated ${variants.length} variants`);
+        console.log(`✅ Generated ${variantIdeas.length} variant ideas`);
+        console.log(`  • Injection points found: ${injectionPoints.length}`);
+        console.log(`  • Screenshot: ${screenshot ? 'Available' : 'Not available'}`);
+        console.log(`  • Brand analysis: ${brandAnalysisFromVariants ? 'Available' : 'Not available'}`);
+        console.log(`  • Design system: ${designSystem ? 'Available' : 'Not available'}`);
 
-        // Step 5: Display results and save JavaScript code
-        console.log('\n📊 Step 5: Results\n');
+        // Step 5: Generate code for the first variant only (for faster testing)
+        console.log('\n💻 Step 5: Generating code for first variant only...');
+
+        const variants: any[] = [];
+        const variantIdea = variantIdeas[0]; // Only process the first variant
+        console.log(`  • Generating code for variant: ${variantIdea.variant_label}`);
+
+        try {
+            // Set design system in code generator before generating code
+            variantService.codeGenerator.setDesignSystem(designSystem);
+
+            const codeResult = await variantService.codeGenerator.generateCode(
+                variantIdea,
+                hypothesis,
+                brandAnalysisFromVariants,
+                screenshot,
+                injectionPoints
+            );
+
+            // Combine variant idea with generated code
+            const finalVariant = {
+                ...variantIdea,
+                javascript_code: codeResult?.javascript_code || '',
+                execution_timing: codeResult?.execution_timing || 'dom_ready',
+                target_selector: codeResult?.target_selector || '',
+                implementation_instructions: codeResult?.implementation_instructions || variantIdea.description,
+            };
+
+            variants.push(finalVariant);
+            console.log(`    ✅ Code generated (${codeResult?.javascript_code?.length || 0} chars)`);
+        } catch (error) {
+            console.log(`    ❌ Failed to generate code: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            // Still add the variant idea without code
+            variants.push({
+                ...variantIdea,
+                javascript_code: '',
+                execution_timing: 'dom_ready',
+                target_selector: '',
+                implementation_instructions: variantIdea.description,
+            });
+        }
+
+        console.log(`✅ Generated code for ${variants.length} variant (testing with first variant only)`);
+
+        // Step 6: Display results and save JavaScript code
+        console.log('\n📊 Step 6: Results\n');
         console.log('='.repeat(60));
 
         // Create output directory if it doesn't exist
@@ -150,7 +206,6 @@ async function testPipeline() {
 
         // Generate timestamp for unique filenames
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const jsOutputFile = path.join(outputDir, `variant-js-${timestamp}.js`);
 
         variants.forEach((variant: any, index: number) => {
             console.log(`\n🔹 Variant ${index + 1}: ${variant.variant_label}`);
@@ -177,8 +232,8 @@ async function testPipeline() {
             }
         });
 
-        // Step 6: Save results to file
-        console.log('\n💾 Step 6: Saving results...');
+        // Step 7: Save results to file
+        console.log('\n💾 Step 7: Saving results...');
         const outputFile = `${outputDir}/variant-test-${timestamp}.json`;
 
         const testResults = {
@@ -193,6 +248,7 @@ async function testPipeline() {
             variants,
             summary: {
                 totalVariants: variants.length,
+                totalVariantIdeas: variantIdeas.length,
                 hasJavaScriptCode: variants.every((v: any) => v.javascript_code),
                 targetSelectors: variants.map((v: any) => v.target_selector).filter(Boolean),
                 averageCodeLength: Math.round(
@@ -204,8 +260,8 @@ async function testPipeline() {
         fs.writeFileSync(outputFile, JSON.stringify(testResults, null, 2));
         console.log(`✅ Results saved to: ${outputFile}`);
 
-        // Step 7: Validate JavaScript code
-        console.log('\n✅ Step 7: Validating JavaScript...');
+        // Step 8: Validate JavaScript code
+        console.log('\n✅ Step 8: Validating JavaScript...');
         let validCount = 0;
         let invalidCount = 0;
 
@@ -225,8 +281,8 @@ async function testPipeline() {
 
         console.log(`\n  Summary: ${validCount} valid, ${invalidCount} invalid`);
 
-        // Step 8: Save JavaScript code to separate file
-        console.log('\n💾 Step 8: Saving JavaScript code...');
+        // Step 9: Save JavaScript code to separate file
+        console.log('\n💾 Step 9: Saving JavaScript code...');
         const jsCodeContent = variants
             .filter((variant: any) => variant.javascript_code)
             .map((variant: any, index: number) => {
@@ -270,7 +326,8 @@ ${variant.javascript_code}
         console.log('\n📈 Quick Stats:');
         console.log(`  • Project: ${project.shopDomain}`);
         console.log(`  • Hypothesis: "${hypothesis.title}"`);
-        console.log(`  • Variants Generated: ${variants.length}`);
+        console.log(`  • Variant Ideas Generated: ${variantIdeas.length}`);
+        console.log(`  • Variants with Code: ${variants.length} (testing first variant only)`);
         console.log(`  • Average Code Length: ${testResults.summary.averageCodeLength} chars`);
         console.log(`  • Demo Mode: ${DEMO_CONDITION ? 'ON' : 'OFF'}`);
         console.log(`  • Brand Analysis: ${brandAnalysis ? 'YES' : 'NO'}`);

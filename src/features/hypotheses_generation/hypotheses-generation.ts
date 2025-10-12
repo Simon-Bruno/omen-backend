@@ -1,9 +1,5 @@
 // Hypotheses Generation Service
 //
-// DEMO MODE:
-// To enable/disable demo mode, change the DEMO_CONDITION flag in src/shared/demo-config.ts
-// When enabled, hypotheses will focus specifically on the demo target element
-//
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { CrawlerService } from '@features/crawler';
@@ -15,7 +11,6 @@ import { createScreenshotStorageService, ScreenshotStorageService } from '@servi
 import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
 import { toReservedPayload } from '@features/conflict_guard';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
-import { DEMO_CONDITION, DEMO_TARGET_ELEMENT, getDemoSelector, getDemoHtml } from '@shared/demo-config';
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string, userInput?: string): Promise<HypothesesGenerationResult>;
@@ -69,11 +64,6 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             console.log(`[HYPOTHESES] User provided input: "${userInput}"`);
         }
 
-        if (DEMO_CONDITION) {
-            console.log(`[HYPOTHESES] DEMO MODE ENABLED - Targeting: ${DEMO_TARGET_ELEMENT.description}`);
-            console.log(`[HYPOTHESES] Target selector: ${getDemoSelector('hypotheses')}`);
-        }
-
         const toDataUrl = (b64: string): string => {
             if (!b64) return '';
             if (b64.startsWith('data:')) return b64;
@@ -89,9 +79,14 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         );
 
         let screenshot: string;
+        let htmlContent: string | undefined;
+        
         if (cachedScreenshot) {
             console.log(`[HYPOTHESES] Using stored screenshot for ${pageType} page`);
             screenshot = cachedScreenshot;
+            // Try to get cached HTML content
+            const cachedData = await this.screenshotStorage.getScreenshotWithHtml(projectId, pageType, HIGH_QUALITY_SCREENSHOT_OPTIONS);
+            htmlContent = cachedData?.html || undefined;
         } else {
             console.log(`[HYPOTHESES] Taking new screenshot and HTML for ${url}`);
             const crawlResult = await this.crawlerService.crawlPage(url, {
@@ -102,6 +97,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             });
 
             screenshot = crawlResult.screenshot || '';
+            htmlContent = crawlResult.html;
 
             // Store the new screenshot and HTML
             if (crawlResult.html) {
@@ -155,6 +151,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                     content: [
                         { type: "text", text: this.buildHypothesesGenerationPrompt(reservedPayload, userInput) },
                         { type: "text", text: brandAnalysis },
+                        { type: "text", text: htmlContent ? `HTML STRUCTURE:\n${this.cleanHtmlForAnalysis(htmlContent)}` : 'No HTML structure available' },
                         { type: "image", image: toDataUrl(screenshot) }
                     ]
                 }
@@ -183,17 +180,6 @@ When generating hypotheses:
 - If a primary CTA is reserved, suggest testing secondary elements
 ` : '';
 
-        const hardcodedElementSection = DEMO_CONDITION ? `
-
-**SPECIFIC ELEMENT FOCUS (DEMO MODE):**
-You MUST focus your hypothesis on this specific element:
-- Element: ${DEMO_TARGET_ELEMENT.description}
-- CSS Selector: ${getDemoSelector('hypotheses')}
-- HTML: ${getDemoHtml('hypotheses')}
-
-Your hypothesis should specifically address this element and suggest improvements to it. Look for this element in the screenshot and base your hypothesis on what you observe about its current state, visibility, styling, or positioning.
-` : '';
-
         const userInputSection = userInput ? `
 
 **USER PROVIDED HYPOTHESIS DIRECTION (MANDATORY - HIGHEST PRIORITY):**
@@ -215,13 +201,22 @@ The user's input is the HIGHEST PRIORITY - your hypothesis must clearly reflect 
 ` : '';
 
         return `
-You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze one or two screenshots of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
+You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze screenshots AND HTML structure of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
 
-Your analysis must prioritize **clarity, testability, and accessibility**. You are not writing vague advice—you are producing **hypotheses that can be tested in A/B experiments** without requiring advanced CRO expertise.
-${conflictSection}${hardcodedElementSection}${userInputSection}
+Your analysis must prioritize **clarity, testability, and accessibility**. Only suggest **hypotheses suitable for A/B testing by merchants** without requiring advanced CRO skills.
 
-\n**Temporary Focus Exclusions (for now):**
-Do NOT focus the hypothesis on the homepage hero section or any primary/above-the-fold CTA (e.g., main "Shop now" or the dominant hero button). Prioritize other UI opportunities.
+${conflictSection}${userInputSection}
+
+**CRITICAL: Analyze the current state first**
+Before suggesting any changes, carefully examine:
+1. **Current HTML structure** - What elements already exist and how are they implemented?
+2. **Existing interactions** - Are elements already clickable? Do they have hover states?
+3. **Layout constraints** - Where would new elements fit? Would they break the design?
+4. **Current user flow** - How do users currently navigate? What's already working?
+
+**Temporary Focus Exclusions:**  
+Do NOT focus your hypothesis on the homepage hero section or any main/above-the-fold CTA (e.g., primary "Shop now" button). Look for other UI opportunities.
+
 
 ---
 
@@ -325,5 +320,30 @@ Return your response as a JSON object with a "hypotheses" array containing exact
         }
 
         return 'other';
+    }
+
+    // Clean HTML for analysis - remove scripts, styles, and clean whitespace
+    private cleanHtmlForAnalysis(html: string): string {
+        try {
+            const cheerio = require('cheerio');
+            const $ = cheerio.load(html);
+
+            // Get cleaned HTML and clean up whitespace
+            let cleaned = $.html();
+
+            // Simple whitespace cleanup
+            cleaned = cleaned
+                .replace(/\s+/g, ' ')  // Replace multiple whitespace with single space
+                .replace(/>\s+</g, '><')  // Remove spaces between tags
+                .trim();
+
+            return cleaned;
+        } catch (_error) {
+            // Fallback: simple whitespace cleanup
+            return html
+                .replace(/\s+/g, ' ')
+                .replace(/>\s+</g, '><')
+                .trim();
+        }
     }
 }

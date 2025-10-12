@@ -102,6 +102,33 @@ export class ProjectDAL {
   }
 
   /**
+   * Update project design system
+   */
+  static async updateProjectDesignSystem(
+    projectId: string,
+    designSystem: any
+  ): Promise<Project> {
+    return await prisma.project.update({
+      where: { id: projectId },
+      data: { designSystem: designSystem },
+    });
+  }
+
+  /**
+   * Get project design system
+   */
+  static async getProjectDesignSystem(
+    projectId: string
+  ): Promise<any | null> {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { designSystem: true },
+    });
+    console.log(`[PROJECT_DESIGN_SYSTEM] Retrieved design system: ${project?.designSystem ? 'available' : 'null'}`);
+    return project?.designSystem ?? null;
+  }
+
+  /**
    * Delete project (cascade will handle related records)
    */
   static async deleteProject(projectId: string): Promise<void> {

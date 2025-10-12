@@ -12,6 +12,12 @@ export interface ServiceConfig {
     temperature?: number;
     maxTokens?: number;
   };
+  anthropic: {
+    apiKey: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
   crawler: {
     headless?: boolean;
     defaultViewport?: {
@@ -57,6 +63,12 @@ export function getServiceConfig(): ServiceConfig {
       model: process.env.GOOGLE_MODEL || 'gemini-2.5-pro',
       temperature: parseFloat(process.env.GOOGLE_TEMPERATURE || '0.7'),
       maxTokens: parseInt(process.env.GOOGLE_MAX_TOKENS || '1000'),
+    },
+    anthropic: {
+      apiKey: process.env.ANTHROPIC_API_KEY || '',
+      model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
+      temperature: parseFloat(process.env.ANTHROPIC_TEMPERATURE || '0.3'),
+      maxTokens: parseInt(process.env.ANTHROPIC_MAX_TOKENS || '3000'),
     },
     crawler: {
       headless: process.env.CRAWLER_HEADLESS !== 'false',

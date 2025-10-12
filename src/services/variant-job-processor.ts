@@ -5,13 +5,11 @@ import { createPlaywrightCrawler } from '@features/crawler';
 import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
-import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
-import { getVariantGenerationAIConfig } from '@shared/ai-config';
-import { DEMO_CONDITION, getDemoSelector } from '@shared/demo-config';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
     private screenshotStorage: any;
+    private variantIdeasCache: Map<string, any[]> = new Map();
 
     constructor() {
         const config = getServiceConfig();
@@ -20,173 +18,8 @@ export class VariantJobProcessor {
         this.variantGenerationService = createVariantGenerationService(crawler, this.screenshotStorage, prisma);
     }
 
-    async processVariantJob(jobId: string, projectId: string, hypothesis: any): Promise<void> {
-        console.log(`[VARIANT_JOB] Starting processing for job ${jobId}`);
-        
-        try {
-            // Update job status to running
-            await VariantJobDAL.updateJob(jobId, {
-                status: 'RUNNING',
-                progress: 10,
-                startedAt: new Date(),
-            });
 
-            // Get project data
-            const project = await this.variantGenerationService.getCachedProject(projectId);
-            if (!project) {
-                throw new Error(`Project not found: ${projectId}`);
-            }
-            
-            const url = `https://${project.shopDomain}`;
-            console.log(`[VARIANT_JOB] Using shop domain: ${project.shopDomain}, URL: ${url}`);
-
-            // Update progress
-            await VariantJobDAL.updateJob(jobId, {
-                progress: 20,
-            });
-
-            // Run the initial analysis in parallel (screenshot, DOM analysis, brand analysis)
-            console.log(`[VARIANT_JOB] Starting parallel operations for job ${jobId}`);
-            
-            // Check for cached screenshot and HTML first
-            const pageType = this.getPageType(url);
-            const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
-                projectId, 
-                pageType, 
-                HIGH_QUALITY_SCREENSHOT_OPTIONS
-            );
-            
-            let screenshot: string;
-            let htmlContent: string | null = null;
-            
-            if (cachedData.screenshot) {
-                console.log(`[VARIANT_JOB] Using cached screenshot and HTML for ${pageType} page`);
-                screenshot = cachedData.screenshot;
-                htmlContent = cachedData.html;
-            } else {
-                console.log(`[VARIANT_JOB] Taking new screenshot for ${url}`);
-                screenshot = await this.variantGenerationService.crawlerService.takePartialScreenshot(url, { width: 1920, height: 1080 }, true, { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain });
-            }
-            
-            const [injectionPoints, brandAnalysis] = await Promise.all([
-                // Use demo selector if enabled (same as variant generation)
-                DEMO_CONDITION
-                    ? this.variantGenerationService.domAnalyzer.analyzeWithHardcodedSelector(
-                        url,
-                        hypothesis.description,
-                        projectId,
-                        getDemoSelector('variants'),
-                        htmlContent,
-                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                    )
-                    : this.variantGenerationService.domAnalyzer.analyzeForHypothesisWithHtml(
-                        url,
-                        hypothesis.description,
-                        projectId,
-                        htmlContent,
-                        { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                    ),
-                this.variantGenerationService.getCachedBrandAnalysis(projectId)
-            ]);
-
-            console.log(`[VARIANT_JOB] Parallel operations completed for job ${jobId}`);
-            
-            if (!brandAnalysis) {
-                throw new Error(`No brand analysis available for project ${projectId}. Please run brand analysis first.`);
-            }
-
-            // Update progress
-            await VariantJobDAL.updateJob(jobId, {
-                progress: 40,
-            });
-
-            // Generate the variant description using AI
-            console.log(`[VARIANT_JOB] Generating AI response for job ${jobId} with Gemini 2.5 Pro`);
-            const aiConfig = getVariantGenerationAIConfig();
-            const { generateObject } = await import('ai');
-            const { google } = await import('@ai-sdk/google');
-            
-            // Get job index to determine which variant to generate
-            const jobIndex = await this.getJobIndex(jobId, projectId);
-            
-            const response = await generateObject({
-                model: google(aiConfig.model, {
-                    apiKey: aiConfig.apiKey,
-                }),
-                schema: this.variantGenerationService.basicVariantsResponseSchema,
-                messages: [
-                    {
-                        role: 'user',
-                        content: [
-                            { type: "text", text: this.variantGenerationService.buildVariantGenerationPrompt(hypothesis, jobIndex) },
-                            { type: "text", text: brandAnalysis },
-                            { type: "image", image: `data:image/png;base64,${screenshot}` }
-                        ]
-                    }
-                ]
-            });
-
-            // Generate a single variant based on the job index
-            const variant = response.object.variants[0]; // Since we're generating 1 variant per job now
-            
-            console.log(`[VARIANT_JOB] Generated variant ${variant.variant_label} for job ${jobId} (index: ${jobIndex})`);
-
-            // Update progress
-            await VariantJobDAL.updateJob(jobId, {
-                progress: 60,
-            });
-
-            // Generate code for this variant
-            console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId}`);
-            let codeResult;
-            try {
-                codeResult = await this.variantGenerationService.codeGenerator.generateCode(
-                    variant, 
-                    hypothesis, 
-                    brandAnalysis, 
-                    screenshot, 
-                    injectionPoints
-                );
-            } catch (error) {
-                console.error(`[VARIANT_JOB] Failed to generate code for variant ${variant.variant_label}:`, error);
-                codeResult = null;
-            }
-
-            // Create the final variant object (screenshots are already taken by the main process)
-            const finalVariant = {
-                ...variant,
-                javascript_code: codeResult?.javascript_code || '',
-                execution_timing: codeResult?.execution_timing || 'dom_ready',
-                target_selector: codeResult?.target_selector || '',
-                implementation_instructions: codeResult?.implementation_instructions || variant.description,
-                screenshot: '' // Screenshots are handled by the main process
-            };
-
-            // Update job with result
-            await VariantJobDAL.updateJob(jobId, {
-                status: 'COMPLETED',
-                progress: 100,
-                result: {
-                    variantsSchema: {
-                        variants: [finalVariant]
-                    }
-                },
-                completedAt: new Date(),
-            });
-
-            console.log(`[VARIANT_JOB] Successfully completed job ${jobId} for variant ${variant.variant_label}`);
-
-        } catch (error) {
-            console.error(`[VARIANT_JOB] Failed to process job ${jobId}:`, error);
-            
-            // Update job with error
-            await VariantJobDAL.updateJob(jobId, {
-                status: 'FAILED',
-                error: error instanceof Error ? error.message : 'Unknown error occurred',
-                completedAt: new Date(),
-            });
-        }
-    }
+    // REMOVED: processVariantJob function - was throwing error and not needed
 
     private async getJobIndex(jobId: string, projectId: string): Promise<number> {
         // Get all jobs for this project and find the index of this job
@@ -195,40 +28,7 @@ export class VariantJobProcessor {
         return jobIndex >= 0 ? jobIndex : 0;
     }
 
-    async processVariantJobs(jobIds: string[], projectId: string, hypothesis: any): Promise<void> {
-        console.log(`[VARIANT_JOB] Starting processing for ${jobIds.length} variant jobs`);
-        
-        // Process all jobs in parallel with proper memory management
-        const promises = jobIds.map((jobId, index) => 
-            this.processVariantJobWithCleanup(jobId, projectId, hypothesis, index)
-        );
-
-        try {
-            await Promise.all(promises);
-            console.log(`[VARIANT_JOB] Completed processing all ${jobIds.length} variant jobs`);
-        } catch (error) {
-            console.error(`[VARIANT_JOB] Some variant jobs failed:`, error);
-        }
-    }
-
-    private async processVariantJobWithCleanup(jobId: string, projectId: string, hypothesis: any, index: number): Promise<void> {
-        console.log(`[VARIANT_JOB] Starting job ${index + 1}: ${jobId}`);
-        
-        // Log memory usage before processing
-        this.logMemoryUsage(`Before job ${index + 1}`);
-        
-        try {
-            await this.processVariantJob(jobId, projectId, hypothesis);
-            console.log(`[VARIANT_JOB] Successfully completed job ${index + 1}: ${jobId}`);
-        } catch (error) {
-            console.error(`[VARIANT_JOB] Failed to process job ${index + 1}: ${jobId}`, error);
-            throw error; // Re-throw to be caught by Promise.all
-        } finally {
-            // Force garbage collection after each job to manage memory
-            this.forceGarbageCollection();
-            this.logMemoryUsage(`After job ${index + 1}`);
-        }
-    }
+    // REMOVED: processVariantJobs and processVariantJobWithCleanup - unused functions from old architecture
 
     private logMemoryUsage(context: string): void {
         if (process.memoryUsage) {
@@ -247,33 +47,135 @@ export class VariantJobProcessor {
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
         const urlLower = url.toLowerCase();
-        
+
         // Check for product pages first
         if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
             return 'pdp';
         }
-        
+
         // Check for about pages
         if (urlLower.includes('/about')) {
             return 'about';
         }
-        
+
         // Check for home page - this should be the most common case
         // Home page is typically just the domain or domain with trailing slash
         const urlObj = new URL(url);
         const pathname = urlObj.pathname;
-        
+
         // If no path or just a trailing slash, it's the home page
         if (!pathname || pathname === '/' || pathname === '') {
             return 'home';
         }
-        
+
         // If path is just common home page indicators
         if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
             return 'home';
         }
-        
+
         return 'other';
+    }
+
+    // New method that accepts pre-computed data to avoid redundant analysis
+    async processVariantJobsWithPrecomputedData(
+        jobIds: string[],
+        projectId: string,
+        hypothesis: any,
+        injectionPoints: any[],
+        variantIdeas: any[],
+        screenshot: string,
+        brandAnalysis: string,
+        designSystem: any,
+        htmlContent?: string
+    ): Promise<void> {
+        console.log(`[VARIANT_JOB] Processing ${jobIds.length} jobs with pre-computed data for hypothesis: ${hypothesis.title}`);
+
+        // Process each job with the pre-computed data
+        const jobPromises = jobIds.map(async (jobId, index) => {
+            try {
+                console.log(`[VARIANT_JOB] Processing job ${jobId} (variant ${index + 1})`);
+
+                // Update job status to running
+                await VariantJobDAL.updateJob(jobId, {
+                    status: 'RUNNING',
+                    progress: 20,
+                });
+
+                // Use the pre-generated variant idea for this job
+                console.log(`[VARIANT_JOB] Using variant idea ${index + 1} for job ${jobId}`);
+                const variant = variantIdeas[index] || {
+                    variant_label: `Variant ${index + 1}`,
+                    description: `Generated variant ${index + 1} for hypothesis: ${hypothesis.description}`,
+                    rationale: `This variant tests the hypothesis through direct code generation approach ${index + 1}`
+                };
+                
+                console.log(`[VARIANT_JOB] Processing variant: ${variant.variant_label}`);
+
+                // Update progress
+                await VariantJobDAL.updateJob(jobId, {
+                    progress: 60,
+                });
+
+                // Generate code for this variant using pre-computed data
+                console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId}`);
+                
+                // Use real code generation with pre-computed injection points and design system
+                // Set design system in code generator before generating code
+                this.variantGenerationService.codeGenerator.setDesignSystem(designSystem);
+                
+                const codeResult = await this.variantGenerationService.codeGenerator.generateCode(
+                    variant,
+                    hypothesis,
+                    brandAnalysis,
+                    screenshot,
+                    injectionPoints,
+                    htmlContent
+                );
+
+                // Update progress
+                await VariantJobDAL.updateJob(jobId, {
+                    progress: 80,
+                });
+
+                // Create the final variant object with code integrated
+                const finalVariant = {
+                    ...variant,
+                    // Use the enhanced variant data from code generation if available
+                    variant_label: codeResult?.variant_label || variant.variant_label,
+                    description: codeResult?.description || variant.description,
+                    rationale: codeResult?.rationale || variant.rationale,
+                    javascript_code: codeResult?.javascript_code || '',
+                    execution_timing: codeResult?.execution_timing || 'dom_ready',
+                    target_selector: codeResult?.target_selector || '',
+                    implementation_instructions: codeResult?.implementation_instructions || variant.description,
+                    screenshot: screenshot
+                };
+
+                // Store the result in the same format as the original job processor
+                await VariantJobDAL.updateJob(jobId, {
+                    status: 'COMPLETED',
+                    progress: 100,
+                    result: {
+                        variantsSchema: {
+                            variants: [finalVariant]
+                        }
+                    },
+                    completedAt: new Date()
+                });
+
+                console.log(`[VARIANT_JOB] Completed job ${jobId} for variant ${variant.variant_label}`);
+            } catch (error) {
+                console.error(`[VARIANT_JOB] Failed to process job ${jobId}:`, error);
+                await VariantJobDAL.updateJob(jobId, {
+                    status: 'FAILED',
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                });
+            }
+        });
+
+        // Wait for all jobs to complete
+        await Promise.all(jobPromises);
+        console.log(`[VARIANT_JOB] All ${jobIds.length} jobs completed`);
     }
 
     async cleanup(): Promise<void> {

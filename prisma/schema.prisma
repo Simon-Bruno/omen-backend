@@ -35,6 +35,7 @@ model Project {
   shopDomain       String            @unique
   isShopify        Boolean           @default(true) // true for Shopify stores, false for other platforms
   brandAnalysis    Json?
+  designSystem     Json?             // Separate design system data extracted via Firecrawl
   accessTokenEnc   String?           // Optional - only required for Shopify stores
   userId           String            @unique
   createdAt        DateTime          @default(now())

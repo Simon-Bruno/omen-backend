@@ -1,38 +1,39 @@
 import Firecrawl from '@mendable/firecrawl-js';
 import { getPageSpecificPrompt, type PageType } from './prompts';
 import { brandIntelligenceSchema, type BrandIntelligenceData } from './types';
+import { designSystemSchema } from '@features/variant_generation/design-system-extractor';
 
 
 export interface FirecrawlScrapeResult {
-    success: boolean;
-    data?: BrandIntelligenceData;
-    screenshot?: string;
-    html?: string;
-    markdown?: string;
-    error?: string;
+  success: boolean;
+  data?: BrandIntelligenceData;
+  screenshot?: string;
+  html?: string;
+  markdown?: string;
+  error?: string;
 }
 
 
 export interface PageAnalysisResult {
-    pageType: PageType;
-    url: string;
-    data?: BrandIntelligenceData;
-    screenshot?: string;
-    html?: string;
-    markdown?: string;
-    error?: string;
+  pageType: PageType;
+  url: string;
+  data?: BrandIntelligenceData;
+  screenshot?: string;
+  html?: string;
+  markdown?: string;
+  error?: string;
 }
 
 export class FirecrawlService {
-    private firecrawl: Firecrawl;
+  private firecrawl: Firecrawl;
 
-    constructor() {
-        const apiKey = process.env.FIRECRAWL_API_KEY;
-        if (!apiKey) {
-            throw new Error('FIRECRAWL_API_KEY environment variable is required');
-        }
-        this.firecrawl = new Firecrawl({ apiKey });
+  constructor() {
+    const apiKey = process.env.FIRECRAWL_API_KEY;
+    if (!apiKey) {
+      throw new Error('FIRECRAWL_API_KEY environment variable is required');
     }
+    this.firecrawl = new Firecrawl({ apiKey });
+  }
 
   /**
    * Convert screenshot URL to base64 data
@@ -65,17 +66,17 @@ export class FirecrawlService {
    * Currently only supports omen-mvp.myshopify.com with password 'reitri'
    */
   private getShopifyAuthActions(websiteUrl: string): any[] {
-        // Check if this is the omen-mvp shop domain
-        if (!websiteUrl.includes('omen-mvp.myshopify.com')) {
-            return [];
-        }
+    // Check if this is the omen-mvp shop domain
+    if (!websiteUrl.includes('omen-mvp.myshopify.com')) {
+      return [];
+    }
 
-        console.log(`[FIRECRAWL] Detected omen-mvp domain, enabling authentication`);
+    console.log(`[FIRECRAWL] Detected omen-mvp domain, enabling authentication`);
 
     return [
       { "type": "wait", "milliseconds": 1000 },
-      { 
-        "type": "executeJavascript", 
+      {
+        "type": "executeJavascript",
         "script": `
           document.getElementById('password').value = 'reitri';
           document.querySelector('form').submit();
@@ -84,17 +85,19 @@ export class FirecrawlService {
       { "type": "wait", "milliseconds": 2000 },
       { "type": "wait", "milliseconds": 5000 }
     ];
-    }
+  }
 
   async analyzePage(websiteUrl: string, pageType: PageType): Promise<PageAnalysisResult> {
     try {
       console.log(`[FIRECRAWL] Starting ${pageType} page analysis for: ${websiteUrl}`);
-      
+
       const pageSpecificPrompt = getPageSpecificPrompt(pageType);
       const authActions = this.getShopifyAuthActions(websiteUrl);
-      
+
       const scrapeOptions: any = {
         onlyMainContent: true,
+        removeBase64Images: true,
+        excludeTags: ['script', 'style', 'audio', 'dialog', 'form', 'button', 'input', 'select', 'textarea', 'iframe', 'embed', 'object', 'canvas', 'svg', 'noscript', 'meta', 'link', 'title'],
         formats: [
           {
             type: "json",
@@ -116,7 +119,7 @@ export class FirecrawlService {
         scrapeOptions.actions = authActions;
         console.log(`[FIRECRAWL] Using Shopify authentication for: ${websiteUrl}`);
       }
-      
+
       const result = await this.firecrawl.scrape(websiteUrl, scrapeOptions);
 
       console.log(`[FIRECRAWL] ${pageType} page analysis completed for: ${websiteUrl}`);
@@ -132,65 +135,106 @@ export class FirecrawlService {
         html: result.html,
         markdown: (result as any).markdown
       };
-        } catch (error) {
-            console.error(`[FIRECRAWL] Error analyzing ${pageType} page ${websiteUrl}:`, error);
-            return {
-                pageType,
-                url: websiteUrl,
-                error: error instanceof Error ? error.message : 'Unknown error occurred'
-            };
-        }
+    } catch (error) {
+      console.error(`[FIRECRAWL] Error analyzing ${pageType} page ${websiteUrl}:`, error);
+      return {
+        pageType,
+        url: websiteUrl,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
     }
+  }
 
 
-    async scrapeWebsite(websiteUrl: string): Promise<FirecrawlScrapeResult> {
-        try {
-            console.log(`[FIRECRAWL] Starting scrape for: ${websiteUrl}`);
+  async scrapeWebsite(websiteUrl: string): Promise<FirecrawlScrapeResult> {
+    try {
+      console.log(`[FIRECRAWL] Starting scrape for: ${websiteUrl}`);
 
-            const authActions = this.getShopifyAuthActions(websiteUrl);
+      const authActions = this.getShopifyAuthActions(websiteUrl);
 
-            const scrapeOptions: any = {
-                onlyMainContent: true,
-                formats: [
-                    {
-                        type: "json",
-                        schema: brandIntelligenceSchema,
-                        prompt: getPageSpecificPrompt('home')
-                    },
-                    {
-                        type: "screenshot",
-                        fullPage: true,
-                        quality: 100
-                    },
-                    "html"
-                ]
-            };
+      const scrapeOptions: any = {
+        onlyMainContent: true,
+        removeBase64Images: true,
+        excludeTags: ['script', 'style', 'audio', 'dialog', 'form', 'button', 'input', 'select', 'textarea', 'iframe', 'embed', 'object', 'canvas', 'svg', 'noscript', 'meta', 'link', 'title'],
+        formats: [
+          {
+            type: "json",
+            schema: brandIntelligenceSchema,
+            prompt: getPageSpecificPrompt('home')
+          },
+          {
+            type: "screenshot",
+            fullPage: true,
+            quality: 100
+          },
+          "html"
+        ]
+      };
 
-            // Add authentication actions if enabled
-            if (authActions.length > 0) {
-                scrapeOptions.actions = authActions;
-                console.log(`[FIRECRAWL] Using Shopify authentication for: ${websiteUrl}`);
-            }
+      // Add authentication actions if enabled
+      if (authActions.length > 0) {
+        scrapeOptions.actions = authActions;
+        console.log(`[FIRECRAWL] Using Shopify authentication for: ${websiteUrl}`);
+      }
 
-            const result = await this.firecrawl.scrape(websiteUrl, scrapeOptions);
+      const result = await this.firecrawl.scrape(websiteUrl, scrapeOptions);
 
-            console.log(`[FIRECRAWL] Scrape completed for: ${websiteUrl}`);
+      console.log(`[FIRECRAWL] Scrape completed for: ${websiteUrl}`);
 
-            // Handle screenshot data - convert URL to base64 if needed
-            const screenshotData = result.screenshot ? await this.convertScreenshotToBase64(result.screenshot) : undefined;
+      // Handle screenshot data - convert URL to base64 if needed
+      const screenshotData = result.screenshot ? await this.convertScreenshotToBase64(result.screenshot) : undefined;
 
-            return {
-                success: true,
-                data: result.json as BrandIntelligenceData,
-                screenshot: screenshotData,
-                html: result.html
-            };
-        } catch (error) {
-            console.error(`[FIRECRAWL] Error scraping ${websiteUrl}:`, error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error occurred'
-            };
-        }
+      return {
+        success: true,
+        data: result.json as BrandIntelligenceData,
+        screenshot: screenshotData,
+        html: result.html
+      };
+    } catch (error) {
+      console.error(`[FIRECRAWL] Error scraping ${websiteUrl}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
     }
+  }
+
+  async scrapeForDesignSystem(websiteUrl: string, designSystemPrompt: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log(`[FIRECRAWL] Starting design system extraction for: ${websiteUrl}`);
+
+      const authActions = this.getShopifyAuthActions(websiteUrl);
+
+      const scrapeOptions: any = {
+        formats: [
+          {
+            type: "json",
+            schema: designSystemSchema,
+            prompt: designSystemPrompt
+          }
+        ]
+      };
+
+      // Add authentication actions if enabled
+      if (authActions.length > 0) {
+        scrapeOptions.actions = authActions;
+        console.log(`[FIRECRAWL] Using Shopify authentication for design system extraction: ${websiteUrl}`);
+      }
+
+      const result = await this.firecrawl.scrape(websiteUrl, scrapeOptions);
+
+      console.log(`[FIRECRAWL] Design system extraction completed for: ${websiteUrl}`);
+
+      return {
+        success: true,
+        data: result.json
+      };
+    } catch (error) {
+      console.error(`[FIRECRAWL] Error extracting design system from ${websiteUrl}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  }
 }

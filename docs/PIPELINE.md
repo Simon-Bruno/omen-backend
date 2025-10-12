@@ -48,6 +48,8 @@ Extract comprehensive brand intelligence from target websites to understand bran
 // Example Firecrawl configuration
 const result = await firecrawl.scrape(websiteUrl, {
     onlyMainContent: true,
+    removeBase64Images: true,
+    excludeTags: ['script', 'style', 'audio', 'dialog', 'form', 'button', 'input', 'select', 'textarea', 'iframe', 'embed', 'object', 'canvas', 'svg', 'noscript', 'meta', 'link', 'title'],
     actions: [
         { "type": "write", "selector": "#password", "text": "reitri" },
         { "type": "executeJavascript", "script": "..." },
