@@ -115,7 +115,6 @@ class GenerateVariantsExecutor {
             variantIdeas, // Pass the actual variant ideas instead of empty array
             screenshot,
             brandAnalysis,
-            variantResult.designSystem,
             htmlContent || undefined
         ).catch(error => {
             console.error(`[VARIANTS_TOOL] Failed to process variant jobs:`, error);

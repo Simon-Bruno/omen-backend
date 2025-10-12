@@ -4,20 +4,18 @@ import { google } from '@ai-sdk/google';
 import { ai } from '@infra/config/langsmith';
 import { CrawlerService } from '@features/crawler';
 import { ProjectDAL } from '@infra/dal';
-import { buildVariantGenerationPrompt, buildButtonVariantGenerationPrompt } from './prompts';
+import { buildVariantGenerationPrompt } from './prompts';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
 import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
-import { DesignSystemExtractor } from './design-system-extractor';
 import { getAIConfig, getVariantGenerationAIConfig } from '@shared/ai-config';
 import type { PrismaClient } from '@prisma/client';
 import { ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
-// Removed design system complexity
 
 export interface VariantGenerationService {
-    generateVariants(hypothesis: Hypothesis, projectId: string, precomputedInjectionPoints?: any[]): Promise<{ variants: any[], injectionPoints: any[], screenshot: string, brandAnalysis: string, designSystem: any, htmlContent?: string }>;
+    generateVariants(hypothesis: Hypothesis, projectId: string, precomputedInjectionPoints?: any[]): Promise<{ variants: any[], injectionPoints: any[], screenshot: string, brandAnalysis: string, htmlContent?: string }>;
     getCachedProject(projectId: string): Promise<any>;
     getCachedBrandAnalysis(projectId: string): Promise<string | null>;
     getPageType(url: string): 'home' | 'pdp' | 'about' | 'other';
@@ -27,7 +25,6 @@ export interface VariantGenerationService {
     crawlerService: any;
     domAnalyzer: any;
     codeGenerator: any;
-    extractDesignSystem(url: string, screenshot: string, htmlContent?: string): Promise<any>;
 }
 
 export interface VariantGenerationResult {
@@ -48,10 +45,8 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private codeGenerator: VariantCodeGenerator;
     private screenshotStorage: ScreenshotStorageService;
     private domAnalyzer: DOMAnalyzerService;
-    private designSystemExtractor: DesignSystemExtractor;
     private brandAnalysisCache: Map<string, { data: string; timestamp: number }> = new Map();
     private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
-    private designSystemCache: Map<string, { data: any; timestamp: number }> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 
@@ -59,7 +54,6 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         this.crawlerService = crawler;
         this.screenshotStorage = screenshotStorage;
         this.domAnalyzer = createDOMAnalyzer(crawler);
-        this.designSystemExtractor = new DesignSystemExtractor();
         this.codeGenerator = createVariantCodeGenerator();
     }
 
@@ -91,11 +85,6 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             this.brandAnalysisCache.set(projectId, { data: brandAnalysis, timestamp: Date.now() });
         }
         return brandAnalysis;
-    }
-
-    private async _getCachedDesignSystem(projectId: string): Promise<any> {
-        // Get design system from database instead of in-memory cache
-        return await ProjectDAL.getProjectDesignSystem(projectId);
     }
 
     // Public methods for external access
@@ -137,7 +126,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
 
 
 
-    async generateVariants(hypothesis: Hypothesis, projectId: string, precomputedInjectionPoints?: any[]): Promise<{ variants: any[], injectionPoints: any[], screenshot: string, brandAnalysis: string, designSystem: any, htmlContent?: string }> {
+    async generateVariants(hypothesis: Hypothesis, projectId: string, precomputedInjectionPoints?: any[]): Promise<{ variants: any[], injectionPoints: any[], screenshot: string, brandAnalysis: string, htmlContent?: string }> {
         console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.title}`);
         console.log(`[VARIANTS] Using project ID: ${projectId}`);
 
@@ -201,11 +190,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             }
         }
 
-        // Extract all shared data once: brand analysis, design system, injection points
-        console.log(`[VARIANTS] Starting parallel operations: brand analysis, design system extraction${precomputedInjectionPoints ? '' : ', DOM analysis'}`);
-        const [brandAnalysis, cachedDesignSystem] = await Promise.all([
+        // Extract all shared data once: brand analysis, injection points
+        console.log(`[VARIANTS] Starting parallel operations: brand analysis,${precomputedInjectionPoints ? '' : ', DOM analysis'}`);
+        const [brandAnalysis] = await Promise.all([
             this._getCachedBrandAnalysis(projectId),
-            this._getCachedDesignSystem(projectId)
         ]);
 
         // Use precomputed injection points if available, otherwise run DOM analysis
@@ -224,63 +212,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             );
         }
 
-        // Use cached design system from database
-        let designSystem = cachedDesignSystem;
-        if (!designSystem) {
-            console.log(`[VARIANTS] No cached design system found for project: ${projectId}`);
-            console.log(`[VARIANTS] Design system should be extracted separately via brand analysis workflow`);
-            // Use a fallback design system that matches the exact schema structure
-            designSystem = {
-                colors: {
-                    primary: '#000000',
-                    primary_hover: '#333333',
-                    secondary: '#666666',
-                    text: '#000000',
-                    text_light: '#666666',
-                    background: '#ffffff',
-                    border: '#cccccc'
-                },
-                typography: {
-                    font_family: 'Arial, sans-serif',
-                    font_size_base: '16px',
-                    font_size_large: '18px',
-                    font_weight_normal: '400',
-                    font_weight_bold: '600',
-                    line_height: '1.5'
-                },
-                spacing: {
-                    padding_small: '8px',
-                    padding_medium: '16px',
-                    padding_large: '24px',
-                    margin_small: '8px',
-                    margin_medium: '16px',
-                    margin_large: '24px'
-                },
-                borders: {
-                    radius_small: '4px',
-                    radius_medium: '8px',
-                    radius_large: '12px',
-                    width: '1px'
-                },
-                shadows: {
-                    small: '0 1px 3px rgba(0,0,0,0.1)',
-                    medium: '0 4px 6px rgba(0,0,0,0.1)',
-                    large: '0 10px 15px rgba(0,0,0,0.1)'
-                },
-                effects: {
-                    transition: 'all 0.2s ease',
-                    hover_transform: 'translateY(-2px)',
-                    opacity_hover: '0.8'
-                }
-            };
-            console.log(`[VARIANTS] Using fallback design system`);
-        }
-
         console.log(`[VARIANTS] Shared data extraction completed:`);
         console.log(`[VARIANTS] - Screenshot length: ${screenshot.length}`);
         console.log(`[VARIANTS] - Injection points found: ${injectionPoints.length}`);
         console.log(`[VARIANTS] - Brand analysis: ${brandAnalysis ? `length: ${brandAnalysis.length} chars` : 'null'}`);
-        console.log(`[VARIANTS] - Design system: ${designSystem ? 'extracted' : 'not available'}`);
 
         // Log the injection points for debugging
         if (injectionPoints.length > 0) {
@@ -300,10 +235,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         console.log(`[VARIANTS] Generating variant ideas with Google Gemini 2.5 Pro`);
         const aiConfig = getVariantGenerationAIConfig();
 
-        // Use button-specific prompt when in demo mode (targeting button/link)
+        // Use brand analysis prompt
         const prompt = buildVariantGenerationPrompt(hypothesis);
 
-        console.log(`[VARIANTS] Using general prompt for variant generation`);
+        console.log(`[VARIANTS] Using brand analysis prompt for variant generation`);
 
         const object = await ai.generateObject({
             model: google(aiConfig.model, {
@@ -332,7 +267,6 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
             injectionPoints,
             screenshot,
             brandAnalysis,
-            designSystem,
             htmlContent: htmlContent || undefined
         };
     }
@@ -366,16 +300,5 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         }
 
         return 'other';
-    }
-
-    async extractDesignSystem(url: string, screenshot: string, htmlContent?: string): Promise<any> {
-        try {
-            // Try Firecrawl first for better results
-            return await this.designSystemExtractor.extractDesignSystemWithFirecrawl(url);
-        } catch (error) {
-            console.log(`[DESIGN_SYSTEM] Firecrawl extraction failed, falling back to screenshot analysis:`, error);
-            // Fallback to screenshot analysis
-            return await this.designSystemExtractor.extractDesignSystem(screenshot, htmlContent);
-        }
     }
 }
