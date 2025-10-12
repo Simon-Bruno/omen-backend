@@ -1,13 +1,11 @@
 // Code Generator for Variant Implementation
 import { ai } from '@infra/config/langsmith';
 import { z } from 'zod';
-// import { anthropic } from '@ai-sdk/anthropic';
 import { Hypothesis } from '@features/hypotheses_generation/types';
 import { InjectionPoint } from './dom-analyzer';
 import { getVariantGenerationAIConfig } from '@shared/ai-config';
 // import { getCodeGenerationAIConfig } from '@shared/ai-config';
 import { google } from '@ai-sdk/google';
-import { DesignSystem } from './design-system-extractor';
 
 export interface CodeGenerationResult {
     variant_label: string;
@@ -30,11 +28,6 @@ const codeGenerationSchema = z.object({
 });
 
 export class VariantCodeGenerator {
-    private designSystem: DesignSystem | null = null;
-
-    setDesignSystem(designSystem: DesignSystem | null): void {
-        this.designSystem = designSystem;
-    }
 
     async generateCode(
         variant: any,
@@ -61,7 +54,7 @@ export class VariantCodeGenerator {
     private async generateCodeWithSelector(
         variant: any,
         hypothesis: Hypothesis,
-        _brandSummary: string,
+        brandSummary: { personality: string; colors: string },
         screenshot: string,
         injectionPoints: InjectionPoint[],
         htmlContent?: string
@@ -112,7 +105,10 @@ Your task is to implement this specific variant by creating JavaScript code that
 - Works responsively across all device sizes
 - Handles text rendering properly on all screens
 
-${this.designSystem ? `Use these brand colors: Primary: ${this.designSystem.colors.primary}, Secondary: ${this.designSystem.colors.secondary}, Text: ${this.designSystem.colors.text}` : ''}
+BRAND COLORS (use these exact colors from the website):
+${brandSummary.colors}
+
+Use these brand colors to maintain visual consistency with the website's design system. Prefer these colors over generic colors when implementing the variant.
 
 CREATIVE REDESIGN EXAMPLES:
 - Add text shadows for better contrast
@@ -120,6 +116,13 @@ CREATIVE REDESIGN EXAMPLES:
 - Add subtle borders or backgrounds to elements
 - Include responsive typography with media queries
 - Add proper text wrapping and overflow handling
+- Use CSS gradients for visual effects (no external images)
+- Create animated backgrounds with CSS keyframes
+- Use CSS-only particle effects instead of video backgrounds
+- Modify existing text content and styling
+- Use CSS transforms and animations
+- Create visual effects with CSS only
+- Use existing page colors and fonts
 
 AVOID:
 - Changing page layout or positioning
@@ -127,6 +130,13 @@ AVOID:
 - Complex overlays that break the design
 - Fixed pixel values that don't scale
 - Text that breaks awkwardly on mobile
+- External video/image URLs that don't exist
+- Hallucinated media resources
+- Non-existent file paths
+- ANY external URLs or file paths
+- Video elements with src attributes
+- Image elements with external src URLs
+- Any references to files that don't exist on the website
 
 SELECTOR GENERATION:
 ${injectionPoints && injectionPoints.length > 0 ? 
@@ -176,6 +186,15 @@ REQUIREMENTS:
 - MUST include responsive CSS with media queries
 - Use relative units (rem, em, %) for scalable design
 - Handle text wrapping and overflow properly
+
+CRITICAL: NO EXTERNAL RESOURCES ALLOWED
+- NEVER use video elements or video URLs
+- NEVER use external image URLs or file paths
+- NEVER reference files that don't exist on the website
+- ONLY use CSS for visual effects and animations
+- ONLY modify existing content and styling
+- ONLY use colors, fonts, and styles already present on the page
+- If you need visual effects, create them with CSS gradients, animations, or transforms
 
 RESPONSIVE CSS REQUIREMENTS:
 - Include @media (max-width: 768px) for tablet adjustments
@@ -296,14 +315,22 @@ Return JSON with: variant_label, description, rationale, javascript_code, target
 
 
     // Extract essential brand info to reduce token usage
-    private extractBrandSummary(brandAnalysis: string): string {
+    private extractBrandSummary(brandAnalysis: string): { personality: string; colors: string } {
         try {
             const brand = JSON.parse(brandAnalysis);
             const personality = brand.brand_personality_words?.slice(0, 3).join(', ') || 'Modern';
-            const primaryColor = brand.brand_colors?.[0]?.color || 'Blue';
-            return `${personality} brand, primary: ${primaryColor}`;
+            
+            // Extract colors with hex codes
+            const colors = brand.brand_colors?.map((c: any) => 
+                `${c.color} (${c.hex_code}) - ${c.usage_type}`
+            ).join(', ') || 'Blue (#0066CC) - primary';
+            
+            return { personality, colors };
         } catch {
-            return 'Modern, professional brand';
+            return { 
+                personality: 'Modern, professional', 
+                colors: 'Blue (#0066CC) - primary' 
+            };
         }
     }
 

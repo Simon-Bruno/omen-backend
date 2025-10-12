@@ -5,10 +5,12 @@ import { createPlaywrightCrawler } from '@features/crawler';
 import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
+import { VisualRefinementService } from '@features/variant_generation/visual-refinement';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
     private screenshotStorage: any;
+    private visualRefinementService: VisualRefinementService;
     private variantIdeasCache: Map<string, any[]> = new Map();
 
     constructor() {
@@ -16,10 +18,9 @@ export class VariantJobProcessor {
         const crawler = createPlaywrightCrawler(config.crawler);
         this.screenshotStorage = createScreenshotStorageService();
         this.variantGenerationService = createVariantGenerationService(crawler, this.screenshotStorage, prisma);
+        this.visualRefinementService = new VisualRefinementService();
     }
 
-
-    // REMOVED: processVariantJob function - was throwing error and not needed
 
     private async getJobIndex(jobId: string, projectId: string): Promise<number> {
         // Get all jobs for this project and find the index of this job
@@ -85,7 +86,6 @@ export class VariantJobProcessor {
         variantIdeas: any[],
         screenshot: string,
         brandAnalysis: string,
-        designSystem: any,
         htmlContent?: string
     ): Promise<void> {
         console.log(`[VARIANT_JOB] Processing ${jobIds.length} jobs with pre-computed data for hypothesis: ${hypothesis.title}`);
@@ -119,10 +119,7 @@ export class VariantJobProcessor {
                 // Generate code for this variant using pre-computed data
                 console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId}`);
                 
-                // Use real code generation with pre-computed injection points and design system
-                // Set design system in code generator before generating code
-                this.variantGenerationService.codeGenerator.setDesignSystem(designSystem);
-                
+                // Use real code generation with pre-computed injection points
                 const codeResult = await this.variantGenerationService.codeGenerator.generateCode(
                     variant,
                     hypothesis,
@@ -134,7 +131,51 @@ export class VariantJobProcessor {
 
                 // Update progress
                 await VariantJobDAL.updateJob(jobId, {
-                    progress: 80,
+                    progress: 70,
+                });
+
+                // Step 3: Apply visual refinement to the generated code
+                let refinedCode = codeResult?.javascript_code || '';
+                let refinementImprovements: string[] = [];
+                
+                if (refinedCode) {
+                    console.log(`[VARIANT_JOB] Applying visual refinement to variant ${variant.variant_label}`);
+                    try {
+                        const refinementResult = await this.visualRefinementService.refineVariantCode(
+                            refinedCode,
+                            codeResult?.description || variant.description,
+                            screenshot
+                        );
+                        refinedCode = refinementResult.javascript_code;
+                        refinementImprovements = refinementResult.improvements;
+                        console.log(`[VARIANT_JOB] Refinement completed with ${refinementImprovements.length} improvements`);
+                    } catch (error) {
+                        console.error(`[VARIANT_JOB] Visual refinement failed for variant ${variant.variant_label}:`, error);
+                        // Continue with original code if refinement fails
+                    }
+                }
+
+                // Update progress
+                await VariantJobDAL.updateJob(jobId, {
+                    progress: 85,
+                });
+
+                // Step 4: Validate JavaScript code
+                let isValidJavaScript = false;
+                if (refinedCode) {
+                    try {
+                        // Basic syntax check
+                        new Function(refinedCode);
+                        isValidJavaScript = true;
+                        console.log(`[VARIANT_JOB] JavaScript validation passed for variant ${variant.variant_label}`);
+                    } catch (error) {
+                        console.error(`[VARIANT_JOB] JavaScript validation failed for variant ${variant.variant_label}:`, error);
+                    }
+                }
+
+                // Update progress
+                await VariantJobDAL.updateJob(jobId, {
+                    progress: 95,
                 });
 
                 // Create the final variant object with code integrated
@@ -144,11 +185,13 @@ export class VariantJobProcessor {
                     variant_label: codeResult?.variant_label || variant.variant_label,
                     description: codeResult?.description || variant.description,
                     rationale: codeResult?.rationale || variant.rationale,
-                    javascript_code: codeResult?.javascript_code || '',
+                    javascript_code: refinedCode,
                     execution_timing: codeResult?.execution_timing || 'dom_ready',
                     target_selector: codeResult?.target_selector || '',
                     implementation_instructions: codeResult?.implementation_instructions || variant.description,
-                    screenshot: screenshot
+                    screenshot: screenshot,
+                    refinement_improvements: refinementImprovements,
+                    is_valid_javascript: isValidJavaScript
                 };
 
                 // Store the result in the same format as the original job processor

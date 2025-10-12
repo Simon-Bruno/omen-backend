@@ -1,53 +1,6 @@
 // Prompts for variant generation service
 import { Hypothesis } from '@features/hypotheses_generation/types';
 
-
-export function buildButtonVariantGenerationPrompt(hypothesis: Hypothesis, variantIndex?: number): string {
-    const focus = variantIndex === 0 ? 'COLOR' : variantIndex === 1 ? 'SIZE' : 'STYLE';
-    
-    return `
-Generate 1 simple button variant for this hypothesis:
-
-HYPOTHESIS: ${hypothesis.description}
-PROBLEM: ${hypothesis.current_problem}
-
-FOCUS: ${focus} - ${variantIndex === 0 ? 'Change colors/contrast to make button stand out' : 
-  variantIndex === 1 ? 'Change size/typography to increase prominence' : 
-  'Change visual style (border, shadow, etc.) to improve appeal'}
-
-RESPONSIVE DESIGN REQUIREMENTS:
-- Button must work perfectly on mobile (375px), tablet (768px), and desktop (1920px)
-- Text must be readable and properly sized at all screen sizes
-- Touch targets must be at least 44px on mobile devices
-- Button should not break layout or overflow containers
-- Consider how button text will wrap on smaller screens
-- MOBILE-FIRST APPROACH: Design button for mobile first, then enhance for larger screens
-- Prioritize mobile user experience and touch interaction
-
-TEXT RENDERING CONSIDERATIONS:
-- Button text should wrap naturally without breaking awkwardly
-- Ensure sufficient padding for touch interaction
-- Consider font size scaling for different viewports
-- Avoid text that gets cut off or overflows button boundaries
-- Use responsive typography techniques for scalable button text
-- Prevent text overflow with proper CSS properties
-
-Create a simple button variant that:
-- Makes one clear visual change
-- Looks professional and clean
-- Is easy to implement with CSS
-- Focuses on the ${focus.toLowerCase()} approach
-- Works responsively across all devices
-- Maintains accessibility standards
-
-VARIANT NAMING:
-- Use simple, descriptive name
-- Include the main change (e.g., "Blue Button", "Larger Text", "Rounded Style")
-- Avoid generic terms
-
-Return JSON with "variants" array containing 1 object with: variant_label, description, rationale`;
-}
-
 export function buildVariantGenerationPrompt(hypothesis: Hypothesis): string {
     return `
 Generate 3 A/B test variants for this hypothesis:
@@ -56,44 +9,91 @@ HYPOTHESIS: ${hypothesis.description}
 PROBLEM: ${hypothesis.current_problem}
 EXPECTED LIFT: ${hypothesis.predicted_lift_range.min}-${hypothesis.predicted_lift_range.max}%
 
-Create 3 variants that test the same hypothesis with different approaches:
-1. COLOR: Change colors/contrast to make elements stand out
-2. SIZE: Change size/typography to increase prominence  
-3. STYLE: Change visual style (border, shadow, etc.) to improve appeal
+Generate 3 creative variants that address the hypothesis. Focus on meaningful differences that could impact user behavior:
 
-If the hypothesis mentions "redesign" or "completely change", create MAJOR visual transformations that users will notice.
+Consider these approaches when creating variants:
+- Visual prominence and attention-grabbing elements (CSS-only)
+- Layout and information architecture improvements
+- Interactive and engagement enhancements (CSS animations/transitions)
+- Content and messaging optimizations
+- User flow and conversion path improvements
+- Styling and color scheme modifications
+- Typography and spacing adjustments
+- Button and form element enhancements
 
-RESPONSIVE DESIGN REQUIREMENTS:
-- All variants MUST work across mobile (375px), tablet (768px), and desktop (1920px) viewports
-- Text must be readable and properly wrapped at all screen sizes
-- Avoid text that breaks awkwardly or gets cut off on smaller screens
-- Consider how large text will wrap and flow on different devices
-- Use relative units (rem, em, %) instead of fixed pixels where appropriate
-- Ensure touch targets are at least 44px on mobile devices
-- MOBILE-FIRST APPROACH: Design for mobile first, then enhance for larger screens
-- Consider the mobile user experience as the primary concern
+IMPORTANT CONSTRAINTS:
+- NO external videos, images, or media files
+- NO references to non-existent URLs or file paths
+- ONLY use CSS for visual effects and animations
+- ONLY modify existing content and styling
+- Focus on CSS-based solutions for visual impact
 
-TEXT RENDERING CONSIDERATIONS:
-- Large text should wrap naturally without breaking mid-word
-- Consider line-height and letter-spacing for readability
-- Avoid text that extends beyond container boundaries
-- Test how text will appear on different screen orientations
-- Ensure sufficient contrast ratios across all backgrounds
-- Use responsive typography techniques (clamp, vw units) for scalable text
-- Prevent text overflow with proper CSS properties (word-wrap, overflow-wrap)
+<visual_context>
+You will receive a screenshot of the current page and brand analysis data to understand the existing design and brand context.
+</visual_context>
 
-Each variant should be:
-- Simple and focused on one clear change
-- Easy to implement with CSS
-- Visually distinct and professional
-- Based on the hypothesis above
-- Responsive and mobile-friendly
-- Accessible across all device types
+For each variant, provide:
+1. **Variant Label**: Clear, descriptive name (e.g., "Hero Section Redesign", "CTA Button Enhancement")
+2. **Description**: Detailed explanation of what changes and why
+3. **Rationale**: Why this variant should work based on the hypothesis
+4. **Target Element**: CSS selector or description of what gets modified
+5. **Expected Impact**: How this addresses the problem and drives the expected lift
 
-VARIANT NAMING:
-- Use simple, descriptive names
-- Include the main visual change (e.g., "Blue Button", "Larger Text", "Rounded Style")
-- Avoid generic terms like "Primary Button" or "High-Contrast"
+Focus on variants that:
+- Directly address the hypothesis problem
+- Are technically feasible to implement
+- Have clear, measurable differences
+- Respect the existing brand and design context
+- Follow web accessibility best practices
+- Use only CSS and existing content (no external videos, images, or files)
+- Modify existing elements rather than adding new media resources
 
-Return JSON with "variants" array containing exactly 3 objects with: variant_label, description, rationale`;
+Return variants as a JSON array with the structure defined in the schema.
+`;
+}
+
+export function buildCodeGenerationPrompt(): string {
+  return `You are a JavaScript expert specializing in A/B test variant implementation.
+
+CONTEXT: Generate clean, production-ready JavaScript code that modifies website elements for A/B testing.
+
+<code_requirements>
+1. Use modern JavaScript (ES6+) with proper error handling
+2. Target specific DOM elements with precise selectors
+3. Apply CSS changes programmatically
+4. Include fallback mechanisms for missing elements
+5. Ensure cross-browser compatibility
+6. Follow accessibility best practices
+7. Use semantic HTML and ARIA attributes when creating elements
+8. Implement proper event handling and cleanup
+</code_requirements>
+
+<implementation_guidelines>
+- Use document.querySelector() or document.querySelectorAll() for element selection
+- Apply styles via element.style or CSS classes
+- Create new elements with document.createElement()
+- Use addEventListener() for event handling
+- Include try-catch blocks for error handling
+- Add console.log() for debugging (remove in production)
+- Use requestAnimationFrame() for smooth animations
+- Implement proper cleanup on page unload
+</implementation_guidelines>
+
+<code_structure>
+1. **Element Selection**: Find target elements with robust selectors
+2. **Validation**: Check if elements exist before modification
+3. **Styling**: Apply CSS changes programmatically
+4. **Event Handling**: Add interactive behaviors
+5. **Cleanup**: Remove event listeners and restore original state
+6. **Error Handling**: Graceful fallbacks for missing elements
+</code_structure>
+
+Generate clean, well-commented JavaScript code that:
+- Modifies the specified target elements
+- Implements the variant changes described
+- Includes proper error handling and fallbacks
+- Follows modern JavaScript best practices
+- Is ready for production deployment
+
+Return only the JavaScript code without any markdown formatting or explanations.`;
 }
