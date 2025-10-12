@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Variant Generation Service
-import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
+import { ai } from '@infra/config/langsmith';
 import { CrawlerService } from '@features/crawler';
 import { ProjectDAL } from '@infra/dal';
 import { buildVariantGenerationPrompt, buildButtonVariantGenerationPrompt } from './prompts';
@@ -9,24 +9,25 @@ import { Hypothesis } from '@features/hypotheses_generation/types';
 import { basicVariantsResponseSchema } from './types';
 import { createVariantCodeGenerator, VariantCodeGenerator } from './code-generator';
 import { DOMAnalyzerService, createDOMAnalyzer } from './dom-analyzer';
+import { DesignSystemExtractor } from './design-system-extractor';
 import { getAIConfig, getVariantGenerationAIConfig } from '@shared/ai-config';
 import type { PrismaClient } from '@prisma/client';
 import { ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
-import { DEMO_CONDITION, getDemoSelector } from '@shared/demo-config';
-import { DesignSystemExtractor } from './design-system-extractor';
-import { VisualRefinementService } from './visual-refinement';
+// Removed design system complexity
 
 export interface VariantGenerationService {
-    generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult>;
-    generateSingleVariant(variant: any, hypothesis: Hypothesis, projectId: string, screenshot: string, injectionPoints: any[], brandAnalysis: string): Promise<any>;
+    generateVariants(hypothesis: Hypothesis, projectId: string, precomputedInjectionPoints?: any[]): Promise<{ variants: any[], injectionPoints: any[], screenshot: string, brandAnalysis: string, designSystem: any, htmlContent?: string }>;
     getCachedProject(projectId: string): Promise<any>;
     getCachedBrandAnalysis(projectId: string): Promise<string | null>;
+    getPageType(url: string): 'home' | 'pdp' | 'about' | 'other';
     getAIConfig(): any;
     buildVariantGenerationPrompt(hypothesis: Hypothesis): string;
     basicVariantsResponseSchema: any;
     crawlerService: any;
     domAnalyzer: any;
+    codeGenerator: any;
+    extractDesignSystem(url: string, screenshot: string, htmlContent?: string): Promise<any>;
 }
 
 export interface VariantGenerationResult {
@@ -48,7 +49,6 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private screenshotStorage: ScreenshotStorageService;
     private domAnalyzer: DOMAnalyzerService;
     private designSystemExtractor: DesignSystemExtractor;
-    private visualRefinement: VisualRefinementService;
     private brandAnalysisCache: Map<string, { data: string; timestamp: number }> = new Map();
     private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
     private designSystemCache: Map<string, { data: any; timestamp: number }> = new Map();
@@ -59,9 +59,8 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         this.crawlerService = crawler;
         this.screenshotStorage = screenshotStorage;
         this.domAnalyzer = createDOMAnalyzer(crawler);
-        this.codeGenerator = createVariantCodeGenerator();
         this.designSystemExtractor = new DesignSystemExtractor();
-        this.visualRefinement = new VisualRefinementService();
+        this.codeGenerator = createVariantCodeGenerator();
     }
 
     private async _getCachedProject(projectId: string): Promise<any> {
@@ -94,6 +93,11 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         return brandAnalysis;
     }
 
+    private async _getCachedDesignSystem(projectId: string): Promise<any> {
+        // Get design system from database instead of in-memory cache
+        return await ProjectDAL.getProjectDesignSystem(projectId);
+    }
+
     // Public methods for external access
     async getCachedProject(projectId: string): Promise<any> {
         return this._getCachedProject(projectId);
@@ -108,9 +112,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     }
 
     buildVariantGenerationPrompt(hypothesis: Hypothesis, variantIndex?: number): string {
-        return DEMO_CONDITION
-            ? buildButtonVariantGenerationPrompt(hypothesis, variantIndex)
-            : buildVariantGenerationPrompt(hypothesis);
+        return buildVariantGenerationPrompt(hypothesis);
     }
 
     get basicVariantsResponseSchema() {
@@ -125,6 +127,7 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         return this.domAnalyzer;
     }
 
+
     async cleanup(): Promise<void> {
         // Close the browser to free up resources
         if (this.crawlerService && typeof this.crawlerService.close === 'function') {
@@ -132,76 +135,9 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         }
     }
 
-    async generateSingleVariant(variant: any, hypothesis: Hypothesis, projectId: string, screenshot: string, injectionPoints: any[], brandAnalysis: string): Promise<any> {
-        console.log(`[VARIANTS] Starting single variant generation: ${variant.variant_label}`);
 
-        const toDataUrl = (b64: string): string => {
-            if (!b64) return '';
-            if (b64.startsWith('data:')) return b64;
-            return `data:image/png;base64,${b64}`;
-        };
 
-        // Compress screenshot to reduce token usage
-        const compressScreenshot = (b64: string): string => {
-            if (!b64) return '';
-            // For now, just return the original - compression would require image processing
-            // TODO: Implement actual image compression (resize to smaller dimensions, reduce quality)
-            return b64;
-        };
-
-        // Get project data for shop domain
-        const project = await this._getCachedProject(projectId);
-        if (!project) {
-            throw new Error(`Project not found: ${projectId}`);
-        }
-
-        // Handle both Shopify domains and full URLs
-        const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
-            ? project.shopDomain
-            : `https://${project.shopDomain}`;
-
-        // Initialize crawler for this variant
-        const { createPlaywrightCrawler } = await import('@features/crawler');
-        const { getServiceConfig } = await import('@infra/config/services');
-        const config = getServiceConfig();
-        const crawler = createPlaywrightCrawler(config.crawler);
-
-        try {
-            // Generate code for this variant
-            let codeResult;
-            try {
-                console.log(`[VARIANTS] Generating code for variant: ${variant.variant_label}`);
-                // We need to get HTML content for this variant - for now pass null
-                codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints, null);
-            } catch (error) {
-                console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
-                codeResult = null;
-            }
-
-            // Skip screenshot for variants - takeVariantScreenshot method was removed
-            // Variants now use JavaScript code instead of CSS/HTML injection
-            let variantScreenshotUrl = '';
-
-            // Create the final variant object with JavaScript code
-            const finalVariant = {
-                ...variant,
-                javascript_code: codeResult?.javascript_code || '',
-                target_selector: codeResult?.target_selector || '',
-                execution_timing: codeResult?.execution_timing || 'dom_ready' as const,
-                implementation_instructions: codeResult?.implementation_instructions || `Code generation failed for this variant. Please implement manually based on the description: ${variant.description}`,
-                screenshot: variantScreenshotUrl
-            };
-
-            console.log(`[VARIANTS] Completed single variant: ${variant.variant_label}`);
-            return finalVariant;
-
-        } finally {
-            // Clean up the crawler
-            await crawler.close();
-        }
-    }
-
-    async generateVariants(hypothesis: Hypothesis, projectId: string): Promise<VariantGenerationResult> {
+    async generateVariants(hypothesis: Hypothesis, projectId: string, precomputedInjectionPoints?: any[]): Promise<{ variants: any[], injectionPoints: any[], screenshot: string, brandAnalysis: string, designSystem: any, htmlContent?: string }> {
         console.log(`[VARIANTS] Starting generation for hypothesis: ${hypothesis.title}`);
         console.log(`[VARIANTS] Using project ID: ${projectId}`);
 
@@ -259,62 +195,88 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
                     url,
                     HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot,
-                    htmlContent ? htmlContent.substring(0, 50000) : undefined // Limit HTML size for storage
+                    htmlContent
                 );
                 console.log(`[VARIANTS] Screenshot and HTML saved with ID: ${screenshotId}`);
             }
         }
 
-        // PARALLEL OPTIMIZATION: Extract design system along with DOM analysis and brand analysis
-        console.log(`[VARIANTS] Starting parallel operations: DOM analysis, brand analysis, and design system extraction`);
-
-        if (DEMO_CONDITION) {
-            console.log(`[VARIANTS] DEMO MODE ENABLED - Using demo selector: ${getDemoSelector('variants')}`);
-        }
-
-        // Try to get cached design system first
-        let designSystem = null;
-        const cachedDesignSystem = this.designSystemCache.get(projectId);
-        if (cachedDesignSystem && Date.now() - cachedDesignSystem.timestamp < this.CACHE_TTL) {
-            console.log(`[VARIANTS] Using cached design system for ${projectId}`);
-            designSystem = cachedDesignSystem.data;
-        }
-
-        const [injectionPoints, brandAnalysis, extractedDesignSystem] = await Promise.all([
-            // Use demo selector if enabled, otherwise use normal analysis
-            DEMO_CONDITION
-                ? this.domAnalyzer.analyzeWithHardcodedSelector(
-                    url,
-                    hypothesis.description,
-                    projectId,
-                    getDemoSelector('variants'),
-                    htmlContent,
-                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                )
-                : this.domAnalyzer.analyzeForHypothesisWithHtml(
-                    url,
-                    hypothesis.description,
-                    projectId,
-                    htmlContent, // Pass the HTML we already have
-                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
-                ),
+        // Extract all shared data once: brand analysis, design system, injection points
+        console.log(`[VARIANTS] Starting parallel operations: brand analysis, design system extraction${precomputedInjectionPoints ? '' : ', DOM analysis'}`);
+        const [brandAnalysis, cachedDesignSystem] = await Promise.all([
             this._getCachedBrandAnalysis(projectId),
-            // Extract design system if not cached
-            designSystem ? Promise.resolve(null) : this.designSystemExtractor.extractDesignSystem(screenshot, htmlContent)
+            this._getCachedDesignSystem(projectId)
         ]);
 
-        // Use extracted design system or cached one
-        if (extractedDesignSystem) {
-            designSystem = extractedDesignSystem;
-            // Cache it for future use
-            this.designSystemCache.set(projectId, { data: designSystem, timestamp: Date.now() });
-            console.log(`[VARIANTS] Design system extracted and cached`);
+        // Use precomputed injection points if available, otherwise run DOM analysis
+        let injectionPoints: any[];
+        if (precomputedInjectionPoints && precomputedInjectionPoints.length > 0) {
+            console.log(`[VARIANTS] Using precomputed injection points: ${precomputedInjectionPoints.length} points`);
+            injectionPoints = precomputedInjectionPoints;
+        } else {
+            console.log(`[VARIANTS] Using DOM analyzer to find injection points for hypothesis`);
+            injectionPoints = await this.domAnalyzer.analyzeForHypothesisWithHtml(
+                project.url,
+                hypothesis.description,
+                projectId,
+                htmlContent,
+                { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+            );
         }
 
-        // Set design system in code generator
-        this.codeGenerator.setDesignSystem(designSystem);
+        // Use cached design system from database
+        let designSystem = cachedDesignSystem;
+        if (!designSystem) {
+            console.log(`[VARIANTS] No cached design system found for project: ${projectId}`);
+            console.log(`[VARIANTS] Design system should be extracted separately via brand analysis workflow`);
+            // Use a fallback design system that matches the exact schema structure
+            designSystem = {
+                colors: {
+                    primary: '#000000',
+                    primary_hover: '#333333',
+                    secondary: '#666666',
+                    text: '#000000',
+                    text_light: '#666666',
+                    background: '#ffffff',
+                    border: '#cccccc'
+                },
+                typography: {
+                    font_family: 'Arial, sans-serif',
+                    font_size_base: '16px',
+                    font_size_large: '18px',
+                    font_weight_normal: '400',
+                    font_weight_bold: '600',
+                    line_height: '1.5'
+                },
+                spacing: {
+                    padding_small: '8px',
+                    padding_medium: '16px',
+                    padding_large: '24px',
+                    margin_small: '8px',
+                    margin_medium: '16px',
+                    margin_large: '24px'
+                },
+                borders: {
+                    radius_small: '4px',
+                    radius_medium: '8px',
+                    radius_large: '12px',
+                    width: '1px'
+                },
+                shadows: {
+                    small: '0 1px 3px rgba(0,0,0,0.1)',
+                    medium: '0 4px 6px rgba(0,0,0,0.1)',
+                    large: '0 10px 15px rgba(0,0,0,0.1)'
+                },
+                effects: {
+                    transition: 'all 0.2s ease',
+                    hover_transform: 'translateY(-2px)',
+                    opacity_hover: '0.8'
+                }
+            };
+            console.log(`[VARIANTS] Using fallback design system`);
+        }
 
-        console.log(`[VARIANTS] Parallel operations completed:`);
+        console.log(`[VARIANTS] Shared data extraction completed:`);
         console.log(`[VARIANTS] - Screenshot length: ${screenshot.length}`);
         console.log(`[VARIANTS] - Injection points found: ${injectionPoints.length}`);
         console.log(`[VARIANTS] - Brand analysis: ${brandAnalysis ? `length: ${brandAnalysis.length} chars` : 'null'}`);
@@ -339,16 +301,15 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         const aiConfig = getVariantGenerationAIConfig();
 
         // Use button-specific prompt when in demo mode (targeting button/link)
-        const prompt = DEMO_CONDITION
-            ? buildButtonVariantGenerationPrompt(hypothesis)
-            : buildVariantGenerationPrompt(hypothesis, designSystem);
+        const prompt = buildVariantGenerationPrompt(hypothesis);
 
-        console.log(`[VARIANTS] Using ${DEMO_CONDITION ? 'button-specific (demo mode)' : 'general'} prompt`);
+        console.log(`[VARIANTS] Using general prompt for variant generation`);
 
-        const object = await generateObject({
+        const object = await ai.generateObject({
             model: google(aiConfig.model, {
                 apiKey: aiConfig.apiKey,
             }),
+            temperature: 1.2, // Higher temperature for more diverse responses
             schema: basicVariantsResponseSchema,
             messages: [
                 {
@@ -364,95 +325,19 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         const response = object.object;
         console.log(`[VARIANTS] AI response generated: ${response.variants.length} variant ideas`);
 
-        // For testing, only use the first variant
-        const variantsToProcess = process.env.TEST_MODE === 'true' ? response.variants.slice(0, 1) : response.variants;
-
-        // PARALLEL PROCESSING: Generate JavaScript code for each variant
-        console.log(`[VARIANTS] Generating JavaScript code for ${variantsToProcess.length} variants${process.env.TEST_MODE === 'true' ? ' (TEST MODE - limited to 1)' : ''}`);
-
-        const variantsWithCode = await Promise.all(
-            variantsToProcess.map(async (variant, index) => {
-                console.log(`[VARIANTS] Processing variant ${index + 1}/${variantsToProcess.length}: ${variant.variant_label}`);
-
-                // Generate JavaScript code for this variant
-                let codeResult;
-                try {
-                    console.log(`[VARIANTS] Generating JavaScript for: ${variant.variant_label}`);
-                    codeResult = await this.codeGenerator.generateCode(variant, hypothesis, brandAnalysis, toDataUrl(screenshot), injectionPoints, htmlContent);
-
-                    // STAGE 2: Visual refinement if design system is available
-                    if (designSystem && codeResult?.javascript_code) {
-                        console.log(`[VARIANTS] Applying visual refinement for: ${variant.variant_label}`);
-                        try {
-                            const refinedResult = await this.visualRefinement.refineVariantCode(
-                                codeResult.javascript_code,
-                                variant.description,
-                                designSystem,
-                                toDataUrl(screenshot)
-                            );
-
-                            if (refinedResult.javascript_code && refinedResult.javascript_code !== codeResult.javascript_code) {
-                                console.log(`[VARIANTS] Visual refinement applied successfully`);
-                                console.log(`[VARIANTS] Improvements: ${refinedResult.improvements.slice(0, 3).join(', ')}`);
-                                codeResult.javascript_code = refinedResult.javascript_code;
-                            }
-                        } catch (refineError) {
-                            console.warn(`[VARIANTS] Visual refinement failed, using original code:`, refineError);
-                        }
-                    }
-
-                    // Validate that the selector exists in the cleaned HTML (same as used for detection)
-                    if (htmlContent && codeResult?.target_selector) {
-                        try {
-                            // Clean the HTML the same way the DOM analyzer does
-                            const cheerio = require('cheerio');
-                            const $ = cheerio.load(htmlContent);
-
-                            // Remove script tags, style tags, and comments (same as DOM analyzer)
-                            $('script').remove();
-                            $('style').remove();
-                            $('noscript').remove();
-                            $('link[rel="stylesheet"]').remove();
-
-                            // Now check if selector exists in cleaned HTML
-                            const elements = $(codeResult.target_selector);
-
-                            if (elements.length === 0) {
-                                console.warn(`[VARIANTS] Selector not found in cleaned HTML: ${codeResult.target_selector}`);
-                            } else {
-                                console.log(`[VARIANTS] Selector validated in cleaned HTML: ${codeResult.target_selector} (${elements.length} matches)`);
-                            }
-                        } catch (selectorError) {
-                            console.warn(`[VARIANTS] Invalid selector: ${codeResult.target_selector}`, selectorError);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`[VARIANTS] Failed to generate code for variant ${variant.variant_label}:`, error);
-                    codeResult = null;
-                }
-
-                // Create the final variant object with JavaScript code
-                const finalVariant = {
-                    ...variant,
-                    javascript_code: codeResult?.javascript_code || '',
-                    execution_timing: codeResult?.execution_timing || 'dom_ready',
-                    target_selector: codeResult?.target_selector || '',
-                    implementation_instructions: codeResult?.implementation_instructions || variant.description
-                };
-
-                return finalVariant;
-            })
-        );
-
-        console.log(`[VARIANTS] All variants with JavaScript code generated successfully`);
-        const result = {
-            variantsSchema: JSON.stringify({ variants: variantsWithCode })
+        // Return variant ideas + shared data for code generation jobs
+        // This allows the caller to create separate jobs for each variant
+        return {
+            variants: response.variants,
+            injectionPoints,
+            screenshot,
+            brandAnalysis,
+            designSystem,
+            htmlContent: htmlContent || undefined
         };
-        console.log(`[VARIANTS] Final result: ${variantsWithCode.length} variants, schema length: ${result.variantsSchema.length} chars`);
-        return result;
     }
 
-    private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
+    getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
         const urlLower = url.toLowerCase();
 
         // Check for product pages first
@@ -481,5 +366,16 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         }
 
         return 'other';
+    }
+
+    async extractDesignSystem(url: string, screenshot: string, htmlContent?: string): Promise<any> {
+        try {
+            // Try Firecrawl first for better results
+            return await this.designSystemExtractor.extractDesignSystemWithFirecrawl(url);
+        } catch (error) {
+            console.log(`[DESIGN_SYSTEM] Firecrawl extraction failed, falling back to screenshot analysis:`, error);
+            // Fallback to screenshot analysis
+            return await this.designSystemExtractor.extractDesignSystem(screenshot, htmlContent);
+        }
     }
 }

@@ -27,29 +27,68 @@ ${originalCode}
 VARIANT DESCRIPTION:
 ${variantDescription}
 
+LAYOUT CONTEXT ANALYSIS:
+Before refining the code, analyze the screenshot for layout context:
+1. **Background Analysis**: Identify the background colors and patterns in the target section
+2. **Contrast Assessment**: Check for any existing contrast issues (white-on-white, light-on-light)
+3. **Visual Integration**: Ensure the variant integrates seamlessly with existing design patterns
+4. **Section Context**: Understand the visual context of where the variant will be placed
+5. **CRITICAL**: Look for white text on white/light backgrounds - this is a major accessibility issue
+6. **TEXT RENDERING ANALYSIS**: Examine how text currently wraps and flows on the page
+7. **RESPONSIVE CONCERNS**: Identify potential text overflow or wrapping issues on different screen sizes
+
+CONTEXT-AWARE REFINEMENT:
+- Ensure text colors provide sufficient contrast against the actual background shown in the screenshot
+- Match the existing visual style and spacing of the target section
+- Avoid creating new contrast issues (e.g., white text on white backgrounds)
+- Consider the visual hierarchy and how the variant fits with surrounding content
+- Use colors that work harmoniously with the existing design
+- If the screenshot shows white text on white backgrounds, this must be fixed with proper contrast
+- NEVER modify existing text content - only add new elements or modify styling
+- CRITICAL: Fix any text that appears to be cut off, overflowing, or wrapping awkwardly
+- Ensure text is readable and properly sized across all device viewports
+
 DESIGN SYSTEM:
 Typography:
-- Primary Font: ${designSystem.typography.primary_font}
-- Button Font Size: ${designSystem.typography.heading_sizes.button}
-- Font Weight Bold: ${designSystem.typography.font_weights.bold}
-- Text Transform: ${designSystem.typography.text_transform_buttons}
+- Font Family: ${designSystem.typography.font_family}
+- Base Size: ${designSystem.typography.font_size_base}
+- Large Size: ${designSystem.typography.font_size_large}
+- Normal Weight: ${designSystem.typography.font_weight_normal}
+- Bold Weight: ${designSystem.typography.font_weight_bold}
+- Line Height: ${designSystem.typography.line_height}
 
 Colors:
-- Primary Button: ${designSystem.colors.primary_button_bg}
-- Button Text: ${designSystem.colors.primary_button_text}
-- Hover BG: ${designSystem.colors.primary_button_hover_bg}
-- Accent: ${designSystem.colors.accent_color}
+- Primary: ${designSystem.colors.primary}
+- Primary Hover: ${designSystem.colors.primary_hover}
+- Secondary: ${designSystem.colors.secondary}
+- Text: ${designSystem.colors.text}
+- Text Light: ${designSystem.colors.text_light}
+- Background: ${designSystem.colors.background}
+- Border: ${designSystem.colors.border}
 
 Spacing:
-- Button Padding: ${designSystem.spacing.button_padding}
-- Button Margin: ${designSystem.spacing.button_margin}
+- Small Padding: ${designSystem.spacing.padding_small}
+- Medium Padding: ${designSystem.spacing.padding_medium}
+- Large Padding: ${designSystem.spacing.padding_large}
+- Small Margin: ${designSystem.spacing.margin_small}
+- Medium Margin: ${designSystem.spacing.margin_medium}
+- Large Margin: ${designSystem.spacing.margin_large}
+
+Borders:
+- Small Radius: ${designSystem.borders.radius_small}
+- Medium Radius: ${designSystem.borders.radius_medium}
+- Large Radius: ${designSystem.borders.radius_large}
+- Border Width: ${designSystem.borders.width}
+
+Shadows:
+- Small: ${designSystem.shadows.small}
+- Medium: ${designSystem.shadows.medium}
+- Large: ${designSystem.shadows.large}
 
 Effects:
-- Border Radius: ${designSystem.borders.button_radius}
-- Shadow: ${designSystem.shadows.button_shadow}
-- Hover Shadow: ${designSystem.shadows.button_hover_shadow}
-- Transition: ${designSystem.animations.transition_duration} ${designSystem.animations.transition_timing}
-- Hover Transform: ${designSystem.animations.button_hover_transform}
+- Transition: ${designSystem.effects.transition}
+- Hover Transform: ${designSystem.effects.hover_transform}
+- Hover Opacity: ${designSystem.effects.opacity_hover}
 
 YOUR TASK:
 Refine the provided JavaScript code to create a VISUALLY STUNNING implementation that:
@@ -80,6 +119,12 @@ Refine the provided JavaScript code to create a VISUALLY STUNNING implementation
    - Add mobile-specific adjustments
    - Include proper touch states for mobile
    - Scale fonts and padding appropriately
+   - CRITICAL: Fix text wrapping and overflow issues
+   - Use clamp() for responsive font sizes: clamp(1rem, 2.5vw, 2rem)
+   - Add word-wrap: break-word and overflow-wrap: break-word for long text
+   - Ensure text doesn't get cut off on smaller screens
+   - Include @media queries for mobile (375px) and tablet (768px) breakpoints
+   - Test how text will render on different screen orientations
 
 5. CROSS-BROWSER:
    - Include vendor prefixes where needed
@@ -92,6 +137,10 @@ CRITICAL REQUIREMENTS:
 - Include error handling with try-catch
 - Make it work on both desktop and mobile
 - The visual quality must be EXCEPTIONAL - like it was designed by a top agency
+- TEXT RENDERING: Fix any text that appears cut off, overflowing, or wrapping awkwardly
+- RESPONSIVE TEXT: Ensure all text is readable and properly sized across all viewports
+- OVERFLOW PREVENTION: Use max-width: 100% and proper text wrapping to prevent overflow
+- MOBILE TEXT: Ensure text is touch-friendly and readable on mobile devices
 
 Return the refined JavaScript code with all visual improvements integrated.`;
 

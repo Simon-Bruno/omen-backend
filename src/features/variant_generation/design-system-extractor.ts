@@ -1,134 +1,104 @@
 // Design System Extraction Service
 import { z } from 'zod';
-import { generateObject } from 'ai';
-import { google } from '@ai-sdk/google';
-import { getVariantGenerationAIConfig } from '@shared/ai-config';
+import { FirecrawlService } from '@features/brand_analysis/firecrawl-service';
 
-// Simplified design system schema focused on practical CSS values
+// Essential design system schema for code generation
 export const designSystemSchema = z.object({
-  typography: z.object({
-    primary_font: z.string().describe('Primary font family'),
-    body_font: z.string().describe('Body text font family'),
-    heading_sizes: z.object({
-      h1: z.string().describe('H1 font size in px'),
-      h2: z.string().describe('H2 font size in px'),
-      button: z.string().describe('Button font size in px')
-    }),
-    font_weights: z.object({
-      regular: z.string().describe('Regular weight (e.g., 400)'),
-      bold: z.string().describe('Bold weight (e.g., 700)')
-    }),
-    text_transform_buttons: z.enum(['none', 'uppercase', 'capitalize']).describe('Button text transform')
+  colors: z.object({
+    primary: z.string().describe('Primary brand color (hex)'),
+    primary_hover: z.string().describe('Primary hover color (hex)'),
+    secondary: z.string().describe('Secondary/accent color (hex)'),
+    text: z.string().describe('Main text color (hex)'),
+    text_light: z.string().describe('Light text color (hex)'),
+    background: z.string().describe('Background color (hex)'),
+    border: z.string().describe('Border color (hex)')
   }),
 
-  colors: z.object({
-    primary_button_bg: z.string().describe('Primary button background color (hex)'),
-    primary_button_text: z.string().describe('Primary button text color (hex)'),
-    primary_button_hover_bg: z.string().describe('Primary button hover background (hex)'),
-    accent_color: z.string().describe('Accent/highlight color (hex)'),
-    text_primary: z.string().describe('Primary text color (hex)'),
-    background: z.string().describe('Main background color (hex)')
+  typography: z.object({
+    font_family: z.string().describe('Main font family'),
+    font_size_base: z.string().describe('Base font size (e.g., "16px")'),
+    font_size_large: z.string().describe('Large font size (e.g., "18px")'),
+    font_weight_normal: z.string().describe('Normal font weight (e.g., "400")'),
+    font_weight_bold: z.string().describe('Bold font weight (e.g., "600")'),
+    line_height: z.string().describe('Line height (e.g., "1.5")')
   }),
 
   spacing: z.object({
-    button_padding: z.string().describe('Button padding (e.g., "12px 24px")'),
-    button_margin: z.string().describe('Button margin (e.g., "16px 0")'),
-    section_spacing: z.string().describe('Space between sections (e.g., "48px")')
+    padding_small: z.string().describe('Small padding (e.g., "8px")'),
+    padding_medium: z.string().describe('Medium padding (e.g., "16px")'),
+    padding_large: z.string().describe('Large padding (e.g., "24px")'),
+    margin_small: z.string().describe('Small margin (e.g., "8px")'),
+    margin_medium: z.string().describe('Medium margin (e.g., "16px")'),
+    margin_large: z.string().describe('Large margin (e.g., "24px")')
   }),
 
   borders: z.object({
-    button_radius: z.string().describe('Button border radius (e.g., "4px", "9999px")'),
-    card_radius: z.string().describe('Card border radius (e.g., "8px")'),
-    button_border: z.string().describe('Button border style (e.g., "none", "1px solid #000")')
+    radius_small: z.string().describe('Small border radius (e.g., "4px")'),
+    radius_medium: z.string().describe('Medium border radius (e.g., "8px")'),
+    radius_large: z.string().describe('Large border radius (e.g., "12px")'),
+    width: z.string().describe('Border width (e.g., "1px")')
   }),
 
   shadows: z.object({
-    button_shadow: z.string().describe('Button box shadow'),
-    button_hover_shadow: z.string().describe('Button hover box shadow'),
-    card_shadow: z.string().describe('Card box shadow')
+    small: z.string().describe('Small shadow (e.g., "0 1px 3px rgba(0,0,0,0.1)")'),
+    medium: z.string().describe('Medium shadow (e.g., "0 4px 6px rgba(0,0,0,0.1)")'),
+    large: z.string().describe('Large shadow (e.g., "0 10px 15px rgba(0,0,0,0.1)")')
   }),
 
-  animations: z.object({
-    transition_duration: z.string().describe('Default transition duration (e.g., "0.2s")'),
-    transition_timing: z.string().describe('Default timing function (e.g., "ease-in-out")'),
-    button_hover_transform: z.string().describe('Button hover transform (e.g., "scale(1.05)", "translateY(-2px)")')
-  }),
-
-  ui_patterns: z.object({
-    uses_uppercase_buttons: z.boolean(),
-    uses_rounded_corners: z.boolean(),
-    uses_shadows: z.boolean(),
-    uses_gradients: z.boolean(),
-    uses_animations: z.boolean(),
-    button_style: z.enum(['solid', 'outline', 'ghost', 'gradient']).describe('Primary button style')
+  effects: z.object({
+    transition: z.string().describe('Default transition (e.g., "all 0.2s ease")'),
+    hover_transform: z.string().describe('Hover transform (e.g., "translateY(-2px)")'),
+    opacity_hover: z.string().describe('Hover opacity (e.g., "0.8")')
   })
 });
 
 export type DesignSystem = z.infer<typeof designSystemSchema>;
 
 export class DesignSystemExtractor {
-  async extractDesignSystem(
-    screenshot: string,
-    htmlContent: string | null
-  ): Promise<DesignSystem> {
-    const prompt = `Analyze this website screenshot and HTML to extract the design system and visual patterns.
+  private firecrawlService: FirecrawlService;
 
-Focus on extracting EXACT CSS values that are currently being used in the site, particularly for:
-- Buttons (primary CTA buttons, add to cart, shop now, etc.)
-- Typography (font families, sizes, weights)
-- Colors (exact hex codes from buttons and key elements)
-- Spacing and padding patterns
-- Border radius and shadows
-- Animations and transitions
-
-IMPORTANT: Extract the ACTUAL values from the site, not generic defaults. Look at:
-1. The primary call-to-action buttons (Add to Cart, Shop Now, etc.)
-2. The actual font families being used (inspect the CSS)
-3. The exact colors in hex format
-4. The specific padding, margins, and spacing
-5. Any hover effects or animations present
-
-Return a JSON object with the exact CSS values found in the site.`;
-
-    const aiConfig = getVariantGenerationAIConfig();
-
-    try {
-      const messages: any[] = [
-        {
-          role: 'user',
-          content: [
-            { type: "text", text: prompt },
-            { type: "image", image: this.toDataUrl(screenshot) }
-          ]
-        }
-      ];
-
-      // Add HTML content if available
-      if (htmlContent) {
-        messages[0].content.push({
-          type: "text",
-          text: `HTML Content (first 10000 chars): ${htmlContent.substring(0, 10000)}`
-        });
-      }
-
-      const result = await generateObject({
-        model: google(aiConfig.model),
-        schema: designSystemSchema,
-        messages
-      });
-
-      console.log('[DESIGN_SYSTEM] Extracted design system successfully');
-      return result.object;
-    } catch (error) {
-      console.error('[DESIGN_SYSTEM] Failed to extract design system:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to extract design system: ${errorMessage}`);
-    }
+  constructor() {
+    this.firecrawlService = new FirecrawlService();
   }
 
-  private toDataUrl(b64: string): string {
-    if (!b64) return '';
-    if (b64.startsWith('data:')) return b64;
-    return `data:image/png;base64,${b64}`;
+  async extractDesignSystemWithFirecrawl(url: string): Promise<DesignSystem> {
+    console.log(`[DESIGN_SYSTEM] Extracting design system using Firecrawl for: ${url}`);
+
+    const designSystemPrompt = `Extract the essential design system from this website for code generation.
+
+Focus on these key elements:
+- Colors: primary, primary hover, secondary, text, text light, background, border
+- Typography: font family, base size, large size, normal weight, bold weight, line height
+- Spacing: small/medium/large padding and margin values
+- Borders: small/medium/large radius values, border width
+- Shadows: small/medium/large shadow values
+- Effects: default transition, hover transform, hover opacity
+
+IMPORTANT: Extract ACTUAL values from the site, not generic defaults. Look at:
+1. Primary call-to-action buttons (Add to Cart, Shop Now, etc.)
+2. Main font family and sizing used throughout the site
+3. Exact hex colors from buttons, text, and backgrounds
+4. Spacing patterns (padding, margins) used consistently
+5. Border radius and shadow values from cards/buttons
+6. Transition and hover effects present
+
+Return a comprehensive JSON object with the exact values found.`;
+
+    try {
+      // Use Firecrawl's structured extraction directly - no need to parse HTML with AI!
+      const result = await this.firecrawlService.scrapeForDesignSystem(url, designSystemPrompt);
+
+      if (!result.success || !result.data) {
+        throw new Error(`Firecrawl design system extraction failed: ${result.error}`);
+      }
+
+      console.log(`[DESIGN_SYSTEM] Design system extracted directly via Firecrawl structured extraction with authentication`);
+
+      // Return the design system data directly - no casting needed!
+      return result.data;
+    } catch (error) {
+      console.error('[DESIGN_SYSTEM] Firecrawl structured extraction failed:', error);
+      throw new Error(`Design system extraction failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

@@ -48,3 +48,14 @@ export function getVariantGenerationAIConfig(): AIConfig {
     apiKey: config.google?.apiKey || '',
   };
 }
+
+export function getCodeGenerationAIConfig(): AIConfig {
+  const config = getServiceConfig();
+  return {
+    model: 'claude-opus-4-1-20250805',
+    temperature: config.anthropic?.temperature || 0.8,
+    maxTokens: config.anthropic?.maxTokens || 3000,
+    apiKey: config.anthropic?.apiKey || '',
+  };
+}
+
