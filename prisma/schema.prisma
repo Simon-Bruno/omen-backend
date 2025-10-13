@@ -35,7 +35,6 @@ model Project {
   createdAt        DateTime          @default(now())
   isShopify        Boolean           @default(true)
   designSystem     Json?
-  designTokens     Json?
   analyticsEvents  AnalyticsEvent[]
   brandSummaryJobs BrandSummaryJob[]
   chatMessages     ChatMessage[]
