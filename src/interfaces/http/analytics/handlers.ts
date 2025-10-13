@@ -201,15 +201,7 @@ export function getFunnelAnalysisHandler(analyticsService: AnalyticsService) {
     const { experimentId } = request.params as { experimentId: string };
     const projectId = request.projectId; // From middleware
 
-    console.log('[ANALYTICS] getFunnelAnalysis called:', {
-      experimentId,
-      projectId,
-      hasProjectId: !!projectId,
-      hasExperimentId: !!experimentId
-    });
-
     if (!projectId) {
-      console.log('[ANALYTICS] Missing projectId');
       return reply.status(400).send({ 
         error: 'Project ID is required',
         message: 'User must have a project associated with their account to access analytics'
@@ -217,28 +209,13 @@ export function getFunnelAnalysisHandler(analyticsService: AnalyticsService) {
     }
 
     if (!experimentId) {
-      console.log('[ANALYTICS] Missing experimentId');
       return reply.status(400).send({ error: 'Experiment ID is required' });
     }
 
     try {
-      console.log('[ANALYTICS] Calling getFunnelAnalysis service...');
       const funnelAnalysis = await analyticsService.getFunnelAnalysis(projectId, experimentId);
-      console.log('[ANALYTICS] getFunnelAnalysis result:', { 
-        totalSessions: funnelAnalysis.overallStats.totalSessions,
-        variantsCount: funnelAnalysis.variants.length,
-        overallConversionRate: funnelAnalysis.overallStats.overallConversionRate
-      });
-      console.log('[ANALYTICS] Full funnel analysis response:', JSON.stringify(funnelAnalysis, null, 2));
-      console.log('[ANALYTICS] Variants details:', funnelAnalysis.variants.map(variant => ({
-        variantId: variant.variantId,
-        totalSessions: variant.totalSessions,
-        conversionRate: variant.conversionRate,
-        stepsCount: variant.steps.length
-      })));
       return reply.send(funnelAnalysis);
     } catch (error) {
-      console.log('[ANALYTICS] getFunnelAnalysis error:', error);
       request.log.error(error, 'Failed to get funnel analysis');
       return reply.status(500).send({ error: 'Failed to get funnel analysis' });
     }
