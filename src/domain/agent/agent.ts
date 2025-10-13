@@ -6,6 +6,7 @@ import { stepCountIs } from 'ai';
 // import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { getAIConfig, AI_CONFIGS } from '@shared/ai-config';
+import { runWithContext } from './request-context';
 import type {
   AgentService,
   AgentConfig,
@@ -132,7 +133,14 @@ export class AgentServiceImpl implements AgentService {
     console.log(`[AGENT] AI Config: model=${this.aiConfig.model}, temperature=${this.aiConfig.temperature}, maxTokens=${this.aiConfig.maxTokens}`);
 
     try {
-      const result = ai.streamText(streamConfig);
+      // Run the AI streaming within a request context so tools can access conversation history
+      const result = runWithContext(
+        {
+          conversationHistory,
+          projectId
+        },
+        () => ai.streamText(streamConfig)
+      );
 
       // Create a message ID for the response
       const messageId = `msg-${Date.now()}`;

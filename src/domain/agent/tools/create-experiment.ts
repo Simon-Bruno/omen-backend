@@ -10,9 +10,10 @@ import { createExperimentPublisherService } from '@services/experiment-publisher
 import { createCloudflarePublisher } from '@infra/external/cloudflare';
 import { getServiceConfig } from '@infra/config/services';
 import { findConflicts, ConflictError } from '@features/conflict_guard';
+import { getConversationHistory } from '../request-context';
 
 const createExperimentSchema = z.object({
-  name: z.string().optional().describe('The name of the experiment - if not provided, will be auto-generated from the hypothesis'),
+  name: z.string().describe('A clear, descriptive name for the experiment that captures the essence of what is being tested (e.g., "Homepage Hero CTA Color Test", "PDP Add-to-Cart Button Size Optimization"). Generate this based on the hypothesis and variants.'),
   hypothesis: z.object({
     hypothesis: z.string().describe('The hypothesis statement'),
     rationale: z.string().describe('The rationale behind the hypothesis'),
@@ -116,7 +117,7 @@ class CreateExperimentExecutor {
   }
 
   async execute(input: {
-    name?: string;
+    name: string;
     hypothesis?: any;
     variants?: any[];
     jobIds?: string[];
@@ -125,16 +126,20 @@ class CreateExperimentExecutor {
     console.log(`[EXPERIMENT_TOOL] Full input received:`, JSON.stringify(input, null, 2));
     console.log(`[EXPERIMENT_TOOL] Input variants length:`, input.variants ? input.variants.length : 'undefined');
 
-    // Get hypothesis from state manager (preferred) or input
-    let hypothesis = hypothesisStateManager.getCurrentHypothesis();
+    // Get conversation history from request context
+    const conversationHistory = getConversationHistory();
+    console.log(`[EXPERIMENT_TOOL] Conversation history available: ${conversationHistory ? `${conversationHistory.length} messages` : 'NO'}`);
+
+    // Get hypothesis from state manager (with conversation history fallback) or input
+    let hypothesis = hypothesisStateManager.getCurrentHypothesis(conversationHistory);
 
     if (hypothesis) {
-      console.log(`[EXPERIMENT_TOOL] Using hypothesis from state manager: "${hypothesis.title}"`);
+      console.log(`[EXPERIMENT_TOOL] Using hypothesis: "${hypothesis.title}"`);
     } else if (input.hypothesis) {
       console.log(`[EXPERIMENT_TOOL] Using hypothesis from input: "${input.hypothesis.title}"`);
       hypothesis = input.hypothesis;
     } else {
-      console.log(`[EXPERIMENT_TOOL] No hypothesis available in state or input`);
+      console.log(`[EXPERIMENT_TOOL] No hypothesis available in state, conversation history, or input`);
       throw new Error('No hypothesis available. Please generate hypotheses first using the generate_hypotheses tool.');
     }
 
@@ -166,11 +171,11 @@ class CreateExperimentExecutor {
           console.log(`[EXPERIMENT_TOOL] Loading variants from input job IDs:`, input.jobIds);
           loadedVariants = await variantStateManager.loadVariantsFromJobIds(input.jobIds);
         }
-        // Priority 2: Use jobIds from state manager
+        // Priority 2: Use jobIds from state manager (with conversation history fallback)
         else {
-          const currentJobIds = variantStateManager.getCurrentJobIds();
+          const currentJobIds = variantStateManager.getCurrentJobIds(conversationHistory);
           if (currentJobIds && currentJobIds.length > 0) {
-            console.log(`[EXPERIMENT_TOOL] Loading variants from state manager job IDs:`, currentJobIds);
+            console.log(`[EXPERIMENT_TOOL] Loading variants from job IDs (state manager or conversation history):`, currentJobIds);
             loadedVariants = await variantStateManager.loadVariantsFromJobIds(currentJobIds);
           } else {
             console.log(`[EXPERIMENT_TOOL] No specific job IDs found, falling back to all project jobs`);
@@ -194,40 +199,9 @@ class CreateExperimentExecutor {
 
     console.log(`[EXPERIMENT_TOOL] ======================================`);
 
-    // Auto-generate experiment name from hypothesis if not provided
-    let experimentName = input.name;
-    if (!experimentName) {
-      // Extract key words from hypothesis to create a meaningful name
-      const hypothesisText = hypothesis.description.toLowerCase();
-      let name = 'Button Optimization';
-
-      if (hypothesisText.includes('button')) {
-        if (hypothesisText.includes('contrast')) {
-          name = 'Button Contrast Optimization';
-        } else if (hypothesisText.includes('color')) {
-          name = 'Button Color Optimization';
-        } else if (hypothesisText.includes('size')) {
-          name = 'Button Size Optimization';
-        } else {
-          name = 'Button Optimization';
-        }
-      } else if (hypothesisText.includes('cta') || hypothesisText.includes('call-to-action')) {
-        name = 'CTA Optimization';
-      } else if (hypothesisText.includes('form')) {
-        name = 'Form Optimization';
-      } else if (hypothesisText.includes('checkout')) {
-        name = 'Checkout Optimization';
-      } else if (hypothesisText.includes('navigation') || hypothesisText.includes('menu')) {
-        name = 'Navigation Optimization';
-      } else {
-        name = 'Conversion Optimization';
-      }
-
-      experimentName = name;
-      console.log(`[EXPERIMENT_TOOL] Auto-generated experiment name: "${experimentName}"`);
-    } else {
-      console.log(`[EXPERIMENT_TOOL] Using provided experiment name: "${experimentName}"`);
-    }
+    // Use the LLM-generated experiment name
+    const experimentName = input.name;
+    console.log(`[EXPERIMENT_TOOL] Using experiment name: "${experimentName}"`);
 
     // Use hardcoded project ID for now
     const projectId = this.projectId;

@@ -1,6 +1,7 @@
 // Variant State Manager - manages variant state across tool calls
 import { Variant } from '@features/variant_generation/types';
 import { VariantJobDAL } from '@infra/dal';
+import { extractVariantJobIdsFromHistory, ConversationMessage } from './conversation-state';
 
 class VariantStateManager {
   private currentVariants: Variant[] | null = null;
@@ -37,13 +38,34 @@ class VariantStateManager {
 
 
   /**
-   * Get the current job IDs
+   * Get the current job IDs (with conversation history fallback)
    */
-  getCurrentJobIds(): string[] | null {
+  getCurrentJobIds(conversationHistory?: ConversationMessage[]): string[] | null {
     console.log(`[STATE_MANAGER] ===== GETTING JOB IDS =====`);
-    console.log(`[STATE_MANAGER] Current job IDs:`, this.currentJobIds);
+    
+    // First try in-memory state
+    if (this.currentJobIds) {
+      console.log(`[STATE_MANAGER] Current job IDs from memory:`, this.currentJobIds);
+      console.log(`[STATE_MANAGER] ===========================`);
+      return this.currentJobIds;
+    }
+
+    // Fallback to conversation history
+    if (conversationHistory) {
+      console.log(`[STATE_MANAGER] Memory empty, checking conversation history...`);
+      const jobIds = extractVariantJobIdsFromHistory(conversationHistory);
+      if (jobIds) {
+        console.log(`[STATE_MANAGER] Found job IDs in conversation history:`, jobIds);
+        // Cache them in memory
+        this.currentJobIds = jobIds;
+        console.log(`[STATE_MANAGER] ===========================`);
+        return jobIds;
+      }
+    }
+
+    console.log(`[STATE_MANAGER] No job IDs found`);
     console.log(`[STATE_MANAGER] ===========================`);
-    return this.currentJobIds;
+    return null;
   }
 
 

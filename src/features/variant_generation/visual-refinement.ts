@@ -52,6 +52,7 @@ UNIVERSAL IMPROVEMENTS TO APPLY:
 - Use semantic DOM methods (textContent, classList, style)
 - Add element type validation when needed
 - Include cleanup logic for event listeners
+- NEVER use octal escape sequences (\\0, \\1, etc.) in template literals - use unicode escapes (\\u0000) or string literals instead
 
 REFINEMENT GUIDELINES:
 - Keep the core functionality intact
@@ -136,6 +137,17 @@ Return the refined JavaScript code and list the specific improvements made.
   // Fix invalid escape sequences that cause "Invalid escape in identifier" errors
   private fixInvalidEscapeSequences(code: string): string {
     let fixed = code;
+
+    // Fix octal escape sequences in template literals (e.g., \0, \1, \7)
+    // These are not allowed in template strings, so we convert them to their unicode equivalents
+    fixed = fixed.replace(/`([^`]*)`/g, (_match, content) => {
+      // Replace octal escapes with unicode escapes in template literal content
+      const fixedContent = content.replace(/\\([0-7]{1,3})/g, (_escapeMatch: string, octal: string) => {
+        const charCode = parseInt(octal, 8);
+        return `\\u${charCode.toString(16).padStart(4, '0')}`;
+      });
+      return `\`${fixedContent}\``;
+    });
 
     // Fix cases where backslashes are incorrectly escaped in template literals
     // Example: \` .button { color: \\'red\\' } \` -> \` .button { color: 'red' } \`

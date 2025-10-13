@@ -10,6 +10,7 @@ import { variantStateManager } from '../variant-state-manager';
 import { VariantJobDAL } from '@infra/dal';
 import { createVariantJobProcessor } from '@services/variant-job-processor';
 import { prisma } from '@infra/prisma';
+import { getConversationHistory } from '../request-context';
 
 class GenerateVariantsExecutor {
     private variantGenerationService: VariantGenerationService;
@@ -74,16 +75,20 @@ class GenerateVariantsExecutor {
         console.log(`[VARIANTS_TOOL] ===== VARIANT GENERATION INPUT =====`);
         console.log(`[VARIANTS_TOOL] Full input received:`, JSON.stringify(input, null, 2));
 
-        // Get hypothesis from state manager (preferred) or input
-        let hypothesis = hypothesisStateManager.getCurrentHypothesis();
+        // Get conversation history from request context
+        const conversationHistory = getConversationHistory();
+        console.log(`[VARIANTS_TOOL] Conversation history available: ${conversationHistory ? `${conversationHistory.length} messages` : 'NO'}`);
+
+        // Get hypothesis from state manager (with conversation history fallback) or input
+        let hypothesis = hypothesisStateManager.getCurrentHypothesis(conversationHistory);
 
         if (hypothesis) {
-            console.log(`[VARIANTS_TOOL] Using hypothesis from state manager: "${hypothesis.title}"`);
+            console.log(`[VARIANTS_TOOL] Using hypothesis: "${hypothesis.title}"`);
         } else if (input.hypothesis) {
             console.log(`[VARIANTS_TOOL] Using hypothesis from input: "${input.hypothesis.title}"`);
             hypothesis = input.hypothesis;
         } else {
-            console.log(`[VARIANTS_TOOL] No hypothesis available in state or input`);
+            console.log(`[VARIANTS_TOOL] No hypothesis available in state, conversation history, or input`);
             throw new Error('No hypothesis available. Please generate hypotheses first using the generate_hypotheses tool.');
         }
 
