@@ -5,6 +5,9 @@ import type { CrawlerService, CrawlResult, CrawlOptions, CrawlerConfig } from '.
 export class PlaywrightCrawlerService implements CrawlerService {
   private browser: Browser | null = null;
   private config: CrawlerConfig;
+  private lastUsedTimestamp: number = Date.now();
+  private autoCloseTimeout: NodeJS.Timeout | null = null;
+  private readonly BROWSER_IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
   constructor(config: CrawlerConfig = {}) {
     this.config = {
@@ -19,6 +22,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
   async initialize(): Promise<void> {
     // Only create a new browser if one doesn't exist or is disconnected
     if (this.browser && this.browser.isConnected()) {
+      this.updateLastUsed();
       return; // Browser is already running and connected
     }
 
@@ -31,6 +35,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
       }
     }
 
+    console.log('[CRAWLER] Launching new browser instance...');
     this.browser = await chromium.launch({
       executablePath: process.env.CHROME_PATH || '/app/.chrome-for-testing/chrome-linux64/chrome',
       headless: this.config.headless,
@@ -40,12 +45,51 @@ export class PlaywrightCrawlerService implements CrawlerService {
         '--disable-dev-shm-usage',
         '--single-process',
         '--disable-setuid-sandbox',
+        '--disable-features=site-per-process',
+        '--memory-pressure-off',
       ],
     });
+
+    this.updateLastUsed();
+    this.scheduleAutoClose();
+  }
+
+  private updateLastUsed(): void {
+    this.lastUsedTimestamp = Date.now();
+  }
+
+  private scheduleAutoClose(): void {
+    // Clear existing timeout
+    if (this.autoCloseTimeout) {
+      clearTimeout(this.autoCloseTimeout);
+    }
+
+    // Schedule browser to close after idle timeout
+    this.autoCloseTimeout = setTimeout(async () => {
+      const idleTime = Date.now() - this.lastUsedTimestamp;
+      if (idleTime >= this.BROWSER_IDLE_TIMEOUT && this.browser) {
+        console.log('[CRAWLER] Closing browser due to inactivity');
+        try {
+          await this.browser.close();
+          this.browser = null;
+        } catch (error) {
+          console.warn('[CRAWLER] Error auto-closing browser:', error);
+        }
+      } else {
+        // Reschedule if browser was used recently
+        this.scheduleAutoClose();
+      }
+    }, this.BROWSER_IDLE_TIMEOUT);
   }
 
   async close(): Promise<void> {
+    if (this.autoCloseTimeout) {
+      clearTimeout(this.autoCloseTimeout);
+      this.autoCloseTimeout = null;
+    }
+    
     if (this.browser) {
+      console.log('[CRAWLER] Closing browser instance');
       await this.browser.close();
       this.browser = null;
     }
@@ -53,6 +97,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
   async takePartialScreenshot(url: string, viewport: { width: number, height: number }, fullPage: boolean, authentication?: { type: 'shopify_password'; password: string, shopDomain: string }): Promise<string> {
     await this.initialize();
+    this.updateLastUsed();
 
     // Handle both full URLs and domain-only formats
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -159,6 +204,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
 
   async crawlPage(url: string, options: CrawlOptions = {}): Promise<CrawlResult> {
     await this.initialize();
+    this.updateLastUsed();
 
     if (!this.browser) {
       throw new Error('Browser not initialized');
@@ -253,6 +299,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
   async crawlMultiplePages(urls: string[], options: CrawlOptions = {}): Promise<CrawlResult[]> {
     // Initialize browser once for all pages
     await this.initialize();
+    this.updateLastUsed();
 
     if (!this.browser) {
       throw new Error('Browser not initialized');
