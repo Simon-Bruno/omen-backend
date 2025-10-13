@@ -9,23 +9,19 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  project   Project?
-
-  // Better Auth fields
-  name          String
+  id            String       @id @default(cuid())
+  auth0Id       String?      @unique
+  email         String       @unique
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   emailVerified Boolean      @default(false)
   image         String?
-  sessions      Session[]
+  name          String
   accounts      Account[]
-  members       Member[]
   invitations   Invitation[]
-
-  // Legacy Auth0 field (will be removed after migration)
-  auth0Id   String?  @unique
+  members       Member[]
+  project       Project?
+  sessions      Session[]
 
   @@map("users")
 }
@@ -33,19 +29,20 @@ model User {
 model Project {
   id               String            @id @default(cuid())
   shopDomain       String            @unique
-  isShopify        Boolean           @default(true) // true for Shopify stores, false for other platforms
   brandAnalysis    Json?
-  designSystem     Json?             // Separate design system data extracted via Firecrawl
-  accessTokenEnc   String?           // Optional - only required for Shopify stores
+  accessTokenEnc   String?
   userId           String            @unique
   createdAt        DateTime          @default(now())
+  isShopify        Boolean           @default(true)
+  designSystem     Json?
+  designTokens     Json?
+  analyticsEvents  AnalyticsEvent[]
   brandSummaryJobs BrandSummaryJob[]
   chatMessages     ChatMessage[]
   experiments      Experiment[]
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   screenshots      Screenshot[]
   variantJobs      VariantJob[]
-  analyticsEvents  AnalyticsEvent[]
 
   @@map("projects")
 }
@@ -61,14 +58,14 @@ model Experiment {
   oec                   String
   minDays               Int
   minSessionsPerVariant Int
-  targetUrls            Json?                 // URL patterns for targeting
-  targeting             Json?                 // Declarative DOM targeting rules
+  targetUrls            Json?
+  targeting             Json?
+  analyticsEvents       AnalyticsEvent[]
+  goals                 ExperimentGoal[]
   hypothesis            ExperimentHypothesis?
   traffic               ExperimentTraffic[]
   variants              ExperimentVariant[]
   project               Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  analyticsEvents       AnalyticsEvent[]
-  goals                 ExperimentGoal[]
 
   @@index([projectId, status])
   @@map("experiments")
@@ -151,8 +148,8 @@ model ExperimentVariant {
   selector     String?
   html         String
   css          String?
-  js           String?
   position     InjectPosition
+  js           String?
   experiment   Experiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
   @@unique([experimentId, variantId])
@@ -161,31 +158,21 @@ model ExperimentVariant {
 }
 
 model ExperimentGoal {
-  id           String     @id @default(cuid())
-  experimentId String
-  name         String     // Goal name for analytics (e.g., "signup_completed", "video_watched")
-  type         String     // "conversion" | "custom" | "purchase" - determines analytics event type
-
-  // DOM-based tracking (optional - when you want to track element interactions)
-  selector     String?    // CSS selector: "button.signup", "#add-to-cart" (optional)
-  eventType    String?    // DOM event: "click", "submit", "change", etc. (required if selector is set)
-
-  // Custom JavaScript (optional - for complex tracking logic)
-  customJs     String?    // Custom JS to determine when to fire the event (e.g., "window.scrollY > 1000")
-
-  value        Float?     // Optional value for the event (e.g., cart value, progress percentage)
-  
-  // Purchase-specific fields
-  valueSelector     String?    // CSS selector to extract purchase value from DOM
-  itemCountSelector String?    // CSS selector to extract number of items purchased
-  currency          String?    // Currency code for the purchase (default: USD)
-  
-  // Goal-specific targeting (optional - overrides experiment targeting)
-  targetUrls        String[]   // URLs where this goal should be applied (empty = same as experiment)
-  targeting         Json?      // DOM targeting rules for this specific goal (empty = no targeting)
-  
-  createdAt    DateTime   @default(now())
-  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  id                String     @id @default(cuid())
+  experimentId      String
+  name              String
+  type              String
+  selector          String?
+  eventType         String?
+  customJs          String?
+  value             Float?
+  valueSelector     String?
+  itemCountSelector String?
+  currency          String?
+  createdAt         DateTime   @default(now())
+  targetUrls        String[]
+  targeting         Json?
+  experiment        Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
   @@index([experimentId])
   @@map("experiment_goals")
@@ -196,19 +183,19 @@ model Screenshot {
   projectId       String
   url             String
   pageType        String
-  variantId       String? // Optional variant identifier for variant screenshots
+  variantId       String?
   viewportWidth   Int
   viewportHeight  Int
   fullPage        Boolean
   quality         Int
   data            Bytes
-  htmlContent     String?  @db.Text
-  markdownContent String?  @db.Text
+  htmlContent     String?
   fileSize        Int
   createdAt       DateTime @default(now())
   expiresAt       DateTime
   accessedAt      DateTime @default(now())
   accessCount     Int      @default(0)
+  markdownContent String?
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, pageType, variantId, viewportWidth, viewportHeight, fullPage, quality])
@@ -217,6 +204,113 @@ model Screenshot {
   @@index([pageType])
   @@index([variantId])
   @@map("screenshots")
+}
+
+model AnalyticsEvent {
+  id           String      @id @default(cuid())
+  projectId    String
+  experimentId String?
+  sessionId    String
+  viewId       String?
+  variantKey   String? // Extracted from properties for efficient querying
+  properties   Json
+  timestamp    BigInt
+  createdAt    DateTime    @default(now())
+  eventType    EventType   @default(EXPOSURE)
+  experiment   Experiment? @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, eventType])
+  @@index([eventType, timestamp])
+  @@index([sessionId])
+  @@index([experimentId])
+  @@index([sessionId, eventType])
+  @@index([experimentId, variantKey, eventType]) // For efficient variant analytics
+  @@map("analytics_events")
+}
+
+model Session {
+  id                   String   @id
+  expiresAt            DateTime
+  token                String   @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  activeOrganizationId String?
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@map("verification")
+}
+
+model Organization {
+  id          String       @id
+  name        String
+  slug        String       @unique
+  logo        String?
+  createdAt   DateTime
+  metadata    String?
+  invitations Invitation[]
+  members     Member[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  userId         String
+  role           String
+  createdAt      DateTime
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("invitation")
 }
 
 enum JobStatus {
@@ -248,117 +342,6 @@ enum EventType {
   EXPOSURE
   PAGEVIEW
   CONVERSION
-  PURCHASE
   CUSTOM
-}
-
-model AnalyticsEvent {
-  id           String    @id @default(cuid())
-  projectId    String
-  experimentId String?
-  eventType    EventType @default(EXPOSURE)
-  sessionId    String // Primary identifier for user tracking
-  viewId       String? // Only for exposure events (SPA navigation)
-  properties   Json // Flexible event-specific data
-  timestamp    BigInt // Unix timestamp from client
-  createdAt    DateTime @default(now())
-
-  // Relations
-  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  experiment Experiment? @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-
-  // Indexes
-  @@index([projectId, eventType])
-  @@index([eventType, timestamp])
-  @@index([sessionId])
-  @@index([experimentId])
-  @@index([sessionId, eventType]) // For pageview funnel analysis
-  @@map("analytics_events")
-}
-
-// Better Auth models
-model Session {
-  id                   String   @id
-  expiresAt            DateTime
-  token                String
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  ipAddress            String?
-  userAgent            String?
-  userId               String
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activeOrganizationId String?
-
-  @@unique([token])
-  @@map("session")
-}
-
-model Account {
-  id                    String    @id
-  accountId             String
-  providerId            String
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken           String?
-  refreshToken          String?
-  idToken               String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  @@map("account")
-}
-
-model Verification {
-  id         String   @id
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
-
-  @@map("verification")
-}
-
-model Organization {
-  id          String       @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  members     Member[]
-  invitations Invitation[]
-
-  @@unique([slug])
-  @@map("organization")
-}
-
-model Member {
-  id             String       @id
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           String
-  createdAt      DateTime
-
-  @@map("member")
-}
-
-model Invitation {
-  id             String       @id
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email          String
-  role           String?
-  status         String
-  expiresAt      DateTime
-  inviterId      String
-  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
-
-  @@map("invitation")
+  PURCHASE
 }
