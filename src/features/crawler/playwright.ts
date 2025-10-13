@@ -7,7 +7,7 @@ export class PlaywrightCrawlerService implements CrawlerService {
   private config: CrawlerConfig;
   private lastUsedTimestamp: number = Date.now();
   private autoCloseTimeout: NodeJS.Timeout | null = null;
-  private readonly BROWSER_IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  private readonly BROWSER_IDLE_TIMEOUT = 1 * 60 * 1000; // 1 minute - reduced from 5 to save memory
 
   constructor(config: CrawlerConfig = {}) {
     this.config = {
@@ -43,10 +43,18 @@ export class PlaywrightCrawlerService implements CrawlerService {
         '--disable-gpu',
         '--no-sandbox',
         '--disable-dev-shm-usage',
-        '--single-process',
+        // REMOVED: '--single-process', // This prevents proper memory isolation
         '--disable-setuid-sandbox',
         '--disable-features=site-per-process',
         '--memory-pressure-off',
+        // Memory optimization flags for Heroku's 512MB dynos
+        '--max-old-space-size=256', // Limit V8 heap to 256MB
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--js-flags=--max-old-space-size=256'
       ],
     });
 
@@ -166,6 +174,10 @@ export class PlaywrightCrawlerService implements CrawlerService {
     }
     finally {
       await page.close();
+      // Force garbage collection after screenshot to free memory
+      if (global.gc) {
+        global.gc();
+      }
     }
   }
 
@@ -293,6 +305,10 @@ export class PlaywrightCrawlerService implements CrawlerService {
       };
     } finally {
       await page.close();
+      // Force garbage collection after crawling to free memory
+      if (global.gc) {
+        global.gc();
+      }
     }
   }
 
@@ -435,6 +451,10 @@ export class PlaywrightCrawlerService implements CrawlerService {
         });
       } finally {
         await page.close();
+        // Force garbage collection after each page to free memory
+        if (global.gc) {
+          global.gc();
+        }
       }
     }
 

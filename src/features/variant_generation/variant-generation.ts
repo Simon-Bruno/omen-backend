@@ -45,9 +45,11 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     private codeGenerator: VariantCodeGenerator;
     private screenshotStorage: ScreenshotStorageService;
     private domAnalyzer: DOMAnalyzerService;
-    private brandAnalysisCache: Map<string, { data: string; timestamp: number }> = new Map();
-    private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
-    private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+    // REMOVED: In-memory caches causing memory issues on 512MB dynos
+    // TODO: Implement Redis caching for production
+    // private brandAnalysisCache: Map<string, { data: string; timestamp: number }> = new Map();
+    // private projectCache: Map<string, { data: any; timestamp: number }> = new Map();
+    // private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 
     constructor(crawler: CrawlerService, screenshotStorage: ScreenshotStorageService) {
@@ -58,32 +60,18 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
     }
 
     private async _getCachedProject(projectId: string): Promise<any> {
-        const cached = this.projectCache.get(projectId);
-        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-            console.log(`[VARIANTS] Using cached project data for ${projectId}`);
-            return cached.data;
-        }
-
-        console.log(`[VARIANTS] Fetching fresh project data for ${projectId}`);
+        // Direct DB fetch - caching removed to save memory
+        // TODO: Add Redis caching when available
+        console.log(`[VARIANTS] Fetching project data for ${projectId}`);
         const project = await ProjectDAL.getProjectById(projectId);
-        if (project) {
-            this.projectCache.set(projectId, { data: project, timestamp: Date.now() });
-        }
         return project;
     }
 
     private async _getCachedBrandAnalysis(projectId: string): Promise<string> {
-        const cached = this.brandAnalysisCache.get(projectId);
-        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-            console.log(`[VARIANTS] Using cached brand analysis for ${projectId}`);
-            return cached.data;
-        }
-
-        console.log(`[VARIANTS] Fetching fresh brand analysis for ${projectId}`);
+        // Direct DB fetch - caching removed to save memory
+        // TODO: Add Redis caching when available
+        console.log(`[VARIANTS] Fetching brand analysis for ${projectId}`);
         const brandAnalysis = await ProjectDAL.getProjectBrandAnalysis(projectId);
-        if (brandAnalysis) {
-            this.brandAnalysisCache.set(projectId, { data: brandAnalysis, timestamp: Date.now() });
-        }
         return brandAnalysis;
     }
 
