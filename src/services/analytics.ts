@@ -130,12 +130,11 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
     private config: ServiceConfig['sqs'],
     analyticsService: AnalyticsService
   ) {
-    // Create custom HTTPS agent with increased socket pool
+    // Create custom HTTPS agent with optimized socket pool for memory efficiency
     const agent = new https.Agent({
-      maxSockets: 250, // Increase from default 50
+      maxSockets: 25, // Reduced from 250 to save memory on small dynos
       keepAlive: true,
-      // Limit queued requests waiting for a socket
-      maxFreeSockets: 10, // Keep 10 idle sockets for reuse
+      maxFreeSockets: 5, // Reduced from 10 to limit idle connections
       timeout: 60000, // Socket timeout: 60 seconds
     });
 
