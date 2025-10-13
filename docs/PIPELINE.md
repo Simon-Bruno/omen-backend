@@ -30,7 +30,7 @@ The Omen experimentation pipeline is an end-to-end automated system for running 
 Extract comprehensive brand intelligence from target websites to understand brand personality, positioning, and visual identity.
 
 ### Input
-- **Shop Domain**: The target website URL (e.g., `omen-mvp.myshopify.com`)
+- **Shop Domain**: The target website URL (e.g., `shop.omen.so` or `shop.omen.so`)
 - **Project ID**: Unique identifier for the project
 - **Authentication**: Optional Shopify password for protected stores
 
@@ -150,7 +150,7 @@ const crawlResult = await this.crawlerService.crawlPage(url, {
     authentication: {
         type: 'shopify_password',
         password: 'reitri',
-        shopDomain: 'omen-mvp.myshopify.com'
+        shopDomain: 'shop.omen.so'
     }
 });
 ```

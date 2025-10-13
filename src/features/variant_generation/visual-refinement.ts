@@ -1,6 +1,6 @@
 // Visual Refinement Service
 import { z } from 'zod';
-import { generateObject } from 'ai';
+import { ai } from '@infra/config/langsmith';
 import { google } from '@ai-sdk/google';
 import { getVariantGenerationAIConfig } from '@shared/ai-config';
 
@@ -37,6 +37,21 @@ TASK: Refine the JavaScript code to improve:
 3. **Accessibility**: Add ARIA attributes, keyboard navigation, screen reader support
 4. **Cross-browser Compatibility**: Use standard APIs, add fallbacks
 5. **Maintainability**: Clear variable names, comments, modular structure
+6. **Element Modification Reliability**: Ensure text/content changes work universally
+7. **Robust Selectors**: Use fallback selectors and element validation
+8. **Universal Patterns**: Apply patterns that work for any element type
+
+UNIVERSAL IMPROVEMENTS TO APPLY:
+- Add try-catch blocks around all DOM operations
+- Use textContent for simple text changes (more reliable than innerHTML)
+- Validate elements exist before modification
+- Add fallback selectors for better reliability
+- Use modern JavaScript features (const/let, arrow functions, template literals)
+- Add proper error logging for debugging
+- Ensure all modifications work across different browsers
+- Use semantic DOM methods (textContent, classList, style)
+- Add element type validation when needed
+- Include cleanup logic for event listeners
 
 REFINEMENT GUIDELINES:
 - Keep the core functionality intact
@@ -50,7 +65,8 @@ REFINEMENT GUIDELINES:
 Return the refined JavaScript code and list the specific improvements made.
 `;
 
-      const result = await generateObject({
+      console.log(`[LANGSMITH] Starting AI call: Visual Refinement for variant: ${variantDescription.substring(0, 50)}...`);
+      const result = await ai.generateObject({
         model: google(this.aiConfig.model),
         schema: refinedCodeSchema,
         messages: [
@@ -63,9 +79,14 @@ Return the refined JavaScript code and list the specific improvements made.
           }
         ]
       });
+      console.log(`[LANGSMITH] Completed AI call: Visual Refinement - Applied ${result.object.improvements.length} improvements`);
 
       console.log(`[VISUAL_REFINEMENT] Refinement completed with ${result.object.improvements.length} improvements`);
-      return result.object;
+
+      // Validate and fix any JavaScript syntax issues in the refined code
+      const validatedResult = this.validateAndFixRefinedCode(result.object);
+
+      return validatedResult;
 
     } catch (error) {
       console.error('[VISUAL_REFINEMENT] Refinement failed:', error);
@@ -75,5 +96,76 @@ Return the refined JavaScript code and list the specific improvements made.
         improvements: ['Refinement failed - using original code']
       };
     }
+  }
+
+  // Validate and fix JavaScript syntax issues in refined code
+  private validateAndFixRefinedCode(result: { javascript_code: string; improvements: string[] }): { javascript_code: string; improvements: string[] } {
+    if (!result.javascript_code) {
+      return result;
+    }
+
+    console.log(`[VISUAL_REFINEMENT] Validating refined JavaScript code`);
+
+    // Fix common issues that cause "Invalid escape in identifier" errors
+    let fixedCode = result.javascript_code;
+
+    // Fix invalid escape sequences in template literals and strings
+    fixedCode = this.fixInvalidEscapeSequences(fixedCode);
+
+    // Fix common quote/backtick escaping issues
+    fixedCode = this.fixQuoteEscapingIssues(fixedCode);
+
+    // Validate that the code is syntactically correct
+    if (fixedCode !== result.javascript_code) {
+      try {
+        // Basic syntax check
+        new Function(fixedCode);
+        console.log(`[VISUAL_REFINEMENT] Fixed JavaScript syntax issues in refined code`);
+        return {
+          javascript_code: fixedCode,
+          improvements: [...result.improvements, 'Fixed JavaScript syntax issues']
+        };
+      } catch (error: any) {
+        console.warn(`[VISUAL_REFINEMENT] Could not fix JavaScript syntax in refined code:`, error.message);
+      }
+    }
+
+    return result;
+  }
+
+  // Fix invalid escape sequences that cause "Invalid escape in identifier" errors
+  private fixInvalidEscapeSequences(code: string): string {
+    let fixed = code;
+
+    // Fix cases where backslashes are incorrectly escaped in template literals
+    // Example: \` .button { color: \\'red\\' } \` -> \` .button { color: 'red' } \`
+    fixed = fixed.replace(/\\(['"`])(\w+)\1/g, "$1$2$1");
+
+    // Fix double backslashes in template literals that shouldn't be there
+    // Example: \` .button { content: "test\\" } \` -> \` .button { content: "test" } \`
+    fixed = fixed.replace(/\\\\"/g, '"');
+    fixed = fixed.replace(/\\\\'/g, "'");
+
+    // Fix invalid escape sequences at the end of lines in template literals
+    fixed = fixed.replace(/\\\s*$/gm, '');
+
+    return fixed;
+  }
+
+  // Fix quote escaping issues that can cause syntax errors
+  private fixQuoteEscapingIssues(code: string): string {
+    let fixed = code;
+
+    // Fix mismatched quotes in template literals
+    // This is a simple fix - more complex cases might need manual review
+    fixed = fixed.replace(/`([^`]*)`([^`]*``)/g, (match, content, extra) => {
+      // If we have extra backticks, it suggests malformed template literal
+      if (extra.includes('`')) {
+        return `\`${content.replace(/`/g, "'")}\``;
+      }
+      return match;
+    });
+
+    return fixed;
   }
 }

@@ -26,7 +26,6 @@ import { createScreenshotStorageService } from './services/screenshot-storage';
 import { getServiceConfig } from './infra/config/services';
 import { prisma } from './infra/prisma';
 import { ProjectDAL } from './infra/dal';
-import { createDOMAnalyzer } from './features/variant_generation/dom-analyzer';
 import { createVariantCodeGenerator } from './features/variant_generation/code-generator';
 import { VisualRefinementService } from './features/variant_generation/visual-refinement';
 
@@ -71,40 +70,6 @@ async function selectProject(): Promise<string> {
     return selectedProject.id;
 }
 
-async function testComponentDetection(htmlContent: string): Promise<any> {
-    console.log('\n🧩 Testing Component Detection...\n');
-
-    const domAnalyzer = createDOMAnalyzer();
-    const components = await domAnalyzer.detectComponentPatterns(htmlContent);
-
-    console.log(`✅ Detected ${components.length} component patterns`);
-
-    const componentStats = {
-        buttons: components.filter(c => c.componentType === 'button').length,
-        cards: components.filter(c => c.componentType === 'card').length,
-        inputs: components.filter(c => c.componentType === 'input').length,
-        total: components.length
-    };
-
-    console.log(`  • Buttons: ${componentStats.buttons}`);
-    console.log(`  • Cards: ${componentStats.cards}`);
-    console.log(`  • Inputs: ${componentStats.inputs}`);
-
-    if (components.length > 0) {
-        console.log('\n📋 Component Details:');
-        components.slice(0, 5).forEach((component, index) => {
-            console.log(`  ${index + 1}. ${component.componentType} (${component.variant}, ${component.size})`);
-            console.log(`     Selector: ${component.selector}`);
-            console.log(`     Confidence: ${Math.round(component.confidence * 100)}%`);
-        });
-
-        if (components.length > 5) {
-            console.log(`  ... and ${components.length - 5} more components`);
-        }
-    }
-
-    return { components, componentStats };
-}
 
 async function testPipeline() {
     const overallStartTime = Date.now();
@@ -239,16 +204,6 @@ async function testPipeline() {
 
         console.log(`✅ Code generation completed for hero section variant`);
 
-        // Step 6: Test Component Detection (if HTML available)
-        const componentStartTime = Date.now();
-        let componentTest = null;
-        if (variantResult.htmlContent) {
-            console.log('\n🧩 Step 6: Testing Component Detection...');
-            componentTest = await testComponentDetection(variantResult.htmlContent);
-        }
-        const componentTime = Date.now() - componentStartTime;
-        console.log(`  ⏱️  Component detection took ${componentTime}ms`);
-
         // Step 7: Refine hero section variant
         console.log('\n🔧 Step 7: Refining hero section variant...');
         const refinementStartTime = Date.now();
@@ -334,21 +289,21 @@ async function testPipeline() {
         }
 
         if (heroVariant.javascript_code) {
-                console.log('\n  📄 JavaScript Code Preview:');
+            console.log('\n  📄 JavaScript Code Preview:');
             console.log('  ' + '─'.repeat(50));
             const codePreview = heroVariant.javascript_code
-                    .split('\n')
+                .split('\n')
                 .slice(0, 8)
-                    .map((line: string) => '  ' + line)
-                    .join('\n');
-                console.log(codePreview);
+                .map((line: string) => '  ' + line)
+                .join('\n');
+            console.log(codePreview);
             if (heroVariant.javascript_code.split('\n').length > 8) {
                 console.log('  ... (truncated, ' + heroVariant.javascript_code.length + ' chars total)');
-                }
-            console.log('  ' + '─'.repeat(50));
-            } else {
-                console.log('\n  ⚠️  No JavaScript code generated');
             }
+            console.log('  ' + '─'.repeat(50));
+        } else {
+            console.log('\n  ⚠️  No JavaScript code generated');
+        }
 
         // Step 9: Save results to file
         console.log('\n💾 Step 9: Saving comprehensive results...');
@@ -369,7 +324,6 @@ async function testPipeline() {
             },
             hypothesis: hypothesis,
             brandAnalysis: variantResult.brandAnalysis || null,
-            componentDetection: componentTest?.componentStats || null,
             refinedVariants,
             summary: {
                 totalVariants: 1,
@@ -462,7 +416,6 @@ ${finalHeroVariant.javascript_code}
         if (testResults.summary) {
             const summary = testResults.summary;
             console.log(`  • Brand Analysis: ${variantResult.brandAnalysis ? '✅ YES' : '❌ NO'} (saved to separate file)`);
-            console.log(`  • Component Detection: ${componentTest ? '✅ YES' : '❌ NO'}`);
             console.log(`  • Code Generation: ✅ YES (${summary.averageCodeLength} chars)`);
             console.log(`  • Visual Refinement: ✅ YES (${summary.totalImprovements} improvements)`);
         }

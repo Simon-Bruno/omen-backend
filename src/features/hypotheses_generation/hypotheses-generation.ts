@@ -93,7 +93,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 viewport: { width: 1920, height: 1080 },
                 waitFor: 3000,
                 screenshot: { fullPage: true, quality: 80 },
-                authentication: { type: 'shopify_password', password: 'reitri', shopDomain: 'omen-mvp.myshopify.com' }
+                authentication: { type: 'shopify_password', password: 'reitri', shopDomain: 'shop.omen.so' }
             });
 
             screenshot = crawlResult.screenshot || '';
@@ -167,128 +167,110 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 
     private buildHypothesesGenerationPrompt(reservedPayload?: any, userInput?: string): string {
         const hasReservedTargets = reservedPayload?.reserved_targets?.length > 0;
+        const reservedTargetsJson = hasReservedTargets ? JSON.stringify(reservedPayload.reserved_targets, null, 2) : '[]';
 
-        const conflictSection = hasReservedTargets ? `
-
-**IMPORTANT - ACTIVE EXPERIMENTS TO AVOID:**
-The following elements are currently being tested in active experiments. DO NOT propose changes to these elements:
-${JSON.stringify(reservedPayload.reserved_targets, null, 2)}
-
-When generating hypotheses:
-- Avoid any changes to the reserved targets listed above
-- Focus on different page elements or sections
-- If a primary CTA is reserved, suggest testing secondary elements
-` : '';
-
-        const userInputSection = userInput ? `
-
-**USER PROVIDED HYPOTHESIS DIRECTION (MANDATORY - HIGHEST PRIORITY):**
-The user has specifically requested to test the following:
-"${userInput}"
-
-CRITICAL REQUIREMENTS - YOU MUST FOLLOW THESE:
-1. Your hypothesis MUST directly address the user's specific request
-2. If they mention "footer" - the hypothesis MUST focus on the footer
-3. If they mention "CTA" or "call to action" - the hypothesis MUST include adding or improving CTAs
-4. If they mention a specific element or area - that MUST be the focus of your hypothesis
-5. DO NOT generate a generic hypothesis that ignores their input
-6. Refine and structure their idea professionally while keeping their core intent
-7. Make it specific, measurable, and aligned with CRO best practices
-8. Incorporate brand analysis to strengthen the hypothesis
-9. If conflicts exist with reserved targets, adapt while maintaining the user's core idea
-
-The user's input is the HIGHEST PRIORITY - your hypothesis must clearly reflect what they asked for.
-` : '';
-
-        return `
-You are an expert Conversion Rate Optimization (CRO) and UX/UI analyst. Your task is to analyze screenshots AND HTML structure of an e-commerce homepage or product detail page (PDP) from a Shopify store. Based on what you see, generate **one UI-focused hypothesis** that a merchant could test to improve conversions.
-
-Your analysis must prioritize **clarity, testability, and accessibility**. Only suggest **hypotheses suitable for A/B testing by merchants** without requiring advanced CRO skills.
-
-${conflictSection}${userInputSection}
-
-**CRITICAL: Analyze the current state first**
-Before suggesting any changes, carefully examine:
-1. **Current HTML structure** - What elements already exist and how are they implemented?
-2. **Existing interactions** - Are elements already clickable? Do they have hover states?
-3. **Layout constraints** - Where would new elements fit? Would they break the design?
-4. **Current user flow** - How do users currently navigate? What's already working?
-
-**Temporary Focus Exclusions:**  
-Do NOT focus your hypothesis on the homepage hero section or any main/above-the-fold CTA (e.g., primary "Shop now" button). Look for other UI opportunities.
-
+        return `You are a seasoned Conversion Rate Optimization (CRO) expert and UX/UI designer with deep experience in e-commerce best practices (Baymard Institute guidelines, LIFT Model, Fogg Behavior Model, and persuasive design principles). Your task is to generate **one UI-focused A/B testing hypothesis** for an e-commerce page, targeting a Shopify brand with 50k–500k monthly visitors.
 
 ---
 
-**Detailed Requirements:**
+**Inputs:**
 
-1. **Input:**
+* **Brand Summary:** {{brand_summary}}
+* **Page HTML:** {{html_snippet}}
+* **Screenshot Description:** {{screenshot_description}}
+* **User Direction (Optional):** ${userInput || 'None provided'}
+* **Active Experiment Exclusions (JSON):** ${reservedTargetsJson}
 
-    * The brand summary of this specific brand
-    * 1-2 screenshots (desktop or mobile).
-        * Assume screenshots may be imperfect (poor resolution, overlay banners, missing or duplicated CTAs, etc.).
-   
-2. **Output:**
-   For each hypothesis, return a structured object with:
+---
 
-   * **title:** A concise, descriptive title for the hypothesis (e.g., "Improve CTA Button Visibility")
-   * **description:** One clear sentence explaining the hypothesis and what change to test
-   * **primary_outcome:** The main metric that determines success - keep it concise (e.g., "Click-through rate", "Conversion rate", "Add-to-cart rate")
-   * **current_problem:** One sentence describing the current UI issue or opportunity
-   * **why_it_works:** Array of 2-3 reasons (5-7 words each) explaining why this change should work
-   * **baseline_performance:** Current performance as a percentage - use realistic e-commerce benchmarks based on the specific metric (e.g., 2-5% for conversion rate, 15-25% for click-through rate, 8-15% for add-to-cart rate)
-   * **predicted_lift_range:** Expected improvement range with min and max values as decimals (e.g., 0.05 to 0.15 for 5-15% lift)
+**Instructions:**
 
-3. **Constraints:**
+1. **Analyze the Page Context:**
+   Review the provided brand, HTML, and screenshot data. Identify any usability, layout, clarity, or persuasion issues that could affect conversion. Focus on the page's purpose (homepage, PDP, cart, etc.) and typical user intent. Look for signs of friction such as unclear CTAs, poor hierarchy, trust gaps, weak value proposition, or distracting clutter.
 
-   * Produce **exactly 1 hypothesis** per set of screenshots, but return it as an array with one element.
-   * Ensure recommendations are **UI-first** (not backend, pricing, or content strategy).
-   * Handle edge cases gracefully:
+2. **Apply CRO Frameworks:**
+   Evaluate the page through the lens of key frameworks:
 
-     * If no CTA is visible, suggest adding one.
-     * If multiple CTAs compete, suggest hierarchy improvements.
-     * If screenshot quality is too poor to assess, return a fallback message: *"Unable to reliably analyze this screenshot."*
+   * **LIFT Model:** Clarity, Relevance, Urgency, Anxiety (trust), Distraction, Value Proposition.
+   * **Fogg Behavior Model:** Motivation × Ability × Trigger – is the CTA obvious? Is the process simple? Does motivation exist?
+   * **Persuasion Principles:** Social proof, scarcity, authority, reciprocity, etc.
+     Use these insights to diagnose *why* conversion might be lower than ideal.
 
-4. **Style Guidelines:**
+3. **Formulate One Hypothesis:**
+   Propose **one specific, testable, UI-focused change** that could improve the page's primary conversion goal.
 
-   * Use plain, non-jargon language understandable to merchants.
-   * Be concise but specific—merchants should see exactly what they could test.
-   * Avoid over-promising; these are hypotheses, not guarantees.
-   * For baseline_performance, use realistic e-commerce benchmarks based on the specific metric:
-     - Conversion rate: 2-5% (typical e-commerce range)
-     - Click-through rate: 15-25% (for buttons/links)
-     - Add-to-cart rate: 8-15% (for product pages)
-     - Email signup rate: 1-3% (for newsletter forms)
-     - Bounce rate: 40-60% (higher is worse)
-   * For predicted_lift_range, be conservative but optimistic (typically 5-25% improvement)
-   * Primary outcome should be concise - use clear metric names like "Click-through rate", "Conversion rate", "Add-to-cart rate"
+   * It must directly address the **user direction** if provided.
+   * It must **not modify** any elements listed in the reserved targets JSON.
+   * It must be **realistic to A/B test** in a Shopify theme editor (e.g., adjusting layout, hierarchy, copy, button style, or text—not backend logic or new media).
+   * The change should clearly target an element or section (e.g., CTA button, banner, form, navigation, etc.).
 
-5. **Guardrails (critical):**
-   * Do NOT propose adding new images, videos, or external assets; leverage existing assets and DOM structure.
-   * Do NOT propose changing where links point (hrefs) or inventing new URLs; keep navigation targets unchanged.
-   * If an idea would require new media or URL changes, explicitly call out that those parts should be skipped and focus the hypothesis on text, layout, style, hierarchy, visibility, or state changes.
+4. **Explain Why It Works:**
+   Provide concise reasons why this change is expected to lift performance, grounded in UX psychology or CRO principles (e.g., "Improves clarity of CTA", "Reduces hesitation by adding trust signal", "Simplifies decision path").
 
-**IMPORTANT JSON FORMAT:**
-Return your response as a JSON object with a "hypotheses" array containing exactly 1 hypothesis object. The structure should be:
+5. **Define the Metric & Lift Expectation:**
+
+   * Choose the most relevant **primary outcome metric** (e.g., Conversion rate, Add-to-cart rate, Click-through rate).
+   * Include a **baseline_performance** using realistic benchmarks:
+
+     * Conversion rate: 2–5%
+     * CTR: 15–25%
+     * Add-to-cart: 8–15%
+   * Provide a **predicted_lift_range** in decimals (e.g., 0.05–0.15) representing a conservative relative lift (5–15%).
+
+6. **Self-Evaluate Before Output:**
+   Ensure your hypothesis:
+
+   * Addresses a specific user or UX issue.
+   * Is clearly testable via UI change only.
+   * Respects brand tone and exclusions.
+   * Avoids generic or trivial suggestions.
+   * Includes reasoning tied to CRO principles.
+     If not, refine before output.
+
+---
+
+**Output Format (strict JSON):**
+
+Return **only** a JSON object with a "hypotheses" array containing exactly one hypothesis.
+No markdown, no commentary, no explanations.
+Use this structure exactly:
+
 {
-  "hypotheses": [
-    {
-      "title": "Your hypothesis title",
-      "description": "Your hypothesis description",
-      "primary_outcome": "Click-through rate",
-      "current_problem": "Current problem description",
-      "why_it_works": [
-        {"reason": "First reason why it works"},
-        {"reason": "Second reason why it works"}
-      ],
-      "baseline_performance": 15.5,
-      "predicted_lift_range": {
-        "min": 0.05,
-        "max": 0.15
-      }
-    }
-  ]
-}`;
+"hypotheses": [
+{
+"title": "Your hypothesis title",
+"description": "One sentence explaining the specific UI change to test",
+"primary_outcome": "Conversion rate",
+"current_problem": "Briefly describe the current UI issue or missed opportunity",
+"why_it_works": [
+{ "reason": "Reason 1 (5–7 words)" },
+{ "reason": "Reason 2 (5–7 words)" },
+{ "reason": "Reason 3 (optional)" }
+],
+"baseline_performance": 3.2,
+"predicted_lift_range": { "min": 0.05, "max": 0.15 }
+}
+]
+}
+
+---
+
+**Critical Constraints:**
+
+* Only **one** hypothesis in the array.
+* Must exclude elements listed in ${reservedTargetsJson}.
+* Do not add new media, pages, or URLs.
+* Do not suggest backend or pricing changes.
+* Use brand-appropriate tone (see brand analysis).
+* If screenshot or HTML context is unclear, return a fallback message:
+  *"Unable to reliably analyze this screenshot."*
+
+---
+
+**Goal:**
+Produce a **single, high-quality, CRO-aligned, testable, UI-focused hypothesis** that clearly identifies a problem, proposes a specific change, and justifies it with evidence-based reasoning — all formatted exactly in the JSON schema above.
+
+---`;
     }
 
     private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {

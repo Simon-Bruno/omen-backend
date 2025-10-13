@@ -7,7 +7,7 @@ async function testImprovedDesignSystemExtraction() {
   const extractor = new DesignSystemExtractor();
   
   try {
-    const designSystem = await extractor.extractDesignSystemWithFirecrawl('https://omen-mvp.myshopify.com');
+    const designSystem = await extractor.extractDesignSystemWithFirecrawl('https://shop.omen.so');
     
     console.log('✅ Design system extracted successfully!');
     console.log('Colors (only visible ones):', JSON.stringify(designSystem.design_tokens.colors, null, 2));
