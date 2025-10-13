@@ -231,21 +231,39 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
   }
 
   async getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis> {
-    // First, find all sessions that have events for this experiment
-    const experimentSessions = await this.prisma.analyticsEvent.findMany({
-      where: {
-        projectId,
-        experimentId,
-      },
-      select: {
-        sessionId: true,
-      },
-      distinct: ['sessionId'],
-    });
+    // Use single efficient SQL query with CTE for aggregation
+    // Raw SQL is necessary here because:
+    // 1. We need JSONB extraction (properties->>'variantKey')
+    // 2. CTEs with joins are more efficient than multiple Prisma queries
+    // 3. Single query prevents N+1 issues and reduces memory usage
+    
+    const variantStats = await this.prisma.$queryRaw<Array<{
+      variantKey: string;
+      eventType: string;
+      uniqueSessions: bigint;
+    }>>`
+      WITH exposure_variants AS (
+        SELECT DISTINCT
+          "sessionId",
+          properties->>'variantKey' as "variantKey"
+        FROM analytics_events
+        WHERE "projectId" = ${projectId}
+          AND "experimentId" = ${experimentId}
+          AND "eventType" = 'EXPOSURE'
+          AND properties->>'variantKey' IS NOT NULL
+      )
+      SELECT 
+        ev."variantKey",
+        ae."eventType",
+        COUNT(DISTINCT ae."sessionId")::bigint as "uniqueSessions"
+      FROM exposure_variants ev
+      INNER JOIN analytics_events ae ON ae."sessionId" = ev."sessionId"
+      WHERE ae."projectId" = ${projectId}
+        AND ae."eventType" IN ('PAGEVIEW', 'EXPOSURE', 'CONVERSION')
+      GROUP BY ev."variantKey", ae."eventType"
+    `;
 
-    const sessionIds = experimentSessions.map(s => s.sessionId);
-
-    if (sessionIds.length === 0) {
+    if (variantStats.length === 0) {
       return {
         experimentId,
         variants: [],
@@ -258,132 +276,70 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       };
     }
 
-    // Get ALL events for these sessions (not just experiment events)
-    const events = await this.prisma.analyticsEvent.findMany({
-      where: {
-        projectId,
-        sessionId: {
-          in: sessionIds,
-        },
-      },
-      orderBy: { timestamp: 'asc' },
-    });
-
-    // Map to AnalyticsEventData format
-    const mappedEvents = events.map(event => this.mapToAnalyticsEventData(event));
-
-    // First, find all exposure events to get variant information
-    const exposureEvents = mappedEvents.filter(e => e.eventType === 'EXPOSURE');
-    console.log('[FUNNEL_DEBUG] Exposure events found:', exposureEvents.length);
-    console.log('[FUNNEL_DEBUG] Exposure events:', exposureEvents.map(e => ({
-      sessionId: e.sessionId,
-      variantKey: (e.properties as any)?.variantKey,
-      experimentId: e.experimentId
-    })));
-
-    // Create a map of sessionId -> variantId from exposure events
-    const sessionToVariant = new Map<string, string>();
-    for (const exposure of exposureEvents) {
-      const variantKey = (exposure.properties as any)?.variantKey;
-      if (variantKey) {
-        sessionToVariant.set(exposure.sessionId, variantKey);
+    // Group stats by variant
+    const variantDataMap = new Map<string, Map<string, number>>();
+    
+    for (const stat of variantStats) {
+      if (!variantDataMap.has(stat.variantKey)) {
+        variantDataMap.set(stat.variantKey, new Map());
       }
+      variantDataMap.get(stat.variantKey)!.set(stat.eventType, Number(stat.uniqueSessions));
     }
-
-    console.log('[FUNNEL_DEBUG] Session to variant mapping:', Array.from(sessionToVariant.entries()));
-
-    // Group events by session and variant
-    const sessionsByVariant = new Map<string, Map<string, any[]>>();
-
-    for (const event of mappedEvents) {
-      // Get variant for this session from exposure events
-      const variantId = sessionToVariant.get(event.sessionId) || 'unknown';
-
-      if (!sessionsByVariant.has(variantId)) {
-        sessionsByVariant.set(variantId, new Map());
-      }
-
-      const variantSessions = sessionsByVariant.get(variantId)!;
-      if (!variantSessions.has(event.sessionId)) {
-        variantSessions.set(event.sessionId, []);
-      }
-
-      variantSessions.get(event.sessionId)!.push(event);
-    }
-
-    // Calculate overall stats first
-    const allPageviewSessions = new Set(mappedEvents.filter(e => e.eventType === 'PAGEVIEW').map(e => e.sessionId));
-    const allExposureSessions = new Set(mappedEvents.filter(e => e.eventType === 'EXPOSURE').map(e => e.sessionId));
-    const allConversionSessions = new Set(mappedEvents.filter(e => e.eventType === 'CONVERSION').map(e => e.sessionId));
-
-    const overallStats = {
-      totalSessions: allPageviewSessions.size,
-      totalExposures: allExposureSessions.size,
-      totalConversions: allConversionSessions.size,
-      overallConversionRate: allExposureSessions.size > 0 ? (allConversionSessions.size / allExposureSessions.size) * 100 : 0,
-    };
 
     // Build funnel for each variant
-    const variants = Array.from(sessionsByVariant.keys()).map(variantId => {
-      const variantSessions = sessionsByVariant.get(variantId)!;
-      const variantEvents = Array.from(variantSessions.values()).flat();
+    const variants = Array.from(variantDataMap.entries()).map(([variantKey, eventCounts]) => {
+      const pageviewCount = eventCounts.get('PAGEVIEW') || 0;
+      const exposureCount = eventCounts.get('EXPOSURE') || 0;
+      const conversionCount = eventCounts.get('CONVERSION') || 0;
 
-      // Count sessions by event type for this variant
-      const pageviewSessions = new Set(variantEvents.filter(e => e.eventType === 'PAGEVIEW').map(e => e.sessionId));
-      const exposureSessions = new Set(variantEvents.filter(e => e.eventType === 'EXPOSURE').map(e => e.sessionId));
-      const conversionSessions = new Set(variantEvents.filter(e => e.eventType === 'CONVERSION').map(e => e.sessionId));
+      const steps: FunnelStep[] = [
+        {
+          stepName: 'Session',
+          eventType: 'PAGEVIEW',
+          count: pageviewCount,
+          percentage: 100,
+          dropoffRate: 0,
+        },
+        {
+          stepName: 'Exposure',
+          eventType: 'EXPOSURE',
+          count: exposureCount,
+          percentage: pageviewCount > 0 ? (exposureCount / pageviewCount) * 100 : 0,
+          dropoffRate: pageviewCount > 0 ? ((pageviewCount - exposureCount) / pageviewCount) * 100 : 0,
+        },
+        {
+          stepName: 'Conversion',
+          eventType: 'CONVERSION',
+          count: conversionCount,
+          percentage: pageviewCount > 0 ? (conversionCount / pageviewCount) * 100 : 0,
+          dropoffRate: exposureCount > 0 ? ((exposureCount - conversionCount) / exposureCount) * 100 : 0,
+        },
+      ];
 
-      const pageviewSessionCount = pageviewSessions.size;
-      const exposureSessionCount = exposureSessions.size;
-      const conversionSessionCount = conversionSessions.size;
-
-      // Build funnel steps for this variant
-      const steps: FunnelStep[] = [];
-
-      // Step 1: Sessions (sessions that had at least one pageview)
-      steps.push({
-        stepName: 'Session',
-        eventType: 'PAGEVIEW',
-        count: pageviewSessionCount,
-        percentage: 100, // Sessions are the baseline
-        dropoffRate: 0,
-      });
-
-      // Step 2: Exposures (sessions that saw this variant)
-      steps.push({
-        stepName: 'Exposure',
-        eventType: 'EXPOSURE',
-        count: exposureSessionCount,
-        percentage: exposureSessionCount > 0 ? (exposureSessionCount / pageviewSessionCount) * 100 : 0,
-        dropoffRate: pageviewSessionCount > 0 ? ((pageviewSessionCount - exposureSessionCount) / pageviewSessionCount) * 100 : 0,
-      });
-
-      // Step 3: Conversions (sessions that converted)
-      steps.push({
-        stepName: 'Conversion',
-        eventType: 'CONVERSION',
-        count: conversionSessionCount,
-        percentage: conversionSessionCount > 0 ? (conversionSessionCount / pageviewSessionCount) * 100 : 0,
-        dropoffRate: exposureSessionCount > 0 ? ((exposureSessionCount - conversionSessionCount) / exposureSessionCount) * 100 : 0,
-      });
-
-      const conversionRate = exposureSessionCount > 0 ? (conversionSessionCount / exposureSessionCount) * 100 : 0;
+      const conversionRate = exposureCount > 0 ? (conversionCount / exposureCount) * 100 : 0;
 
       return {
-        variantId,
+        variantId: variantKey,
         steps,
-        totalSessions: pageviewSessionCount,
+        totalSessions: pageviewCount,
         conversionRate,
       };
     });
 
-    console.log('[FUNNEL_DEBUG] Final variants array:', JSON.stringify(variants, null, 2));
-    console.log('[FUNNEL_DEBUG] Overall stats:', JSON.stringify(overallStats, null, 2));
+    // Calculate overall stats
+    const totalSessions = variants.reduce((sum, v) => sum + v.totalSessions, 0);
+    const totalExposures = variants.reduce((sum, v) => sum + (v.steps.find(s => s.eventType === 'EXPOSURE')?.count || 0), 0);
+    const totalConversions = variants.reduce((sum, v) => sum + (v.steps.find(s => s.eventType === 'CONVERSION')?.count || 0), 0);
 
     return {
       experimentId,
       variants,
-      overallStats,
+      overallStats: {
+        totalSessions,
+        totalExposures,
+        totalConversions,
+        overallConversionRate: totalExposures > 0 ? (totalConversions / totalExposures) * 100 : 0,
+      },
     };
   }
 
