@@ -1,5 +1,6 @@
 // Hypothesis State Manager - manages hypothesis state across tool calls
 import { Hypothesis } from '@features/hypotheses_generation/types';
+import { extractHypothesisFromHistory, ConversationMessage } from './conversation-state';
 
 class HypothesisStateManager {
   private currentHypothesis: Hypothesis | null = null;
@@ -18,10 +19,29 @@ class HypothesisStateManager {
 
   /**
    * Get the current hypothesis (for generate_variants and create_experiment tools)
+   * Now supports extracting from conversation history as a fallback
    */
-  getCurrentHypothesis(): Hypothesis | null {
-    console.log(`[STATE_MANAGER] Getting current hypothesis: ${this.currentHypothesis ? 'FOUND' : 'NOT FOUND'}`);
-    return this.currentHypothesis;
+  getCurrentHypothesis(conversationHistory?: ConversationMessage[]): Hypothesis | null {
+    // First try in-memory state (fast path for same-request calls)
+    if (this.currentHypothesis) {
+      console.log(`[STATE_MANAGER] Getting current hypothesis from memory: FOUND`);
+      return this.currentHypothesis;
+    }
+
+    // Fallback to conversation history (for cross-request state)
+    if (conversationHistory) {
+      console.log(`[STATE_MANAGER] Memory empty, checking conversation history...`);
+      const hypothesis = extractHypothesisFromHistory(conversationHistory);
+      if (hypothesis) {
+        console.log(`[STATE_MANAGER] Found hypothesis in conversation history: "${hypothesis.title}"`);
+        // Cache it in memory for performance
+        this.currentHypothesis = hypothesis;
+        return hypothesis;
+      }
+    }
+
+    console.log(`[STATE_MANAGER] Getting current hypothesis: NOT FOUND`);
+    return null;
   }
 
   /**

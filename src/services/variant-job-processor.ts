@@ -273,12 +273,19 @@ export class VariantJobProcessor {
                 let isValidJavaScript = false;
                 if (refinedCode) {
                     try {
-                        // Basic syntax check
-                        new Function(refinedCode);
+                        // Basic syntax check - wrap in strict mode to catch more issues
+                        new Function(`'use strict'; ${refinedCode}`);
                         isValidJavaScript = true;
                         console.log(`[VARIANT_JOB] JavaScript validation passed for variant ${variant.variant_label}`);
                     } catch (error) {
-                        console.error(`[VARIANT_JOB] JavaScript validation failed for variant ${variant.variant_label}:`, error);
+                        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                        console.error(`[VARIANT_JOB] JavaScript validation failed for variant ${variant.variant_label}: ${errorMessage}`);
+                        
+                        // Log the problematic code for debugging (first 200 chars)
+                        console.error(`[VARIANT_JOB] Problematic code preview: ${refinedCode.slice(0, 200)}...`);
+                        
+                        // Mark as invalid but don't fail the entire job
+                        isValidJavaScript = false;
                     }
                 }
 
