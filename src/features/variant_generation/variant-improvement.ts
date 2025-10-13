@@ -1,4 +1,4 @@
-import { generateObject } from 'ai';
+import { ai } from '@infra/config/langsmith';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { getVariantGenerationAIConfig } from '@shared/ai-config';
@@ -39,11 +39,13 @@ export class VariantImprovementService {
             }
         ];
 
-        const result = await generateObject({
+        console.log(`[LANGSMITH] Starting AI call: Variant Improvement for feedback: ${request.userFeedback.substring(0, 50)}...`);
+        const result = await ai.generateObject({
             model: google(aiConfig.model),
             schema: improvedVariantSchema,
             messages
         });
+        console.log(`[LANGSMITH] Completed AI call: Variant Improvement - Applied ${result.object.improvements_made.length} improvements`);
 
         return result.object;
     }

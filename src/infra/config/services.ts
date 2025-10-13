@@ -61,7 +61,7 @@ export function getServiceConfig(): ServiceConfig {
     google: {
       apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || '',
       model: process.env.GOOGLE_MODEL || 'gemini-2.5-pro',
-      temperature: parseFloat(process.env.GOOGLE_TEMPERATURE || '0.7'),
+      temperature: 0.5,
       maxTokens: parseInt(process.env.GOOGLE_MAX_TOKENS || '1000'),
     },
     anthropic: {

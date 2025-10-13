@@ -28,6 +28,13 @@ IMPORTANT CONSTRAINTS:
 - ONLY modify existing content and styling
 - Focus on CSS-based solutions for visual impact
 
+SDK-COMPATIBLE SELECTOR REQUIREMENTS:
+- Use SIMPLE selectors that work with document.querySelector()
+- Prefer single class names like ".text-block" or ".hero__content-wrapper"
+- AVOID complex combinations like ".hero__content-wrapper .rte-formatter.text-block"
+- AVOID multi-class selectors like ".text-block.text-block--ASG5LandCMk13OFhJQ__text_4bfhJq"
+- Target elements will be identified by simple, stable class names
+
 <visual_context>
 You will receive a screenshot of the current page and brand analysis data to understand the existing design and brand context.
 </visual_context>
@@ -77,6 +84,7 @@ CONTEXT: Generate clean, production-ready JavaScript code that modifies website 
 - Add console.log() for debugging (remove in production)
 - Use requestAnimationFrame() for smooth animations
 - Implement proper cleanup on page unload
+- Use textContent for simple text changes (more reliable than innerHTML)
 </implementation_guidelines>
 
 <code_structure>

@@ -61,7 +61,7 @@ Output example:
 
 Available projects:
 ────────────────────────────────────────────────────────────
-1. omen-mvp.myshopify.com
+1. shop.omen.so
    ID: cl123abc456
    Created: 1/15/2024
 
@@ -69,7 +69,7 @@ Available projects:
    ID: cl789def012
    Created: 1/10/2024
 
-➡️  Auto-selecting most recent project: omen-mvp.myshopify.com
+➡️  Auto-selecting most recent project: shop.omen.so
 ```
 
 ### In `test-variant-simple.ts`:

@@ -178,11 +178,11 @@ If a color type is not visible in the screenshot, use null for that field.`;
 
   /**
    * Generate Shopify password authentication actions for Firecrawl
-   * Currently only supports omen-mvp.myshopify.com with password 'reitri'
+   * Currently only supports shop.omen.so and shop.omen.so with password 'reitri'
    */
   private getShopifyAuthActions(websiteUrl: string): any[] {
     // Check if this is the omen-mvp shop domain
-    if (!websiteUrl.includes('omen-mvp.myshopify.com')) {
+    if (!websiteUrl.includes('shop.omen.so') && !websiteUrl.includes('shop.omen.so')) {
       return [];
     }
 

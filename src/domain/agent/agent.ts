@@ -115,11 +115,11 @@ export class AgentServiceImpl implements AgentService {
       });
     }
 
-    // Use AI SDK streaming with tools enabled and multi-step calls
+    // Use AI SDK streaming with tools enabled and limited steps to prevent multiple responses
     const streamConfig: any = {
       model: google(this.aiConfig.model),
       messages: aiMessages,
-      stopWhen: stepCountIs(5), // Allow up to 5 steps for multi-step tool calls
+      stopWhen: stepCountIs(2), // Limit to 2 steps to prevent multiple messages after tool calls
       ...AI_CONFIGS.STREAMING
     };
 
