@@ -6,6 +6,7 @@ import { createScreenshotStorageService } from '@services/screenshot-storage';
 import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
 import { VisualRefinementService } from '@features/variant_generation/visual-refinement';
+import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
@@ -77,6 +78,127 @@ export class VariantJobProcessor {
         return 'other';
     }
 
+    // New method that handles all processing in background
+    async processVariantJobsInBackground(
+        jobIds: string[],
+        projectId: string,
+        hypothesis: any
+    ): Promise<void> {
+        console.log(`[VARIANT_JOB] Starting background processing for ${jobIds.length} jobs`);
+
+        try {
+            // Update all jobs to RUNNING status at start
+            await Promise.all(jobIds.map(jobId => 
+                VariantJobDAL.updateJob(jobId, {
+                    status: 'RUNNING',
+                    progress: 5,
+                    startedAt: new Date()
+                })
+            ));
+
+            // Get project data
+            const project = await this.variantGenerationService.getCachedProject(projectId);
+            if (!project) {
+                throw new Error(`Project not found: ${projectId}`);
+            }
+
+            const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
+                ? project.shopDomain
+                : `https://${project.shopDomain}`;
+
+            console.log(`[VARIANT_JOB] Using URL: ${url}`);
+
+            // Step 1: Get/take screenshot and HTML (cached if available) - 10% progress
+            const pageType = this.getPageType(url);
+            const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
+                projectId,
+                pageType,
+                HIGH_QUALITY_SCREENSHOT_OPTIONS
+            );
+
+            let screenshot: string;
+            let htmlContent: string | null = null;
+
+            if (cachedData.screenshot) {
+                console.log(`[VARIANT_JOB] Using cached screenshot and HTML`);
+                screenshot = cachedData.screenshot;
+                htmlContent = cachedData.html;
+            } else {
+                console.log(`[VARIANT_JOB] Taking new screenshot for ${url}`);
+                screenshot = await this.variantGenerationService.crawlerService.takePartialScreenshot(
+                    url,
+                    { width: 1920, height: 1080 },
+                    true,
+                    { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+                );
+            }
+
+            await Promise.all(jobIds.map(jobId => 
+                VariantJobDAL.updateJob(jobId, { progress: 10 })
+            ));
+
+            // Step 2: Run DOM analysis - 30% progress
+            console.log(`[VARIANT_JOB] Running DOM analysis`);
+            const injectionPoints = await this.variantGenerationService.domAnalyzer.analyzeForHypothesisWithHtml(
+                url,
+                hypothesis.description,
+                projectId,
+                htmlContent,
+                { type: 'shopify_password', password: 'reitri', shopDomain: project.shopDomain }
+            );
+
+            console.log(`[VARIANT_JOB] DOM analysis complete, found ${injectionPoints?.length || 0} injection points`);
+
+            await Promise.all(jobIds.map(jobId => 
+                VariantJobDAL.updateJob(jobId, { progress: 30 })
+            ));
+
+            // Step 3: Get brand analysis
+            const brandAnalysis = await this.variantGenerationService.getCachedBrandAnalysis(projectId);
+            if (!brandAnalysis) {
+                throw new Error(`No brand analysis available for project ${projectId}`);
+            }
+
+            // Step 4: Generate variant ideas - 50% progress
+            console.log(`[VARIANT_JOB] Generating variant ideas`);
+            const variantResult = await this.variantGenerationService.generateVariants(
+                hypothesis,
+                projectId,
+                injectionPoints
+            );
+            const variantIdeas = variantResult.variants;
+
+            console.log(`[VARIANT_JOB] Generated ${variantIdeas.length} variant ideas:`, 
+                variantIdeas.map(v => v.variant_label));
+
+            await Promise.all(jobIds.map(jobId => 
+                VariantJobDAL.updateJob(jobId, { progress: 50 })
+            ));
+
+            // Step 5: Process jobs with precomputed data (50% -> 100%)
+            await this.processVariantJobsWithPrecomputedData(
+                jobIds,
+                projectId,
+                hypothesis,
+                injectionPoints,
+                variantIdeas,
+                screenshot,
+                brandAnalysis,
+                htmlContent || undefined
+            );
+
+        } catch (error) {
+            console.error(`[VARIANT_JOB] Background processing failed:`, error);
+            // Mark all jobs as failed
+            for (const jobId of jobIds) {
+                await VariantJobDAL.updateJob(jobId, {
+                    status: 'FAILED',
+                    error: error instanceof Error ? error.message : 'Background processing failed'
+                });
+            }
+        }
+    }
+
     // New method that accepts pre-computed data to avoid redundant analysis
     async processVariantJobsWithPrecomputedData(
         jobIds: string[],
@@ -90,16 +212,10 @@ export class VariantJobProcessor {
     ): Promise<void> {
         console.log(`[VARIANT_JOB] Processing ${jobIds.length} jobs with pre-computed data for hypothesis: ${hypothesis.title}`);
 
-        // Process each job with the pre-computed data
+        // Process each job with the pre-computed data (starting at 50%)
         const jobPromises = jobIds.map(async (jobId, index) => {
             try {
                 console.log(`[VARIANT_JOB] Processing job ${jobId} (variant ${index + 1})`);
-
-                // Update job status to running
-                await VariantJobDAL.updateJob(jobId, {
-                    status: 'RUNNING',
-                    progress: 20,
-                });
 
                 // Use the pre-generated variant idea for this job
                 console.log(`[VARIANT_JOB] Using variant idea ${index + 1} for job ${jobId}`);
@@ -111,12 +227,7 @@ export class VariantJobProcessor {
                 
                 console.log(`[VARIANT_JOB] Processing variant: ${variant.variant_label}`);
 
-                // Update progress
-                await VariantJobDAL.updateJob(jobId, {
-                    progress: 60,
-                });
-
-                // Generate code for this variant using pre-computed data
+                // Generate code for this variant using pre-computed data - 70% progress
                 console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId}`);
                 
                 // Use real code generation with pre-computed injection points
@@ -129,12 +240,11 @@ export class VariantJobProcessor {
                     htmlContent
                 );
 
-                // Update progress
                 await VariantJobDAL.updateJob(jobId, {
                     progress: 70,
                 });
 
-                // Step 3: Apply visual refinement to the generated code
+                // Apply visual refinement to the generated code - 85% progress
                 let refinedCode = codeResult?.javascript_code || '';
                 let refinementImprovements: string[] = [];
                 
@@ -155,12 +265,11 @@ export class VariantJobProcessor {
                     }
                 }
 
-                // Update progress
                 await VariantJobDAL.updateJob(jobId, {
                     progress: 85,
                 });
 
-                // Step 4: Validate JavaScript code
+                // Validate JavaScript code - 95% progress
                 let isValidJavaScript = false;
                 if (refinedCode) {
                     try {
@@ -173,7 +282,6 @@ export class VariantJobProcessor {
                     }
                 }
 
-                // Update progress
                 await VariantJobDAL.updateJob(jobId, {
                     progress: 95,
                 });
