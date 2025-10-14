@@ -20,9 +20,9 @@ export async function experimentRoutes(fastify: FastifyInstance) {
 
             fastify.log.info({ jobId }, 'Getting preview for job');
 
-            // Get the job and check if it's completed
-            const job = await VariantJobDAL.getJobById(jobId);
-            if (!job) {
+            // Get minimal job meta to validate existence/state without loading full JSON
+            const jobMeta = await VariantJobDAL.getJobMetaById(jobId);
+            if (!jobMeta) {
                 fastify.log.warn({ jobId }, 'Job not found');
                 return reply.status(404).send({
                     error: 'NOT_FOUND',
@@ -30,39 +30,16 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                 });
             }
 
-            if (job.status !== 'COMPLETED') {
-                fastify.log.warn({ jobId, status: job.status }, 'Job not completed yet');
+            if (jobMeta.status !== 'COMPLETED') {
+                fastify.log.warn({ jobId, status: jobMeta.status }, 'Job not completed yet');
                 return reply.status(400).send({
                     error: 'JOB_NOT_COMPLETED',
-                    message: `Job is not completed yet. Current status: ${job.status}`
+                    message: `Job is not completed yet. Current status: ${jobMeta.status}`
                 });
             }
 
-            if (!job.result?.variantsSchema?.variants) {
-                fastify.log.warn({ jobId }, 'Job completed but no variants found');
-                return reply.status(404).send({
-                    error: 'NO_VARIANTS',
-                    message: 'Job completed but no variants found in result'
-                });
-            }
-
-            let variants = job.result.variantsSchema.variants;
-
-            // Filter by variantIds if provided
-            if (variantIds && variantIds.length > 0) {
-                const requestedLabels = new Set(variantIds);
-                variants = variants.filter((v: any) => requestedLabels.has(v.variant_label));
-            }
-
-            // Map fields for SDK compatibility
-            const mappedVariants = variants.map((v: any) => ({
-                variantId: v.variant_label,
-                selector: v.target_selector || '',
-                position: 'INNER',
-                css: v.css_code || '',
-                html: v.html_code || '',
-                js: v.javascript_code || v.js || '' // Map javascript_code to js for SDK
-            }));
+            // Fetch minimal preview fields directly from DB JSON without loading full job
+            const mappedVariants = await VariantJobDAL.getJobPreview(jobId, variantIds);
 
             fastify.log.info({
                 jobId,
@@ -72,8 +49,8 @@ export async function experimentRoutes(fastify: FastifyInstance) {
 
             return {
                 jobId,
-                status: job.status,
-                completedAt: job.completedAt,
+                status: jobMeta.status,
+                completedAt: jobMeta.completedAt,
                 variants: mappedVariants
             };
 
