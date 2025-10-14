@@ -313,3 +313,4 @@ CREATE EXTENSION IF NOT EXISTS pg_partman;
 | Max Events | 100k | 1M | 1B |
 | Data Delay | Real-time | Real-time | 1 hour |
 
+

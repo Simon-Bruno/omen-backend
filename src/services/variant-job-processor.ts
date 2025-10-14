@@ -12,7 +12,8 @@ export class VariantJobProcessor {
     private variantGenerationService: any;
     private screenshotStorage: any;
     private visualRefinementService: VisualRefinementService;
-    private variantIdeasCache: Map<string, any[]> = new Map();
+    // REMOVED: In-memory cache causing memory issues on 512MB dynos
+    // private variantIdeasCache: Map<string, any[]> = new Map();
 
     constructor() {
         const config = getServiceConfig();
@@ -304,8 +305,9 @@ export class VariantJobProcessor {
                     execution_timing: codeResult?.execution_timing || 'dom_ready',
                     target_selector: codeResult?.target_selector || '',
                     implementation_instructions: codeResult?.implementation_instructions || variant.description,
-                    screenshot: screenshot,
-                    refinement_improvements: refinementImprovements,
+                    // MEMORY: Do not persist large preview-only assets in job result
+                    // screenshot intentionally omitted
+                    // refinement_improvements intentionally omitted
                     is_valid_javascript: isValidJavaScript
                 };
 

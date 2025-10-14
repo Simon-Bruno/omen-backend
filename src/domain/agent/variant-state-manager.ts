@@ -15,12 +15,24 @@ class VariantStateManager {
     console.log(`[STATE_MANAGER] ===== SETTING VARIANTS =====`);
     console.log(`[STATE_MANAGER] Input variants type:`, typeof variants);
     console.log(`[STATE_MANAGER] Input variants length:`, variants ? variants.length : 'null/undefined');
-    console.log(`[STATE_MANAGER] Input variants:`, JSON.stringify(variants.map(v => ({ 
-      label: v.variant_label, 
-      description: v.description.substring(0, 50) + '...' 
-    })), null, 2));
-    this.currentVariants = variants;
-    this.variantHistory.push(variants);
+    
+    // MEMORY OPTIMIZATION: Only log essential info, not full variant objects
+    if (variants && variants.length > 0) {
+      console.log(`[STATE_MANAGER] Variant labels:`, variants.map(v => v.variant_label));
+      console.log(`[STATE_MANAGER] Variant descriptions:`, variants.map(v => v.description.substring(0, 50) + '...'));
+    }
+    
+    // MEMORY OPTIMIZATION: Clean up large data before storing
+    const cleanedVariants = this.cleanupVariantData(variants);
+    this.currentVariants = cleanedVariants;
+    
+    // MEMORY OPTIMIZATION: Limit variant history to prevent memory accumulation
+    this.variantHistory.push(cleanedVariants);
+    if (this.variantHistory.length > 3) {
+      // Keep only the last 3 variant sets to prevent memory bloat
+      this.variantHistory = this.variantHistory.slice(-3);
+    }
+    
     console.log(`[STATE_MANAGER] Variants set: ${variants.length} variants`);
     console.log(`[STATE_MANAGER] Current variant set count: ${this.variantHistory.length}`);
     console.log(`[STATE_MANAGER] ================================`);
@@ -119,6 +131,72 @@ class VariantStateManager {
   }
 
   /**
+   * MEMORY OPTIMIZATION: Clean up large data from variants to reduce memory usage
+   */
+  private cleanupVariantData(variants: Variant[]): Variant[] {
+    return variants.map(variant => ({
+      ...variant,
+      // Remove large data fields that aren't needed for state management
+      screenshot: undefined, // Screenshots can be several MB each
+      // Keep essential fields for state management
+      variant_label: variant.variant_label,
+      description: variant.description,
+      rationale: variant.rationale,
+      javascript_code: variant.javascript_code,
+      target_selector: variant.target_selector,
+      execution_timing: variant.execution_timing
+    }));
+  }
+
+  /**
+   * MEMORY OPTIMIZATION: Force garbage collection to free up memory
+   */
+  private forceGarbageCollection(): void {
+    if (global.gc) {
+      global.gc();
+      console.log(`[STATE_MANAGER] Forced garbage collection`);
+    }
+  }
+
+  /**
+   * MEMORY OPTIMIZATION: Log current memory usage for debugging
+   */
+  private logMemoryUsage(context: string): void {
+    if (process.memoryUsage) {
+      const memUsage = process.memoryUsage();
+      console.log(`[STATE_MANAGER] Memory usage ${context}:`, {
+        rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+        heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+        heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+        external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
+      });
+    }
+  }
+
+  /**
+   * MEMORY OPTIMIZATION: Check if memory usage is high and clean up if needed
+   */
+  private checkAndCleanupMemory(): void {
+    if (process.memoryUsage) {
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = memUsage.heapUsed / 1024 / 1024;
+      
+      // If heap usage is over 800MB, clean up old data
+      if (heapUsedMB > 800) {
+        console.log(`[STATE_MANAGER] High memory usage detected (${Math.round(heapUsedMB)}MB), cleaning up...`);
+        
+        // Clear variant history to free memory
+        this.variantHistory = [];
+        
+        // Force garbage collection
+        this.forceGarbageCollection();
+        
+        console.log(`[STATE_MANAGER] Memory cleanup completed`);
+      }
+    }
+  }
+
+  /**
    * Get variant history
    */
   getHistory(): Variant[][] {
@@ -140,11 +218,25 @@ class VariantStateManager {
   }
 
   /**
+   * MEMORY OPTIMIZATION: Get variants for preview while preserving required JS code
+   */
+  getCurrentVariantsForPreview(): Variant[] | null {
+    if (!this.currentVariants) {
+      return null;
+    }
+    // Keep javascript_code intact; we already stripped heavy fields in cleanup
+    return this.currentVariants;
+  }
+
+  /**
    * Retrieve completed variants from specific job IDs and populate state manager
    */
   async loadVariantsFromJobIds(jobIds: string[]): Promise<Variant[]> {
     console.log(`[STATE_MANAGER] ===== LOADING VARIANTS FROM SPECIFIC JOBS =====`);
     console.log(`[STATE_MANAGER] Job IDs:`, jobIds);
+    
+    // MEMORY OPTIMIZATION: Log memory usage before loading
+    this.logMemoryUsage('before loading variants');
     
     try {
       const variants: Variant[] = [];
@@ -181,6 +273,15 @@ class VariantStateManager {
         // Set the variants in the state manager
         this.setCurrentVariants(variants);
         console.log(`[STATE_MANAGER] Successfully loaded ${variants.length} variants into state manager`);
+        
+        // MEMORY OPTIMIZATION: Force garbage collection after loading large data
+        this.forceGarbageCollection();
+        
+        // MEMORY OPTIMIZATION: Check and cleanup if memory usage is high
+        this.checkAndCleanupMemory();
+        
+        // MEMORY OPTIMIZATION: Log memory usage after loading
+        this.logMemoryUsage('after loading variants');
       }
 
       console.log(`[STATE_MANAGER] ================================================`);
@@ -231,6 +332,12 @@ class VariantStateManager {
         // Set the variants in the state manager
         this.setCurrentVariants(variants);
         console.log(`[STATE_MANAGER] Successfully loaded ${variants.length} variants into state manager`);
+        
+        // MEMORY OPTIMIZATION: Force garbage collection after loading large data
+        this.forceGarbageCollection();
+        
+        // MEMORY OPTIMIZATION: Check and cleanup if memory usage is high
+        this.checkAndCleanupMemory();
       }
 
       console.log(`[STATE_MANAGER] ==========================================`);
