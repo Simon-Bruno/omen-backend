@@ -180,17 +180,34 @@ class VariantStateManager {
     if (process.memoryUsage) {
       const memUsage = process.memoryUsage();
       const heapUsedMB = memUsage.heapUsed / 1024 / 1024;
-      
-      // If heap usage is over 800MB, clean up old data
-      if (heapUsedMB > 800) {
-        console.log(`[STATE_MANAGER] High memory usage detected (${Math.round(heapUsedMB)}MB), cleaning up...`);
-        
+      const rssMB = memUsage.rss / 1024 / 1024;
+
+      // MEMORY OPTIMIZATION: More aggressive cleanup for Heroku's 1GB limit
+      // Clean up if heap is over 600MB or RSS is over 800MB
+      if (heapUsedMB > 600 || rssMB > 800) {
+        console.log(`[STATE_MANAGER] High memory usage detected (Heap: ${Math.round(heapUsedMB)}MB, RSS: ${Math.round(rssMB)}MB), cleaning up...`);
+
         // Clear variant history to free memory
         this.variantHistory = [];
-        
+
+        // Also clear current variants if history is empty and memory is critically high
+        if (rssMB > 900) {
+          console.log(`[STATE_MANAGER] Critical memory usage! Clearing current variants as well.`);
+          // Keep a minimal copy for essential data only
+          if (this.currentVariants) {
+            this.currentVariants = this.currentVariants.map(v => ({
+              variant_label: v.variant_label,
+              description: v.description?.substring(0, 100) || '',
+              javascript_code: v.javascript_code,
+              target_selector: v.target_selector,
+              execution_timing: v.execution_timing
+            } as Variant));
+          }
+        }
+
         // Force garbage collection
         this.forceGarbageCollection();
-        
+
         console.log(`[STATE_MANAGER] Memory cleanup completed`);
       }
     }
@@ -244,23 +261,19 @@ class VariantStateManager {
       
       for (const jobId of jobIds) {
         try {
-          const job = await VariantJobDAL.getJobById(jobId);
-          if (!job) {
-            console.log(`[STATE_MANAGER] Job ${jobId} not found`);
-            continue;
-          }
-          
-          if (job.status === 'COMPLETED' && job.result) {
-            if (job.result.variantsSchema && job.result.variantsSchema.variants) {
-              const jobVariants = job.result.variantsSchema.variants;
-              console.log(`[STATE_MANAGER] Job ${jobId} has ${jobVariants.length} variants`);
-              variants.push(...jobVariants);
-              completedJobIds.push(jobId);
-            } else {
-              console.log(`[STATE_MANAGER] Job ${jobId} completed but has no variants in result`);
-            }
+          // MEMORY OPTIMIZATION: Use the optimized method that doesn't load full job data
+          const jobVariants = await VariantJobDAL.getVariantsFromJob(jobId);
+
+          if (jobVariants.length > 0) {
+            console.log(`[STATE_MANAGER] Job ${jobId} has ${jobVariants.length} variants`);
+            variants.push(...jobVariants);
+            completedJobIds.push(jobId);
           } else {
-            console.log(`[STATE_MANAGER] Job ${jobId} status: ${job.status}, has result: ${!!job.result}`);
+            // Check if job exists but has no variants
+            const hasVariants = await VariantJobDAL.hasCompletedVariants(jobId);
+            if (!hasVariants) {
+              console.log(`[STATE_MANAGER] Job ${jobId} has no completed variants`);
+            }
           }
         } catch (error) {
           console.error(`[STATE_MANAGER] Error loading job ${jobId}:`, error);
@@ -299,43 +312,45 @@ class VariantStateManager {
   async loadVariantsFromJobs(projectId: string): Promise<Variant[]> {
     console.log(`[STATE_MANAGER] ===== LOADING VARIANTS FROM ALL PROJECT JOBS =====`);
     console.log(`[STATE_MANAGER] Project ID: ${projectId}`);
-    
+
     try {
-      // Get all completed jobs for this project
-      const jobs = await VariantJobDAL.getJobsByProject(projectId);
-      const completedJobs = jobs.filter(job => job.status === 'COMPLETED' && job.result);
-      
-      console.log(`[STATE_MANAGER] Found ${jobs.length} total jobs, ${completedJobs.length} completed`);
-      
-      if (completedJobs.length === 0) {
+      // MEMORY OPTIMIZATION: Only get job metadata, not full records
+      const jobs = await VariantJobDAL.getJobsByProject(projectId, 50); // Limit to 50 most recent jobs
+      const completedJobIds = jobs
+        .filter(job => job.status === 'COMPLETED')
+        .map(job => job.id);
+
+      console.log(`[STATE_MANAGER] Found ${jobs.length} total jobs, ${completedJobIds.length} completed`);
+
+      if (completedJobIds.length === 0) {
         console.log(`[STATE_MANAGER] No completed variant jobs found`);
         return [];
       }
 
-      // Extract variants from completed jobs
+      // MEMORY OPTIMIZATION: Use the optimized method to load variants
       const variants: Variant[] = [];
-      for (const job of completedJobs) {
+      for (const jobId of completedJobIds) {
         try {
-          if (job.result && job.result.variantsSchema && job.result.variantsSchema.variants) {
-            const jobVariants = job.result.variantsSchema.variants;
-            console.log(`[STATE_MANAGER] Job ${job.id} has ${jobVariants.length} variants`);
+          const jobVariants = await VariantJobDAL.getVariantsFromJob(jobId);
+          if (jobVariants.length > 0) {
+            console.log(`[STATE_MANAGER] Job ${jobId} has ${jobVariants.length} variants`);
             variants.push(...jobVariants);
           }
         } catch (error) {
-          console.error(`[STATE_MANAGER] Error extracting variants from job ${job.id}:`, error);
+          console.error(`[STATE_MANAGER] Error extracting variants from job ${jobId}:`, error);
         }
       }
 
       console.log(`[STATE_MANAGER] Extracted ${variants.length} total variants from jobs`);
-      
+
       if (variants.length > 0) {
         // Set the variants in the state manager
         this.setCurrentVariants(variants);
         console.log(`[STATE_MANAGER] Successfully loaded ${variants.length} variants into state manager`);
-        
+
         // MEMORY OPTIMIZATION: Force garbage collection after loading large data
         this.forceGarbageCollection();
-        
+
         // MEMORY OPTIMIZATION: Check and cleanup if memory usage is high
         this.checkAndCleanupMemory();
       }
@@ -353,8 +368,18 @@ class VariantStateManager {
    */
   async hasCompletedJobs(projectId: string): Promise<boolean> {
     try {
-      const jobs = await VariantJobDAL.getJobsByProject(projectId);
-      return jobs.some(job => job.status === 'COMPLETED' && job.result);
+      // MEMORY OPTIMIZATION: Only check the first few jobs, don't load all
+      const jobs = await VariantJobDAL.getJobsByProject(projectId, 10);
+      // Use the optimized check that doesn't load full result data
+      for (const job of jobs) {
+        if (job.status === 'COMPLETED') {
+          const hasVariants = await VariantJobDAL.hasCompletedVariants(job.id);
+          if (hasVariants) {
+            return true;
+          }
+        }
+      }
+      return false;
     } catch (error) {
       console.error(`[STATE_MANAGER] Error checking completed jobs:`, error);
       return false;

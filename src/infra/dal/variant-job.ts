@@ -154,4 +154,69 @@ export class VariantJobDAL {
 
         return result.count;
     }
+
+    /**
+     * MEMORY OPTIMIZATION: Fetch only essential variant data without heavy fields like screenshots
+     * This method extracts variants from the result JSON without loading the entire job into memory
+     */
+    static async getVariantsFromJob(jobId: string): Promise<any[]> {
+        try {
+            // Use raw SQL to extract only the variants array from the JSON result
+            // This avoids loading the entire job record into application memory
+            const rows = await prisma.$queryRawUnsafe<any[]>(
+                `
+                SELECT jsonb_array_elements(result->'variantsSchema'->'variants') AS variant
+                FROM variant_jobs
+                WHERE id = $1
+                  AND status = 'COMPLETED'
+                  AND result IS NOT NULL
+                  AND result ? 'variantsSchema'
+                  AND (result->'variantsSchema') ? 'variants'
+                `,
+                jobId
+            );
+
+            // Process variants to strip heavy fields
+            return rows.map(row => {
+                const variant = row.variant;
+                // Return only essential fields, excluding screenshots and other heavy data
+                return {
+                    variant_label: variant.variant_label,
+                    description: variant.description,
+                    rationale: variant.rationale,
+                    javascript_code: variant.javascript_code,
+                    target_selector: variant.target_selector,
+                    execution_timing: variant.execution_timing,
+                    // Explicitly exclude heavy fields:
+                    // - screenshot (can be several MB)
+                    // - html_code (can be large)
+                    // - css_code (can be large)
+                };
+            });
+        } catch (error) {
+            console.error(`[VariantJobDAL] Error extracting variants from job ${jobId}:`, error);
+            return [];
+        }
+    }
+
+    /**
+     * MEMORY OPTIMIZATION: Check if a job has completed variants without loading the full result
+     */
+    static async hasCompletedVariants(jobId: string): Promise<boolean> {
+        const job = await prisma.variantJob.findUnique({
+            where: { id: jobId },
+            select: {
+                status: true,
+                result: true
+            }
+        });
+
+        if (!job || job.status !== 'COMPLETED' || !job.result) {
+            return false;
+        }
+
+        // Type assertion for the result JSON field
+        const result = job.result as any;
+        return !!(result?.variantsSchema?.variants?.length > 0);
+    }
 }
