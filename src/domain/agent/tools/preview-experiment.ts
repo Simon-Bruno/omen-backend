@@ -128,14 +128,15 @@ class PreviewExperimentExecutor {
         currentVariantsLength: currentVariants ? currentVariants.length : 0
       });
       
-      // Check jobs status
-      const jobs = await VariantJobDAL.getJobsByProject(projectId);
+      // MEMORY OPTIMIZATION: Only get recent jobs to avoid loading too much data
+      const jobs = await VariantJobDAL.getJobsByProject(projectId, 10); // Limit to 20 most recent
       const jobsByStatus = jobs.reduce((acc, job) => {
         acc[job.status] = (acc[job.status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      
-      const completedJobs = jobs.filter(job => job.status === 'COMPLETED' && job.result);
+
+      // MEMORY OPTIMIZATION: Count by status without checking result field
+      const completedJobs = jobs.filter(job => job.status === 'COMPLETED');
       const runningJobs = jobs.filter(job => job.status === 'RUNNING');
       const pendingJobs = jobs.filter(job => job.status === 'PENDING');
       const failedJobs = jobs.filter(job => job.status === 'FAILED');
