@@ -188,6 +188,12 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
 1. **Analyze the Page Context:**
    Review the provided brand, HTML, and screenshot data. Identify any usability, layout, clarity, or persuasion issues that could affect conversion. Focus on the page's purpose (homepage, PDP, cart, etc.) and typical user intent. Look for signs of friction such as unclear CTAs, poor hierarchy, trust gaps, weak value proposition, or distracting clutter.
 
+   **SPECIFIC ANALYSIS REQUIREMENT:**
+   - Locate the trending products section in the page
+   - Identify the optimal placement point for testimonials (immediately after trending section)
+   - Assess the current trust signals and social proof elements
+   - Plan how testimonials would integrate with the existing layout and design
+
 2. **Apply CRO Frameworks:**
    Evaluate the page through the lens of key frameworks:
 
@@ -196,6 +202,8 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
    * **Persuasion Principles:** Social proof, scarcity, authority, reciprocity, etc.
      Use these insights to diagnose *why* conversion might be lower than ideal.
 
+   **TESTIMONIALS FOCUS:** Pay special attention to trust and social proof elements. The trending section likely drives interest, but testimonials immediately after would provide the social validation needed to convert that interest into purchases.
+
 3. **Formulate One Hypothesis:**
    Propose **one specific, testable, UI-focused change** that could improve the page's primary conversion goal.
 
@@ -203,6 +211,13 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
    * It must **not modify** any elements listed in the reserved targets JSON.
    * It must be **realistic to A/B test** in a Shopify theme editor (e.g., adjusting layout, hierarchy, copy, button style, or text—not backend logic or new media).
    * The change should clearly target an element or section (e.g., CTA button, banner, form, navigation, etc.).
+
+   **HARDCODED FOCUS: Testimonials Section Addition**
+   Your hypothesis MUST focus on adding a testimonials section under the trending section. This is a mandatory requirement for this generation. The hypothesis should specifically address:
+   - Adding customer testimonials/reviews under the trending products section
+   - Building social proof and trust through customer feedback
+   - Improving conversion by reducing purchase hesitation
+   - Creating a seamless flow from trending products to customer validation
 
 4. **Explain Why It Works:**
    Provide concise reasons why this change is expected to lift performance, grounded in UX psychology or CRO principles (e.g., "Improves clarity of CTA", "Reduces hesitation by adding trust signal", "Simplifies decision path").

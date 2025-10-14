@@ -129,7 +129,7 @@ class PreviewExperimentExecutor {
       });
       
       // MEMORY OPTIMIZATION: Only get recent jobs to avoid loading too much data
-      const jobs = await VariantJobDAL.getJobsByProject(projectId, 10); // Limit to 20 most recent
+      const jobs = await VariantJobDAL.getJobsByProject(projectId, 5); // Limit to 5 most recent
       const jobsByStatus = jobs.reduce((acc, job) => {
         acc[job.status] = (acc[job.status] || 0) + 1;
         return acc;
