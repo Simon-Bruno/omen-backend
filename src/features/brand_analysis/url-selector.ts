@@ -1,86 +1,248 @@
-import { generateObject } from 'ai';
-import { google } from '@ai-sdk/google';
-import { z } from 'zod';
-import { getAIConfig } from '@shared/ai-config';
+/**
+ * URL Selector Service
+ * Intelligently selects representative URLs from a website for brand analysis
+ */
 
-export interface UrlSelectionResult {
-    home: string;
-    pdp: string;
-    about: string;
+import { detectPageType, PageType } from '@shared/page-types';
+
+export interface SelectedUrls {
+  pdp?: string;
+  collection?: string;
+  about?: string;
+  cart?: string;
+  [key: string]: string | undefined;
 }
 
 export interface UrlWithType {
-    url: string;
-    pageType: 'home' | 'pdp' | 'about';
+  url: string;
+  pageType: PageType;
+  priority: number;
 }
 
-const urlSelectionSchema = z.object({
-    home: z.string(),
-    pdp: z.string(),
-    about: z.string()
-});
-
 export class UrlSelector {
-    constructor() { }
+  /**
+   * Select the best representative URLs for brand analysis
+   * @param candidateUrls Array of URLs extracted from the homepage
+   * @returns Object with selected URLs by page type
+   */
+  async selectUrls(candidateUrls: string[]): Promise<SelectedUrls> {
+    const categorizedUrls = this.categorizeUrls(candidateUrls);
+    const selectedUrls: SelectedUrls = {};
 
-    async selectUrls(urls: string[]): Promise<UrlSelectionResult> {
-        const systemText = `
-        You are a professional brand analyst.
-        For getting the clear picture of the brand, image and feeling of an e-commerce store we need you to analyze a collection of url's which we can then further analyze.
-        You return the most useful navigation URLs for getting brand information that are stripped from an e-commerce homepage.
-        From this collection you return the home page, one specific product to analyze the PDP and the about page.
-        If any of the pages can't be found, return '' instead of making something up.
-
-Rules:
-- Use only internal links on the same domain as baseUrl.
-- Normalize relative links to absolute using baseUrl.
-- Choose the single best URL per category when possible.
-
-
-The urls to select from are:
-${urls.join('\n')}
-
-Return ONLY valid JSON.`;
-
-        try {
-            const aiConfig = getAIConfig();
-            const result = await generateObject({
-                model: google(aiConfig.model),
-                schema: urlSelectionSchema,
-                messages: [
-                    {
-                        role: 'user',
-                        content: systemText
-                    }
-                ]
-            });
-
-            const data = result.object;
-            return data;
-        } catch (error) {
-            throw new Error(`Failed to get urls: ${error}`);
-
-        }
+    // Select best PDP (product detail page)
+    if (categorizedUrls.pdp.length > 0) {
+      selectedUrls.pdp = this.selectBestPDP(categorizedUrls.pdp);
     }
 
-    /**
-     * Convert URL selection result to an array of URLs with their page types
-     */
-    getUrlsWithTypes(selection: UrlSelectionResult): UrlWithType[] {
-        const urlsWithTypes: UrlWithType[] = [];
-        
-        if (selection.home && selection.home.length > 0) {
-            urlsWithTypes.push({ url: selection.home, pageType: 'home' });
-        }
-        
-        if (selection.pdp && selection.pdp.length > 0) {
-            urlsWithTypes.push({ url: selection.pdp, pageType: 'pdp' });
-        }
-        
-        if (selection.about && selection.about.length > 0) {
-            urlsWithTypes.push({ url: selection.about, pageType: 'about' });
-        }
-        
-        return urlsWithTypes;
+    // Select best collection page
+    if (categorizedUrls.collection.length > 0) {
+      selectedUrls.collection = this.selectBestCollection(categorizedUrls.collection);
     }
+
+    // Select about page
+    if (categorizedUrls.about.length > 0) {
+      selectedUrls.about = categorizedUrls.about[0]; // Usually only one about page
+    }
+
+    // Select cart page if available
+    if (categorizedUrls.cart.length > 0) {
+      selectedUrls.cart = categorizedUrls.cart[0];
+    }
+
+    return selectedUrls;
+  }
+
+  /**
+   * Get URLs with their page types and priorities
+   * @param selectedUrls The selected URLs object
+   * @returns Array of URLs with type information
+   */
+  getUrlsWithTypes(selectedUrls: SelectedUrls): UrlWithType[] {
+    const results: UrlWithType[] = [];
+
+    for (const [key, url] of Object.entries(selectedUrls)) {
+      if (url) {
+        const pageType = detectPageType(url);
+        results.push({
+          url,
+          pageType,
+          priority: this.getPageTypePriority(pageType)
+        });
+      }
+    }
+
+    return results.sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
+   * Categorize URLs by their detected page type
+   */
+  private categorizeUrls(urls: string[]): Record<string, string[]> {
+    const categorized: Record<string, string[]> = {
+      home: [],
+      pdp: [],
+      collection: [],
+      cart: [],
+      checkout: [],
+      about: [],
+      contact: [],
+      search: [],
+      account: [],
+      other: []
+    };
+
+    for (const url of urls) {
+      try {
+        const pageType = detectPageType(url);
+        const key = pageType.toString();
+        if (!categorized[key]) {
+          categorized[key] = [];
+        }
+        categorized[key].push(url);
+      } catch (error) {
+        // Invalid URL, skip it
+        console.warn(`[URL_SELECTOR] Skipping invalid URL: ${url}`);
+      }
+    }
+
+    return categorized;
+  }
+
+  /**
+   * Select the best PDP URL from candidates
+   * Prioritizes:
+   * 1. Featured products
+   * 2. Best sellers
+   * 3. Products with clear names (not IDs)
+   * 4. First available product
+   */
+  private selectBestPDP(pdpUrls: string[]): string | undefined {
+    if (pdpUrls.length === 0) return undefined;
+
+    // Look for featured products
+    const featured = pdpUrls.find(url =>
+      url.toLowerCase().includes('featured') ||
+      url.toLowerCase().includes('best-seller') ||
+      url.toLowerCase().includes('popular')
+    );
+    if (featured) return featured;
+
+    // Prefer URLs with readable product names over IDs
+    const namedProduct = pdpUrls.find(url => {
+      const parts = url.split('/');
+      const lastPart = parts[parts.length - 1];
+      // Check if it's a readable name (contains letters and hyphens) vs just an ID
+      return /[a-z-]{5,}/i.test(lastPart) && !/^\d+$/.test(lastPart);
+    });
+    if (namedProduct) return namedProduct;
+
+    // Return first available
+    return pdpUrls[0];
+  }
+
+  /**
+   * Select the best collection page from candidates
+   * Prioritizes:
+   * 1. Main shop/all products page
+   * 2. Featured collections
+   * 3. Collections with clear category names
+   */
+  private selectBestCollection(collectionUrls: string[]): string | undefined {
+    if (collectionUrls.length === 0) return undefined;
+
+    // Look for main shop page
+    const mainShop = collectionUrls.find(url =>
+      url.toLowerCase().includes('/shop') ||
+      url.toLowerCase().includes('/all') ||
+      url.toLowerCase().includes('/products')
+    );
+    if (mainShop) return mainShop;
+
+    // Look for featured collections
+    const featured = collectionUrls.find(url =>
+      url.toLowerCase().includes('featured') ||
+      url.toLowerCase().includes('new') ||
+      url.toLowerCase().includes('best')
+    );
+    if (featured) return featured;
+
+    // Return first available
+    return collectionUrls[0];
+  }
+
+  /**
+   * Get priority for page type (lower = higher priority)
+   */
+  private getPageTypePriority(pageType: PageType): number {
+    const priorities: Record<string, number> = {
+      [PageType.HOME]: 1,
+      [PageType.PDP]: 2,
+      [PageType.COLLECTION]: 3,
+      [PageType.ABOUT]: 4,
+      [PageType.CART]: 5,
+      [PageType.CHECKOUT]: 6,
+      [PageType.CONTACT]: 7,
+      [PageType.SEARCH]: 8,
+      [PageType.ACCOUNT]: 9,
+      [PageType.OTHER]: 10
+    };
+
+    return priorities[pageType] || 99;
+  }
+}
+
+/**
+ * Extract URLs from HTML content
+ * @param html The HTML content to extract URLs from
+ * @param baseUrl The base URL to resolve relative URLs
+ * @returns Array of absolute URLs
+ */
+export async function extractUrlsFromHtml(html: string, baseUrl: string): Promise<string[]> {
+  const cheerio = await import('cheerio');
+  const $ = cheerio.load(html);
+  const urls: Set<string> = new Set();
+
+  // Extract all links
+  $('a[href]').each((_, element) => {
+    const href = $(element).attr('href');
+    if (href) {
+      try {
+        // Resolve relative URLs
+        const absoluteUrl = new URL(href, baseUrl).toString();
+
+        // Only include URLs from the same domain
+        const baseDomain = new URL(baseUrl).hostname;
+        const urlDomain = new URL(absoluteUrl).hostname;
+
+        if (urlDomain === baseDomain) {
+          // Skip certain URLs
+          if (!shouldSkipUrl(absoluteUrl)) {
+            urls.add(absoluteUrl);
+          }
+        }
+      } catch (error) {
+        // Invalid URL, skip it
+      }
+    }
+  });
+
+  return Array.from(urls);
+}
+
+/**
+ * Determine if a URL should be skipped
+ */
+function shouldSkipUrl(url: string): boolean {
+  const skipPatterns = [
+    /\#/,                    // Anchor links
+    /\.pdf$/i,               // PDF files
+    /\.(jpg|jpeg|png|gif|svg|webp)$/i,  // Image files
+    /\.(css|js)$/i,          // Asset files
+    /\/cdn-cgi\//,           // Cloudflare URLs
+    /\/admin/i,              // Admin pages
+    /\/api\//,               // API endpoints
+    /\?/,                    // URLs with query parameters (often filters/sorts)
+  ];
+
+  return skipPatterns.some(pattern => pattern.test(url));
 }

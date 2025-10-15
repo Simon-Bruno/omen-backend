@@ -1,5 +1,6 @@
 // Screenshot Configuration - Single Source of Truth
 import { ScreenshotOptions } from '@services/screenshot-storage';
+import { detectPageType } from '@shared/page-types';
 
 // Standard screenshot configuration used across all services
 export const STANDARD_SCREENSHOT_OPTIONS: ScreenshotOptions = {
@@ -15,23 +16,11 @@ export const HIGH_QUALITY_SCREENSHOT_OPTIONS: ScreenshotOptions = {
   quality: 100
 };
 
-// Default page type mapping
+// Re-export page type detection from centralized module
 export const getPageType = (url: string): 'home' | 'pdp' | 'about' | 'other' => {
-  const urlLower = url.toLowerCase();
-  
-  if (urlLower.includes('/product/') || urlLower.includes('/products/')) {
-    return 'pdp';
-  }
-  
-  if (urlLower.includes('/about') || urlLower.includes('/about-us')) {
-    return 'about';
-  }
-  
-  if (urlLower === url.toLowerCase() || urlLower.endsWith('/') || urlLower.split('/').length <= 3) {
-    return 'home';
-  }
-  
-  return 'other';
+  const pageType = detectPageType(url);
+  // Map enum values to string literals for backward compatibility
+  return pageType as 'home' | 'pdp' | 'about' | 'other';
 };
 
 // Smart URL pattern matching for experiment targeting

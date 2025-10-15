@@ -4,6 +4,9 @@ import { ProjectDAL } from '@infra/dal';
 import { FirecrawlService } from './firecrawl-service';
 import { createScreenshotStorageService, ScreenshotStorageService } from '@services/screenshot-storage';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { UrlSelector, extractUrlsFromHtml } from './url-selector';
+import { synthesizePageAnalyses, analyzeAdditionalPages, PageAnalysisResult } from './synthesis';
+import { PageType } from '@shared/page-types';
 
 
 export async function analyzeProject(projectId: string, shopDomain: string): Promise<BrandIntelligenceData> {
@@ -34,33 +37,44 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
     await storeScreenshot(projectId, 'home', baseUrl, homeResult.screenshot, homeResult.html, homeResult.markdown, screenshotStorage);
 
     // Step 2: Extract URLs from homepage HTML
-    // const candidates = await extractUrlsFromHtml(homeResult.html || '', baseUrl);
+    const candidates = await extractUrlsFromHtml(homeResult.html || '', baseUrl);
+    console.log(`[BRAND_ANALYSIS] Step 2: Extracted ${candidates.length} URLs from homepage`);
 
     // Step 3: Select URLs for additional analysis
-    // console.log(`[BRAND_ANALYSIS] Step 3: Selecting URLs from ${candidates.length} candidates`);
-    // const response = await selectUrlsForAnalysis(candidates);
-    // const urlSelector = new UrlSelector();
-    // const urlsWithTypes = urlSelector.getUrlsWithTypes(response);
-    // console.log(`[BRAND_ANALYSIS] Selected URLs to analyze:`, urlsWithTypes);
+    console.log(`[BRAND_ANALYSIS] Step 3: Selecting URLs from ${candidates.length} candidates`);
+    const urlSelector = new UrlSelector();
+    const selectedUrls = await urlSelector.selectUrls(candidates);
+    const urlsWithTypes = urlSelector.getUrlsWithTypes(selectedUrls);
+    console.log(`[BRAND_ANALYSIS] Selected ${urlsWithTypes.length} URLs to analyze:`, urlsWithTypes.map(u => `${u.pageType}: ${u.url}`));
 
     // Check if we have additional pages to analyze
-    // const hasAdditionalPages = urlsWithTypes.some(url => url.pageType !== 'home');
-    
-    let finalBrandIntelligence: BrandIntelligenceData;
-    
-    // let pageResults: Array<{ pageType: PageType; url: string; data?: BrandIntelligenceData; error?: string; html?: string; markdown?: string }> = [homeResult];
-    // if (hasAdditionalPages) {
-    //   // Step 4: Analyze additional pages
-    //   pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homeResult, projectId, screenshotStorage);
+    const hasAdditionalPages = urlsWithTypes.some(url => url.pageType !== PageType.HOME);
 
-    //   // Step 5: Synthesize results from all pages
-    //   console.log(`[BRAND_ANALYSIS] Step 5: Synthesizing results from ${pageResults.length} pages`);
-    //   finalBrandIntelligence = await synthesizePageAnalyses(pageResults);
-    // } else {
+    let finalBrandIntelligence: BrandIntelligenceData;
+
+    // Prepare home result in the expected format
+    const homePageResult: PageAnalysisResult = {
+      pageType: PageType.HOME,
+      url: baseUrl,
+      data: homeResult.data,
+      html: homeResult.html,
+      markdown: homeResult.markdown
+    };
+
+    let pageResults: PageAnalysisResult[] = [homePageResult];
+
+    if (hasAdditionalPages) {
+      // Step 4: Analyze additional pages
+      pageResults = await analyzeAdditionalPages(urlsWithTypes, baseUrl, firecrawlService, homePageResult, projectId, screenshotStorage);
+
+      // Step 5: Synthesize results from all pages
+      console.log(`[BRAND_ANALYSIS] Step 5: Synthesizing results from ${pageResults.length} pages`);
+      finalBrandIntelligence = await synthesizePageAnalyses(pageResults);
+    } else {
       // Only homepage available, use it directly without synthesis
       console.log(`[BRAND_ANALYSIS] Only homepage available, using homepage data directly`);
       finalBrandIntelligence = homeResult.data;
-    // }
+    }
 
     // Store the analysis results without sources (sources are now in screenshots table)
     await ProjectDAL.updateProjectBrandAnalysis(projectId, finalBrandIntelligence);
@@ -76,7 +90,7 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
 // Helper function to store screenshots
 async function storeScreenshot(
   projectId: string,
-  pageType: 'home' | 'pdp' | 'about',
+  pageType: string,
   url: string,
   screenshot: string | undefined,
   html: string | undefined,
@@ -91,7 +105,7 @@ async function storeScreenshot(
   try {
     await screenshotStorage.saveScreenshot(
           projectId,
-          pageType,
+          pageType as 'home' | 'pdp' | 'about' | 'other',
       url,
       HIGH_QUALITY_SCREENSHOT_OPTIONS,
       screenshot,

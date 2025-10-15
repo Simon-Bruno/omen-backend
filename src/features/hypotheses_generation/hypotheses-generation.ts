@@ -11,6 +11,7 @@ import { createScreenshotStorageService, ScreenshotStorageService } from '@servi
 import { simplifyHTML, getHtmlInfo } from '@shared/utils/html-simplifier';
 import { toReservedPayload } from '@features/conflict_guard';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { detectPageType } from '@shared/page-types';
 
 export interface HypothesesGenerationService {
     generateHypotheses(url: string, projectId: string, userInput?: string): Promise<HypothesesGenerationResult>;
@@ -71,10 +72,12 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
         };
 
         // Check storage first
-        const pageType = this.getPageType(url);
+        const pageType = detectPageType(url);
+        // Convert enum to string for backward compatibility with storage service
+        const pageTypeString = pageType as string;
         const cachedScreenshot = await this.screenshotStorage.getScreenshot(
             projectId,
-            pageType,
+            pageTypeString as 'home' | 'pdp' | 'about' | 'other',
             HIGH_QUALITY_SCREENSHOT_OPTIONS
         );
 
@@ -85,7 +88,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             console.log(`[HYPOTHESES] Using stored screenshot for ${pageType} page`);
             screenshot = cachedScreenshot;
             // Try to get cached HTML content
-            const cachedData = await this.screenshotStorage.getScreenshotWithHtml(projectId, pageType, HIGH_QUALITY_SCREENSHOT_OPTIONS);
+            const cachedData = await this.screenshotStorage.getScreenshotWithHtml(projectId, pageTypeString as 'home' | 'pdp' | 'about' | 'other', HIGH_QUALITY_SCREENSHOT_OPTIONS);
             htmlContent = cachedData?.html || undefined;
         } else {
             console.log(`[HYPOTHESES] Taking new screenshot and HTML for ${url}`);
@@ -104,7 +107,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
                 const simplifiedHtml = simplifyHTML(crawlResult.html);
                 const screenshotId = await this.screenshotStorage.saveScreenshot(
                     projectId,
-                    pageType,
+                    pageTypeString as 'home' | 'pdp' | 'about' | 'other',
                     url,
                     HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot,
@@ -114,7 +117,7 @@ export class HypothesesGenerationServiceImpl implements HypothesesGenerationServ
             } else {
                 const screenshotId = await this.screenshotStorage.saveScreenshot(
                     projectId,
-                    pageType,
+                    pageTypeString as 'home' | 'pdp' | 'about' | 'other',
                     url,
                     HIGH_QUALITY_SCREENSHOT_OPTIONS,
                     screenshot
@@ -273,36 +276,6 @@ Produce a **single, high-quality, CRO-aligned, testable, UI-focused hypothesis**
 ---`;
     }
 
-    private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
-        const urlLower = url.toLowerCase();
-
-        // Check for product pages first
-        if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
-            return 'pdp';
-        }
-
-        // Check for about pages
-        if (urlLower.includes('/about')) {
-            return 'about';
-        }
-
-        // Check for home page - this should be the most common case
-        // Home page is typically just the domain or domain with trailing slash
-        const urlObj = new URL(url);
-        const pathname = urlObj.pathname;
-
-        // If no path or just a trailing slash, it's the home page
-        if (!pathname || pathname === '/' || pathname === '') {
-            return 'home';
-        }
-
-        // If path is just common home page indicators
-        if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
-            return 'home';
-        }
-
-        return 'other';
-    }
 
     // Clean HTML for analysis - remove scripts, styles, and clean whitespace
     private cleanHtmlForAnalysis(html: string): string {
