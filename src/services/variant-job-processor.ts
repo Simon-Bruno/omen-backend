@@ -7,6 +7,7 @@ import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
 import { VisualRefinementService } from '@features/variant_generation/visual-refinement';
 import { HIGH_QUALITY_SCREENSHOT_OPTIONS } from '@shared/screenshot-config';
+import { detectPageType } from '@shared/page-types';
 
 export class VariantJobProcessor {
     private variantGenerationService: any;
@@ -48,36 +49,6 @@ export class VariantJobProcessor {
     }
 
 
-    private getPageType(url: string): 'home' | 'pdp' | 'about' | 'other' {
-        const urlLower = url.toLowerCase();
-
-        // Check for product pages first
-        if (urlLower.includes('/products/') || urlLower.includes('/collections/')) {
-            return 'pdp';
-        }
-
-        // Check for about pages
-        if (urlLower.includes('/about')) {
-            return 'about';
-        }
-
-        // Check for home page - this should be the most common case
-        // Home page is typically just the domain or domain with trailing slash
-        const urlObj = new URL(url);
-        const pathname = urlObj.pathname;
-
-        // If no path or just a trailing slash, it's the home page
-        if (!pathname || pathname === '/' || pathname === '') {
-            return 'home';
-        }
-
-        // If path is just common home page indicators
-        if (pathname === '/home' || pathname === '/index' || pathname === '/index.html') {
-            return 'home';
-        }
-
-        return 'other';
-    }
 
     // New method that handles all processing in background
     async processVariantJobsInBackground(
@@ -110,10 +81,12 @@ export class VariantJobProcessor {
             console.log(`[VARIANT_JOB] Using URL: ${url}`);
 
             // Step 1: Get/take screenshot and HTML (cached if available) - 10% progress
-            const pageType = this.getPageType(url);
+            const pageType = detectPageType(url);
+            // Convert enum to string for backward compatibility with storage service
+            const pageTypeString = pageType as string;
             const cachedData = await this.screenshotStorage.getScreenshotWithHtml(
                 projectId,
-                pageType,
+                pageTypeString as 'home' | 'pdp' | 'about' | 'other',
                 HIGH_QUALITY_SCREENSHOT_OPTIONS
             );
 

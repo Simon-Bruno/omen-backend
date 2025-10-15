@@ -1,12 +1,12 @@
 // Brand Analysis Prompts
-export type PageType = 'home' | 'pdp' | 'about';
+import { PageType } from '@shared/page-types';
 
-export function getPageSpecificPrompt(pageType: PageType): string {
+export function getPageSpecificPrompt(pageType: PageType | string): string {
   const basePrompt = `You are a professional UX researcher and CRO (Conversion Rate Optimization) expert conducting a critical brand analysis. Your job is to provide honest, evidence-based assessments that help identify real opportunities for improvement. Be harsh but fair - call out weaknesses honestly while acknowledging strengths where they exist.
 
 Analyze this ${pageType} page and extract comprehensive brand intelligence data:`;
 
-  const pageSpecificInstructions = {
+  const pageSpecificInstructions: Record<string, string> = {
     home: `
 This is the HOMEPAGE - the main entry point that sets first impressions. Focus on:
 - Overall brand positioning and value proposition
@@ -16,7 +16,7 @@ This is the HOMEPAGE - the main entry point that sets first impressions. Focus o
 - Trust signals and credibility indicators
 - Call-to-action effectiveness
 - Brand personality and tone`,
-    
+
     pdp: `
 This is a PRODUCT DETAIL PAGE (PDP) - where customers make purchase decisions. Focus on:
 - Product presentation and photography quality
@@ -26,7 +26,37 @@ This is a PRODUCT DETAIL PAGE (PDP) - where customers make purchase decisions. F
 - Add-to-cart and checkout flow
 - Product comparison and alternatives
 - Trust and security indicators`,
-    
+
+    collection: `
+This is a COLLECTION/CATEGORY PAGE - where customers browse and discover products. Focus on:
+- Product grid/list layout effectiveness
+- Filtering and sorting options
+- Product card design and information hierarchy
+- Category navigation and breadcrumbs
+- Quick view or hover interactions
+- Load more/pagination approach
+- Collection description and value props`,
+
+    cart: `
+This is the SHOPPING CART - where customers review their selections before checkout. Focus on:
+- Cart layout and clarity
+- Product information display
+- Price calculations and transparency
+- Upsell/cross-sell opportunities
+- Security and trust messaging
+- Checkout CTA prominence
+- Coupon/discount code placement`,
+
+    checkout: `
+This is the CHECKOUT PAGE - the final conversion point. Focus on:
+- Form simplicity and usability
+- Progress indicators
+- Payment options display
+- Shipping information clarity
+- Security badges and trust signals
+- Error handling and validation
+- Guest checkout availability`,
+
     about: `
 This is the ABOUT PAGE - where brands tell their story and build trust. Focus on:
 - Brand story and company values
@@ -35,7 +65,47 @@ This is the ABOUT PAGE - where brands tell their story and build trust. Focus on
 - Trust signals and credentials
 - Contact information and transparency
 - Brand personality and authenticity
-- Social responsibility and values`
+- Social responsibility and values`,
+
+    contact: `
+This is the CONTACT PAGE - where customers reach out for support. Focus on:
+- Contact form usability
+- Contact method options (email, phone, chat)
+- Response time expectations
+- Location/hours information
+- FAQ or help links
+- Form field requirements
+- Success/error messaging`,
+
+    search: `
+This is the SEARCH RESULTS PAGE - where customers find specific products. Focus on:
+- Search results relevance
+- Filter and sort capabilities
+- No results messaging
+- Search suggestions and autocomplete
+- Results layout and density
+- Product information shown
+- Search refinement options`,
+
+    account: `
+This is the ACCOUNT/PROFILE PAGE - where customers manage their information. Focus on:
+- Dashboard organization
+- Account information clarity
+- Order history presentation
+- Quick action accessibility
+- Settings organization
+- Security options
+- Personalization features`,
+
+    other: `
+This is a GENERAL PAGE - analyze its specific purpose and effectiveness. Focus on:
+- Page purpose clarity
+- Content organization
+- Navigation and wayfinding
+- Call-to-action effectiveness
+- Visual hierarchy
+- Brand consistency
+- User journey context`
   };
 
   const commonInstructions = `
@@ -125,10 +195,14 @@ This is the ABOUT PAGE - where brands tell their story and build trust. Focus on
    - When in doubt, exclude the color rather than include it.
    - Format: Each color should have: color (name), description, usage_type, hex_code.`;
 
-  return basePrompt + pageSpecificInstructions[pageType] + commonInstructions;
+  // Convert enum to string if necessary and provide fallback for unknown page types
+  const pageTypeKey = typeof pageType === 'string' ? pageType : String(pageType);
+  const instructions = pageSpecificInstructions[pageTypeKey] || pageSpecificInstructions['other'];
+
+  return basePrompt + instructions + commonInstructions;
 }
 
-export function getSynthesisPrompt(pageResults: Array<{ pageType: PageType; url: string; data?: any; error?: string }>): string {
+export function getSynthesisPrompt(pageResults: Array<{ pageType: PageType | string; url: string; data?: any; error?: string }>): string {
   const validResults = pageResults.filter(result => result.data && !result.error);
   
   if (validResults.length === 0) {
@@ -145,7 +219,7 @@ export function getSynthesisPrompt(pageResults: Array<{ pageType: PageType; url:
       : 'Not available';
     
     return `
-${result.pageType.toUpperCase()} PAGE (${result.url}):
+${String(result.pageType).toUpperCase()} PAGE (${result.url}):
 - Brand Description: ${data.brand_description || 'Not available'}
 - Personality Words: ${personalityWords}
 - Premium Score: ${data.brand_trait_scores?.premium?.score || 'N/A'} (${data.brand_trait_scores?.premium?.explanation || 'Not available'})
