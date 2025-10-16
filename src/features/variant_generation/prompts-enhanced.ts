@@ -1,87 +1,36 @@
-// Prompts for variant generation service
+/**
+ * Enhanced Variant Generation Prompts
+ * Functions to build prompts following the existing working patterns
+ */
+
 import { Hypothesis } from '@features/hypotheses_generation/types';
-import { PageType } from '@shared/page-types';
 import { InjectionPoint } from './dom-analyzer';
+import { PageType } from '@shared/page-types';
 
 /**
- * Get page-specific guidance for variant generation
+ * Enhanced variant generation prompt that includes injection points and page context
  */
-function getPageSpecificGuidance(pageType: PageType): string {
-  switch (pageType) {
-    case PageType.PDP:
-      return `
-PDP-SPECIFIC CONSIDERATIONS:
-- Focus on elements near the add-to-cart button for maximum impact
-- Consider urgency and scarcity messaging near price/stock indicators
-- Enhance product information presentation (features, benefits, specs)
-- Improve trust signals near purchase decision points
-- Optimize product image gallery interactions
-- Ensure variants work with product variant selectors (size, color)`;
-
-    case PageType.COLLECTION:
-      return `
-COLLECTION-SPECIFIC CONSIDERATIONS:
-- Apply changes consistently across all product cards
-- Consider adding badges or labels to highlight special products
-- Improve product comparison capabilities
-- Enhance filtering and sorting visibility
-- Add quick-view or quick-add functionality hints
-- Ensure variants work with pagination and lazy loading`;
-
-    case PageType.HOME:
-      return `
-HOMEPAGE-SPECIFIC CONSIDERATIONS:
-- Focus on hero section for first impressions
-- Enhance value proposition clarity
-- Improve navigation to key product categories
-- Add social proof and trust indicators
-- Optimize for different user intents (browse, search, buy)
-- Consider seasonal or promotional messaging placement`;
-
-    case PageType.CART:
-      return `
-CART-SPECIFIC CONSIDERATIONS:
-- Reduce abandonment with trust and security signals
-- Highlight free shipping thresholds
-- Add urgency for items with limited stock
-- Improve cross-sell and upsell presentation
-- Simplify the checkout process visualization
-- Add payment method trust badges`;
-
-    default:
-      return '';
-  }
-}
-
-/**
- * Build variant generation prompt with optional page context
- */
-export function buildVariantGenerationPrompt(
+export function buildEnhancedVariantPrompt(
   hypothesis: Hypothesis,
-  pageType?: PageType,
-  injectionPoints?: InjectionPoint[]
+  injectionPoints: InjectionPoint[],
+  pageType: PageType
 ): string {
-  // Build injection points section if available
-  const injectionSection = injectionPoints && injectionPoints.length > 0 ? `
+  const basePrompt = `Generate 3 A/B test variants for this hypothesis:
+
+HYPOTHESIS: ${hypothesis.description}
+PROBLEM: ${hypothesis.current_problem}
+EXPECTED LIFT: ${hypothesis.predicted_lift_range.min}-${hypothesis.predicted_lift_range.max}%
 
 INJECTION POINTS AVAILABLE:
 ${injectionPoints.map((point, idx) =>
   `${idx + 1}. ${point.selector} (${point.type})
    Operation: ${point.operation}
    Purpose: ${point.description}
-   ${point.pdpContext ? `Context: ${JSON.stringify(point.pdpContext)}` : ''}`
+   ${point.pdpContext ? `   Context: ${JSON.stringify(point.pdpContext)}` : ''}`
 ).join('\n')}
-` : '';
 
-  // Add page-specific guidance if page type is provided
-  const pageGuidance = pageType ? getPageSpecificGuidance(pageType) : '';
-
-    return `
-Generate 3 A/B test variants for this hypothesis:
-
-HYPOTHESIS: ${hypothesis.description}
-PROBLEM: ${hypothesis.current_problem}
-EXPECTED LIFT: ${hypothesis.predicted_lift_range.min}-${hypothesis.predicted_lift_range.max}%${injectionSection}${pageGuidance}
+PAGE TYPE: ${pageType}
+${getPageSpecificGuidance(pageType)}
 
 Generate 3 creative variants that address the hypothesis. Focus on meaningful differences that could impact user behavior:
 
@@ -129,14 +78,80 @@ Focus on variants that:
 - Use only CSS and existing content (no external videos, images, or files)
 - Modify existing elements rather than adding new media resources
 
-Return variants as a JSON array with the structure defined in the schema.
-`;
+Return variants as a JSON array with the structure defined in the schema.`;
+
+  return basePrompt;
 }
 
-export function buildCodeGenerationPrompt(): string {
+/**
+ * Get page-specific guidance based on page type
+ */
+function getPageSpecificGuidance(pageType: PageType): string {
+  switch (pageType) {
+    case PageType.PDP:
+      return `
+PDP-SPECIFIC CONSIDERATIONS:
+- Focus on elements near the add-to-cart button for maximum impact
+- Consider urgency and scarcity messaging near price/stock indicators
+- Enhance product information presentation (features, benefits, specs)
+- Improve trust signals near purchase decision points
+- Optimize product image gallery interactions
+- Ensure variants work with product variant selectors (size, color)`;
+
+    case PageType.COLLECTION:
+    case PageType.CATEGORY:
+      return `
+COLLECTION-SPECIFIC CONSIDERATIONS:
+- Apply changes consistently across all product cards
+- Consider adding badges or labels to highlight special products
+- Improve product comparison capabilities
+- Enhance filtering and sorting visibility
+- Add quick-view or quick-add functionality hints
+- Ensure variants work with pagination and lazy loading`;
+
+    case PageType.HOME:
+      return `
+HOMEPAGE-SPECIFIC CONSIDERATIONS:
+- Focus on hero section for first impressions
+- Enhance value proposition clarity
+- Improve navigation to key product categories
+- Add social proof and trust indicators
+- Optimize for different user intents (browse, search, buy)
+- Consider seasonal or promotional messaging placement`;
+
+    case PageType.CART:
+      return `
+CART-SPECIFIC CONSIDERATIONS:
+- Reduce abandonment with trust and security signals
+- Highlight free shipping thresholds
+- Add urgency for items with limited stock
+- Improve cross-sell and upsell presentation
+- Simplify the checkout process visualization
+- Add payment method trust badges`;
+
+    default:
+      return '';
+  }
+}
+
+/**
+ * Build code generation prompt with injection point context
+ */
+export function buildEnhancedCodePrompt(
+  variant: any,
+  injectionPoints: InjectionPoint[]
+): string {
   return `You are a JavaScript expert specializing in A/B test variant implementation.
 
-CONTEXT: Generate clean, production-ready JavaScript code that modifies website elements for A/B testing.
+VARIANT TO IMPLEMENT:
+Label: ${variant.label}
+Description: ${variant.description}
+Target: ${variant.targetElement}
+
+AVAILABLE INJECTION POINTS:
+${injectionPoints.map(point =>
+  `- ${point.selector}: ${point.operation} operation for ${point.type}`
+).join('\n')}
 
 <code_requirements>
 1. Use modern JavaScript (ES6+) with proper error handling
@@ -162,12 +177,31 @@ CONTEXT: Generate clean, production-ready JavaScript code that modifies website 
 </implementation_guidelines>
 
 <code_structure>
-1. **Element Selection**: Find target elements with robust selectors
-2. **Validation**: Check if elements exist before modification
-3. **Styling**: Apply CSS changes programmatically
-4. **Event Handling**: Add interactive behaviors
-5. **Cleanup**: Remove event listeners and restore original state
-6. **Error Handling**: Graceful fallbacks for missing elements
+(function() {
+  'use strict';
+
+  // 1. Wait for DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyVariant);
+  } else {
+    applyVariant();
+  }
+
+  function applyVariant() {
+    // 2. Element Selection
+    const targetElement = document.querySelector('${variant.targetElement || injectionPoints[0]?.selector}');
+    if (!targetElement) {
+      console.warn('Target element not found');
+      return;
+    }
+
+    // 3. Apply modifications
+    // [Your implementation here]
+
+    // 4. Handle dynamic content if needed
+    // [MutationObserver if required]
+  }
+})();
 </code_structure>
 
 Generate clean, well-commented JavaScript code that:
