@@ -6,6 +6,7 @@ import { InjectionPoint } from './dom-analyzer';
 import { getVariantGenerationAIConfig } from '@shared/ai-config';
 // import { getCodeGenerationAIConfig } from '@shared/ai-config';
 import { google } from '@ai-sdk/google';
+import { PageType } from '@shared/page-types';
 
 export interface CodeGenerationResult {
     variant_label: string;
@@ -35,7 +36,8 @@ export class VariantCodeGenerator {
         brandAnalysis: string,
         screenshot: string,
         injectionPoints: InjectionPoint[],
-        htmlContent?: string
+        htmlContent?: string,
+        pageType?: PageType
     ): Promise<CodeGenerationResult> {
         // Extract only essential brand info to reduce tokens
         const brandSummary = this.extractBrandSummary(brandAnalysis);
@@ -43,12 +45,12 @@ export class VariantCodeGenerator {
         // Use DOM analyzer injection points if available, otherwise fallback to HTML context
         if (injectionPoints && injectionPoints.length > 0) {
             console.log(`[CODE_GENERATOR] Using DOM analyzer injection points for: ${variant.variant_label} (${injectionPoints.length} points)`);
-            return this.generateCodeWithSelector(variant, hypothesis, brandSummary, screenshot, injectionPoints, htmlContent);
+            return this.generateCodeWithSelector(variant, hypothesis, brandSummary, screenshot, injectionPoints, htmlContent, pageType);
         }
 
         // Fallback: generate selectors from HTML context
         console.log(`[CODE_GENERATOR] No injection points available, generating selectors from HTML context for: ${variant.variant_label}`);
-        return this.generateCodeWithSelector(variant, hypothesis, brandSummary, screenshot, [], htmlContent);
+        return this.generateCodeWithSelector(variant, hypothesis, brandSummary, screenshot, [], htmlContent, pageType);
     }
 
     private async generateCodeWithSelector(
@@ -57,7 +59,8 @@ export class VariantCodeGenerator {
         brandSummary: { personality: string; colors: string },
         screenshot: string,
         injectionPoints: InjectionPoint[],
-        htmlContent?: string
+        htmlContent?: string,
+        pageType?: PageType
     ): Promise<CodeGenerationResult> {
         // Use injection points if available, otherwise generate from HTML context
         if (injectionPoints && injectionPoints.length > 0) {
@@ -65,6 +68,9 @@ export class VariantCodeGenerator {
         } else {
             console.log(`[CODE_GENERATOR] No injection points available, generating selectors from HTML context`);
         }
+
+        // Add page-specific context if available
+        const pageSpecificContext = pageType ? this.getPageSpecificContext(pageType) : '';
 
         const codePrompt = `You are a UX designer creating an A/B test variant.
 
@@ -79,6 +85,7 @@ VARIANT TO IMPLEMENT:
 - UX Approach: ${variant.ux_approach}
 - Visual Style: ${variant.visual_style}
 - Placement Strategy: ${variant.placement_strategy}
+${pageSpecificContext}
 
 RESPONSIVE DESIGN REQUIREMENTS (CRITICAL):
 - Code MUST work perfectly on mobile (375px), tablet (768px), and desktop (1920px)
@@ -331,6 +338,50 @@ Return JSON with: variant_label, description, rationale, javascript_code, target
                 personality: 'Modern, professional', 
                 colors: 'Blue (#0066CC) - primary' 
             };
+        }
+    }
+
+    // Get page-specific context for code generation
+    private getPageSpecificContext(pageType: PageType): string {
+        switch (pageType) {
+            case PageType.PDP:
+                return `
+PAGE-SPECIFIC CONTEXT (PDP):
+- Focus on elements near add-to-cart button for purchase decisions
+- Consider product variant selectors (size, color, quantity)
+- Enhance product images and gallery functionality
+- Work with price and stock level indicators
+- Preserve product reviews and ratings functionality`;
+
+            case PageType.COLLECTION:
+                return `
+PAGE-SPECIFIC CONTEXT (COLLECTION):
+- Apply changes consistently to all product cards
+- Work with filters and sorting mechanisms
+- Handle pagination and infinite scroll
+- Consider quick-view and quick-add features
+- Maintain grid/list view toggles`;
+
+            case PageType.HOME:
+                return `
+PAGE-SPECIFIC CONTEXT (HOMEPAGE):
+- Focus on hero section and first impressions
+- Enhance navigation to product categories
+- Consider promotional banners and offers
+- Work with featured product sections
+- Optimize for different user intents`;
+
+            case PageType.CART:
+                return `
+PAGE-SPECIFIC CONTEXT (CART):
+- Focus on reducing cart abandonment
+- Work with product quantity selectors
+- Consider upsell and cross-sell elements
+- Handle shipping calculators and discounts
+- Preserve checkout flow functionality`;
+
+            default:
+                return '';
         }
     }
 

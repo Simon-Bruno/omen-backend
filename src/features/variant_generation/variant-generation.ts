@@ -225,10 +225,10 @@ export class VariantGenerationServiceImpl implements VariantGenerationService {
         console.log(`[VARIANTS] Generating variant ideas with Google Gemini 2.5 Pro`);
         const aiConfig = getVariantGenerationAIConfig();
 
-        // Use brand analysis prompt
-        const prompt = buildVariantGenerationPrompt(hypothesis);
+        // Use enhanced brand analysis prompt with page type and injection points
+        const prompt = buildVariantGenerationPrompt(hypothesis, pageType, injectionPoints);
 
-        console.log(`[VARIANTS] Using brand analysis prompt for variant generation`);
+        console.log(`[VARIANTS] Using enhanced prompt for variant generation with page type: ${pageType}`);
 
         const object = await ai.generateObject({
             model: google(aiConfig.model, {

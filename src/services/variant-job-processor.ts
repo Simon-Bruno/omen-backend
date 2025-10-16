@@ -201,17 +201,25 @@ export class VariantJobProcessor {
                 
                 console.log(`[VARIANT_JOB] Processing variant: ${variant.variant_label}`);
 
+                // Detect page type from project URL
+                const project = await this.variantGenerationService.getCachedProject(projectId);
+                const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
+                    ? project.shopDomain
+                    : `https://${project.shopDomain}`;
+                const pageType = detectPageType(url);
+
                 // Generate code for this variant using pre-computed data - 70% progress
-                console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId}`);
-                
-                // Use real code generation with pre-computed injection points
+                console.log(`[VARIANT_JOB] Generating code for variant ${variant.variant_label} for job ${jobId} (page type: ${pageType})`);
+
+                // Use real code generation with pre-computed injection points and page type
                 const codeResult = await this.variantGenerationService.codeGenerator.generateCode(
                     variant,
                     hypothesis,
                     brandAnalysis,
                     screenshot,
                     injectionPoints,
-                    htmlContent
+                    htmlContent,
+                    pageType
                 );
 
                 await VariantJobDAL.updateJob(jobId, {

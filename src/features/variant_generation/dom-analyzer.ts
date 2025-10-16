@@ -3,24 +3,35 @@ import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import * as cheerio from 'cheerio';
 import { getAIConfig } from '@shared/ai-config';
+import { detectPageType, PageType } from '@shared/page-types';
 
 
 export interface InjectionPoint {
   selector: string;
-  type: 'button' | 'text' | 'image' | 'container' | 'form' | 'navigation' | 'price' | 'title' | 'description';
+  type: 'button' | 'text' | 'image' | 'container' | 'form' | 'navigation' | 'price' | 'title' | 'description' | 'reviews' | 'stock' | 'shipping' | 'trust' | 'variants';
   operation: 'append' | 'prepend' | 'insertBefore' | 'insertAfter' | 'replace' | 'wrap';
   confidence: number; // 0-1
   description: string;
+  pdpContext?: {
+    isAboveFold?: boolean;
+    nearAddToCart?: boolean;
+    nearPrice?: boolean;
+  };
 }
 
 // Schema for AI response
 const injectionPointSchema = z.object({
   injectionPoints: z.array(z.object({
     selector: z.string().describe('CSS selector for the element'),
-    type: z.enum(['button', 'text', 'image', 'container', 'form', 'navigation', 'price', 'title', 'description']),
+    type: z.enum(['button', 'text', 'image', 'container', 'form', 'navigation', 'price', 'title', 'description', 'reviews', 'stock', 'shipping', 'trust', 'variants']),
     operation: z.enum(['append', 'prepend', 'insertBefore', 'insertAfter', 'replace', 'wrap']),
     confidence: z.number().min(0).max(1).describe('Confidence score 0-1'),
-    description: z.string().describe('What this injection point is for')
+    description: z.string().describe('What this injection point is for'),
+    pdpContext: z.object({
+      isAboveFold: z.boolean().optional(),
+      nearAddToCart: z.boolean().optional(),
+      nearPrice: z.boolean().optional()
+    }).optional()
   }))
 });
 
@@ -36,7 +47,7 @@ export interface DOMAnalyzerService {
 
 export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
   async analyzeForHypothesisWithHtml(
-    _url: string,
+    url: string,
     hypothesis: string,
     _projectId: string,
     htmlContent: string | null,
@@ -49,14 +60,22 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
       return [];
     }
 
+    // Detect page type
+    const pageType = detectPageType(url);
+    console.log(`[DOM_ANALYZER] Detected page type: ${pageType} for URL: ${url}`);
+
     console.log(`[DOM_ANALYZER] Using provided HTML content from screenshot: ${htmlContent.length} chars`);
 
     // Clean HTML for analysis
     const cleanedHtml = this.cleanHtmlForAnalysis(htmlContent);
     console.log(`[DOM_ANALYZER] Cleaned HTML: ${cleanedHtml.length} chars`);
 
-    // Build prompt for AI
-    const prompt = this.buildHypothesisFocusedPrompt(hypothesis, cleanedHtml);
+    // Build prompt for AI based on page type
+    const prompt = pageType === PageType.PDP
+      ? this.buildPDPFocusedPrompt(hypothesis, cleanedHtml)
+      : pageType === PageType.COLLECTION
+      ? this.buildCollectionFocusedPrompt(hypothesis, cleanedHtml)
+      : this.buildHypothesisFocusedPrompt(hypothesis, cleanedHtml);
 
     const aiConfig = getAIConfig();
     
@@ -115,8 +134,8 @@ export class DOMAnalyzerServiceImpl implements DOMAnalyzerService {
     return $.html().replace(/\s+/g, ' ').trim();
   }
 
-  private buildHypothesisFocusedPrompt(hypothesis: string, html: string): string {
-    return `You are a DOM analyzer. Find injection points for this hypothesis:
+  private buildPDPFocusedPrompt(hypothesis: string, html: string): string {
+    return `You are a DOM analyzer for a Product Detail Page (PDP). Find injection points for this hypothesis:
 
 HYPOTHESIS: ${hypothesis}
 
@@ -125,12 +144,42 @@ ${html}
 
 TASK: Find 1-3 injection points where we can add/modify elements to implement this hypothesis.
 
-SELECTOR GENERATION RULES:
+PDP CONTEXT: This is a product page, so prioritize elements like:
+- Add-to-cart buttons (button[type="submit"], .add-to-cart)
+- Price elements (.price, [itemprop="price"])
+- Review sections (.reviews, .rating)
+- Product info areas near these key elements
+
+${this.getCommonSelectorRules()}`;
+  }
+
+  private buildCollectionFocusedPrompt(hypothesis: string, html: string): string {
+    return `You are a DOM analyzer for a Collection/Category page. Find injection points for this hypothesis:
+
+HYPOTHESIS: ${hypothesis}
+
+HTML CONTENT:
+${html}
+
+TASK: Find 1-3 injection points where we can add/modify elements to implement this hypothesis.
+
+COLLECTION CONTEXT: This is a product listing page, so prioritize elements like:
+- Product grids (.product-grid, .collection-products)
+- Filter sections (.filters)
+- Sort options (.sort, select[name="sort"])
+- Product cards within the grid
+
+${this.getCommonSelectorRules()}`;
+  }
+
+  private getCommonSelectorRules(): string {
+    return `SELECTOR GENERATION RULES:
 - You MUST analyze the HTML content and generate selectors that are GUARANTEED to work
 - Prioritize selectors that uniquely identify the target element
 - Use the most specific selector that still works reliably across environments
 - These selectors will be used directly by document.querySelector() in the SDK
-\n+STABILITY PRIORITIZATION (CRITICAL):
+
+STABILITY PRIORITIZATION (CRITICAL):
 - Rank candidates by stability FIRST, then confidence
 - STRONGLY PREFER stable class or [data-*] selectors over IDs
 - If available, prefer in this order: ".ui-test-product-list" (container), "main#MainContent" (container)
@@ -161,7 +210,8 @@ CRITICAL RULES:
 - ".some-made-up-class" (you invented this)
 - "#shopify-section-template-123" (dynamic, changes between environments)
 - "div" (too generic, matches everything)
-\n+PREFERRED EXAMPLES (WHEN PRESENT IN HTML):
+
+PREFERRED EXAMPLES (WHEN PRESENT IN HTML):
 - ".ui-test-product-list" (high stability container for insertAfter)
 - "main#MainContent" (stable container for append/prepend)
 
@@ -187,6 +237,19 @@ EXAMPLES:
 - NOT: a.button[href="https://domain.com/collections/all"]
 
 Return injection points as an array with selectors that actually exist in the HTML.`;
+  }
+
+  private buildHypothesisFocusedPrompt(hypothesis: string, html: string): string {
+    return `You are a DOM analyzer. Find injection points for this hypothesis:
+
+HYPOTHESIS: ${hypothesis}
+
+HTML CONTENT:
+${html}
+
+TASK: Find 1-3 injection points where we can add/modify elements to implement this hypothesis.
+
+${this.getCommonSelectorRules()}`;
   }
 
 
