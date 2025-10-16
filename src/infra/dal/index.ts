@@ -5,5 +5,6 @@ export * from './chat-message';
 export * from './user';
 export * from './variant-job';
 export * from './analytics';
+export * from './supabase-analytics';
 export * from './screenshot';
 export * from './types';
