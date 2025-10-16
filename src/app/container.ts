@@ -9,6 +9,7 @@ import { createScreenshotAnalyticsService, type ScreenshotAnalyticsService } fro
 import { createJobCleanupService, type JobCleanupService } from '@services/job-cleanup';
 import { createAnalyticsService, createSQSConsumerService, type AnalyticsService, type SQSConsumerService } from '@services/analytics';
 import { PrismaAnalyticsRepository } from '@infra/dal/analytics';
+import { SupabaseAnalyticsRepository } from '@infra/dal/supabase-analytics';
 import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
 
@@ -76,7 +77,17 @@ class ServiceContainer {
 
   getAnalyticsService(): AnalyticsService {
     if (!this.services.has('analytics')) {
-      const repository = new PrismaAnalyticsRepository(prisma);
+      const useSupabase = process.env.USE_SUPABASE_ANALYTICS === 'true';
+      
+      const repository = useSupabase
+        ? new SupabaseAnalyticsRepository(
+            process.env.SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          )
+        : new PrismaAnalyticsRepository(prisma);
+      
+      console.log(`[CONTAINER] Using ${useSupabase ? 'Supabase' : 'Prisma'} analytics repository`);
+      
       const analyticsService = createAnalyticsService(repository);
       this.services.set('analytics', analyticsService);
     }
