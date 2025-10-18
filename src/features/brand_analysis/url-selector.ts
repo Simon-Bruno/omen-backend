@@ -29,13 +29,14 @@ export class UrlSelector {
     const categorizedUrls = this.categorizeUrls(candidateUrls);
     const selectedUrls: SelectedUrls = {};
 
-    // Select best PDP (product detail page)
+    // Prioritize PDP over collection due to Firecrawl concurrency limits
+    // Select best PDP (product detail page) - highest priority
     if (categorizedUrls.pdp.length > 0) {
       selectedUrls.pdp = this.selectBestPDP(categorizedUrls.pdp);
     }
 
-    // Select best collection page
-    if (categorizedUrls.collection.length > 0) {
+    // Only select collection page if no PDP is available
+    if (categorizedUrls.collection.length > 0 && !selectedUrls.pdp) {
       selectedUrls.collection = this.selectBestCollection(categorizedUrls.collection);
     }
 
@@ -60,7 +61,7 @@ export class UrlSelector {
   getUrlsWithTypes(selectedUrls: SelectedUrls): UrlWithType[] {
     const results: UrlWithType[] = [];
 
-    for (const [key, url] of Object.entries(selectedUrls)) {
+    for (const [, url] of Object.entries(selectedUrls)) {
       if (url) {
         const pageType = detectPageType(url);
         results.push({
@@ -126,6 +127,13 @@ export class UrlSelector {
       url.toLowerCase().includes('popular')
     );
     if (featured) return featured;
+
+    // Prefer base product URLs without variant parameters (better for authentication)
+    const baseProduct = pdpUrls.find(url => {
+      const urlObj = new URL(url);
+      return !urlObj.searchParams.has('variant') && !urlObj.searchParams.has('v');
+    });
+    if (baseProduct) return baseProduct;
 
     // Prefer URLs with readable product names over IDs
     const namedProduct = pdpUrls.find(url => {
@@ -218,6 +226,20 @@ export async function extractUrlsFromHtml(html: string, baseUrl: string): Promis
           // Skip certain URLs
           if (!shouldSkipUrl(absoluteUrl)) {
             urls.add(absoluteUrl);
+            
+            // Also add base product URL without variant parameters for better authentication
+            if (absoluteUrl.includes('/products/') && (absoluteUrl.includes('?variant=') || absoluteUrl.includes('&variant='))) {
+              try {
+                const urlObj = new URL(absoluteUrl);
+                urlObj.search = ''; // Remove all query parameters
+                const baseProductUrl = urlObj.toString();
+                if (!shouldSkipUrl(baseProductUrl)) {
+                  urls.add(baseProductUrl);
+                }
+              } catch (error) {
+                // Ignore URL parsing errors
+              }
+            }
           }
         }
       } catch (error) {
@@ -241,8 +263,17 @@ function shouldSkipUrl(url: string): boolean {
     /\/cdn-cgi\//,           // Cloudflare URLs
     /\/admin/i,              // Admin pages
     /\/api\//,               // API endpoints
-    /\?/,                    // URLs with query parameters (often filters/sorts)
   ];
+
+  // Skip URLs with query parameters, but allow product variant URLs
+  if (url.includes('?')) {
+    // Allow product URLs with variant parameters
+    if (url.includes('/products/') && url.includes('variant=')) {
+      return false;
+    }
+    // Skip other URLs with query parameters (filters, sorts, etc.)
+    return true;
+  }
 
   return skipPatterns.some(pattern => pattern.test(url));
 }

@@ -25,7 +25,7 @@ export class ScreenshotDAL {
    */
   static async getScreenshot(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     options: ScreenshotOptions
   ) {
     return await prisma.screenshot.findFirst({
@@ -47,7 +47,7 @@ export class ScreenshotDAL {
    */
   static async upsertScreenshot(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     url: string,
     options: ScreenshotOptions,
     screenshotData: string,

@@ -9,7 +9,8 @@ export const getProjectInfoSchema = z.object({
 export const createHypothesesSchema = z.object({
   projectId: z.string().optional().describe('The project ID to generate hypotheses for (optional, will use default if not provided)'),
   url: z.string().optional().describe('The URL to analyze (optional, defaults to the project\'s website URL)'),
-  userInput: z.string().optional().describe('Optional user-provided hypothesis idea or direction. When provided, the AI will use this as the primary direction and refine it into a proper hypothesis.')
+  userInput: z.string().optional().describe('Optional user-provided hypothesis idea or direction. When provided, the AI will use this as the primary direction and refine it into a proper hypothesis.'),
+  pageType: z.string().optional().describe('The page type to analyze (e.g., "PDP", "homepage", "collection"). When provided, the system will automatically select the appropriate URL from the brand analysis data.')
 });
 
 export const createVariantsSchema = z.object({

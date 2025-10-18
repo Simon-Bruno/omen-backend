@@ -24,6 +24,55 @@ export class VariantJobProcessor {
         this.visualRefinementService = new VisualRefinementService();
     }
 
+    private async getUrlForPageType(projectId: string, pageType: string): Promise<string | null> {
+        try {
+            // Map page types to database pageType values (all lowercase as per PageType enum)
+            const pageTypeMap: { [key: string]: string[] } = {
+                'pdp': ['pdp'],
+                'product': ['pdp'],
+                'product page': ['pdp'],
+                'product detail page': ['pdp'],
+                'homepage': ['home'],
+                'home page': ['home'],
+                'landing page': ['home'],
+                'collection': ['collection'],
+                'category': ['collection'],
+                'category page': ['collection'],
+                'shop page': ['collection']
+            };
+
+            const normalizedPageType = pageType.toLowerCase();
+            const targetTypes = pageTypeMap[normalizedPageType] || [normalizedPageType];
+
+            // Find the first matching page type in screenshots table
+            for (const targetType of targetTypes) {
+                const screenshot = await prisma.screenshot.findFirst({
+                    where: {
+                        projectId: projectId,
+                        pageType: targetType
+                    },
+                    orderBy: {
+                        createdAt: 'desc'
+                    },
+                    select: {
+                        url: true
+                    }
+                });
+
+                if (screenshot?.url) {
+                    console.log(`[VARIANT_JOB] Found ${targetType} URL: ${screenshot.url}`);
+                    return screenshot.url;
+                }
+            }
+
+            console.log(`[VARIANT_JOB] No URL found for page type: ${pageType}`);
+            return null;
+        } catch (error) {
+            console.error(`[VARIANT_JOB] Error fetching URL for page type ${pageType}:`, error);
+            return null;
+        }
+    }
+
 
     private async getJobIndex(jobId: string, projectId: string): Promise<number> {
         // Get all jobs for this project and find the index of this job
@@ -74,9 +123,14 @@ export class VariantJobProcessor {
                 throw new Error(`Project not found: ${projectId}`);
             }
 
-            const url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
-                ? project.shopDomain
-                : `https://${project.shopDomain}`;
+            // Use the same URL selection logic as hypothesis generation
+            // Try to find a PDP URL first, fallback to homepage
+            let url = await this.getUrlForPageType(projectId, 'pdp');
+            if (!url) {
+                url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
+                    ? project.shopDomain
+                    : `https://${project.shopDomain}`;
+            }
 
             console.log(`[VARIANT_JOB] Using URL: ${url}`);
 

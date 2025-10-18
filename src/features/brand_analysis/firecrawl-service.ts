@@ -189,16 +189,32 @@ If a color type is not visible in the screenshot, use null for that field.`;
     console.log(`[FIRECRAWL] Detected omen-mvp domain, enabling authentication`);
 
     return [
-      { "type": "wait", "milliseconds": 1000 },
+      { "type": "wait", "milliseconds": 2000 },
+      { "type": "write", "selector": "#password", "text": "reitri" },
       {
         "type": "executeJavascript",
         "script": `
-          document.getElementById('password').value = 'reitri';
-          document.querySelector('form').submit();
+          const passwordField = document.getElementById('password');
+          if (passwordField) {
+            passwordField.value = 'reitri';
+            const form = document.querySelector('form');
+            if (form) {
+              form.submit();
+            }
+          }
         `
       },
-      { "type": "wait", "milliseconds": 2000 },
-      { "type": "wait", "milliseconds": 5000 }
+      { "type": "wait", "milliseconds": 3000 },
+      {
+        "type": "executeJavascript",
+        "script": `
+          // Navigate to the specific product page after authentication
+          if (window.location.href !== '${websiteUrl}') {
+            window.location.href = '${websiteUrl}';
+          }
+        `
+      },
+      { "type": "wait", "milliseconds": 3000 }
     ];
   }
 

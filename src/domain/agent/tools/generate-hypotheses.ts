@@ -23,18 +23,78 @@ class GenerateHypothesesExecutor {
         return await this.hypothesesGenerationService.generateHypotheses(url, projectId, userInput);
     }
 
-    async execute(input: { projectId?: string; url?: string; userInput?: string }): Promise<HypothesesGenerationResult> {
+    private async getUrlForPageType(pageType: string): Promise<string | null> {
+        try {
+            // Map page types to database pageType values (all lowercase as per PageType enum)
+            const pageTypeMap: { [key: string]: string[] } = {
+                'pdp': ['pdp'],
+                'product': ['pdp'],
+                'product page': ['pdp'],
+                'product detail page': ['pdp'],
+                'homepage': ['home'],
+                'home page': ['home'],
+                'landing page': ['home'],
+                'collection': ['collection'],
+                'category': ['collection'],
+                'category page': ['collection'],
+                'shop page': ['collection']
+            };
+
+            const normalizedPageType = pageType.toLowerCase();
+            const targetTypes = pageTypeMap[normalizedPageType] || [normalizedPageType];
+
+            // Find the first matching page type in screenshots table
+            for (const targetType of targetTypes) {
+                const screenshot = await prisma.screenshot.findFirst({
+                    where: {
+                        projectId: this.projectId,
+                        pageType: targetType
+                    },
+                    orderBy: {
+                        createdAt: 'desc'
+                    },
+                    select: {
+                        url: true
+                    }
+                });
+
+                if (screenshot?.url) {
+                    console.log(`[HYPOTHESES_TOOL] Found ${targetType} URL: ${screenshot.url}`);
+                    return screenshot.url;
+                }
+            }
+
+            console.log(`[HYPOTHESES_TOOL] No URL found for page type: ${pageType}`);
+            return null;
+        } catch (error) {
+            console.error(`[HYPOTHESES_TOOL] Error fetching URL for page type ${pageType}:`, error);
+            return null;
+        }
+    }
+
+    async execute(input: { projectId?: string; url?: string; userInput?: string; pageType?: string }): Promise<HypothesesGenerationResult> {
         // Get the project's URL if not provided
         let url = input.url;
         if (!url) {
-            const project = await prisma.project.findUnique({
-                where: { id: this.projectId },
-                select: { shopDomain: true }
-            });
-            if (!project) {
-                throw new Error(`Project ${this.projectId} not found`);
+            // Check if user specified a page type
+            if (input.pageType) {
+                url = await this.getUrlForPageType(input.pageType);
+                if (!url) {
+                    console.log(`[HYPOTHESES_TOOL] No ${input.pageType} URL found, falling back to homepage`);
+                }
             }
-            url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
+            
+            // Fallback to homepage if no URL found
+            if (!url) {
+                const project = await prisma.project.findUnique({
+                    where: { id: this.projectId },
+                    select: { shopDomain: true }
+                });
+                if (!project) {
+                    throw new Error(`Project ${this.projectId} not found`);
+                }
+                url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
+            }
         }
         console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url} with project ${this.projectId}`);
 

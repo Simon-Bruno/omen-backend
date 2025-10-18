@@ -18,7 +18,29 @@ export async function brandSummaryRoutes(fastify: FastifyInstance) {
                 return reply.status(404).send({ error: 'Project not found' });
             }
 
-            // Create job
+            // Check if there's already a running job for this project
+            const existingJob = await prisma.brandSummaryJob.findFirst({
+                where: {
+                    projectId,
+                    status: {
+                        in: ['PENDING', 'RUNNING']
+                    }
+                },
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            });
+
+            if (existingJob) {
+                fastify.log.info({ jobId: existingJob.id, projectId }, 'Brand summary already in progress, returning existing job');
+                return reply.status(200).send({
+                    jobId: existingJob.id,
+                    status: existingJob.status.toLowerCase(),
+                    message: 'Brand summary already in progress'
+                });
+            }
+
+            // Create new job
             const job = await ProjectDAL.createBrandSummaryJob(projectId);
 
             // Start async processing

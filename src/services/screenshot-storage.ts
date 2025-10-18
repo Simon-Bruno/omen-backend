@@ -6,19 +6,19 @@ export type { ScreenshotOptions } from '@infra/dal/screenshot';
 export interface ScreenshotStorageService {
   getScreenshot(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<string | null>;
 
   getScreenshotWithHtml(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<{ screenshot: string | null; html: string | null }>;
 
   saveScreenshot(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     url: string,
     options: ScreenshotOptions,
     screenshotData: string,
@@ -44,7 +44,7 @@ export interface ScreenshotStorageService {
 export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
   async getScreenshot(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<string | null> {
     try {
@@ -68,7 +68,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
 
   async getScreenshotWithHtml(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     options: ScreenshotOptions
   ): Promise<{ screenshot: string | null; html: string | null }> {
     try {
@@ -96,7 +96,7 @@ export class ScreenshotStorageServiceImpl implements ScreenshotStorageService {
 
   async saveScreenshot(
     projectId: string,
-    pageType: 'home' | 'pdp' | 'about' | 'other',
+    pageType: 'home' | 'pdp' | 'collection' | 'about' | 'other',
     url: string,
     options: ScreenshotOptions,
     screenshotData: string,
