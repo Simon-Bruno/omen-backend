@@ -105,7 +105,7 @@ async function storeScreenshot(
   try {
     await screenshotStorage.saveScreenshot(
           projectId,
-          pageType as 'home' | 'pdp' | 'about' | 'other',
+          pageType as 'home' | 'pdp' | 'collection' | 'about' | 'other',
       url,
       HIGH_QUALITY_SCREENSHOT_OPTIONS,
       screenshot,

@@ -77,7 +77,7 @@ export async function synthesizePageAnalyses(
  */
 export async function analyzeAdditionalPages(
   urlsWithTypes: Array<{ url: string; pageType: PageType }>,
-  baseUrl: string,
+  _baseUrl: string,
   firecrawlService: any,
   homeResult: PageAnalysisResult,
   projectId: string,
@@ -112,7 +112,7 @@ export async function analyzeAdditionalPages(
           try {
             await screenshotStorage.saveScreenshot(
               projectId,
-              pageType as 'home' | 'pdp' | 'about' | 'other',
+              pageType as 'home' | 'pdp' | 'collection' | 'about' | 'other',
               url,
               { viewport: { width: 1920, height: 1080 }, fullPage: true, quality: 100 },
               result.screenshot,
@@ -206,7 +206,7 @@ export function calculateWeightedTraitScores(
     const pageWeight = weights[result.pageType as string] || weights[PageType.OTHER];
 
     for (const trait of traits) {
-      const traitData = result.data.brand_trait_scores[trait];
+      const traitData = result.data.brand_trait_scores[trait as keyof typeof result.data.brand_trait_scores];
       if (traitData && typeof traitData.score === 'number') {
         weightedScores[trait].totalScore += traitData.score * pageWeight;
         weightedScores[trait].totalWeight += pageWeight;

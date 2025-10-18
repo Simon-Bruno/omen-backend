@@ -11,6 +11,7 @@ import { createCloudflarePublisher } from '@infra/external/cloudflare';
 import { getServiceConfig } from '@infra/config/services';
 import { findConflicts, ConflictError } from '@features/conflict_guard';
 import { getConversationHistory } from '../request-context';
+import { normalizeUrlToPattern } from '@shared/normalization/url';
 
 const createExperimentSchema = z.object({
   name: z.string().describe('A clear, descriptive name for the experiment that captures the essence of what is being tested (e.g., "Homepage Hero CTA Color Test", "PDP Add-to-Cart Button Size Optimization"). Generate this based on the hypothesis and variants.'),
@@ -42,72 +43,55 @@ const createExperimentSchema = z.object({
 
 //TODO: Remove implementation instructions
 
-// Extract URL patterns from screenshot data
+// Extract URL patterns from the specific URL used for variant generation
 async function extractURLPatternsFromScreenshots(projectId: string, _variants: any[]): Promise<string[]> {
-  const patterns: string[] = [];
-
   try {
-    // Get all screenshots for this project
-    const screenshots = await prisma.screenshot.findMany({
+    // Get the most recent hypothesis to find the URL that was used
+    const latestHypothesis = await prisma.experimentHypothesis.findFirst({
+      where: { 
+        experiment: {
+          projectId: projectId
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { 
+        experiment: {
+          select: { targetUrls: true }
+        }
+      }
+    });
+
+    if (latestHypothesis?.experiment?.targetUrls) {
+      console.log(`[EXPERIMENT_TOOL] Using existing target URLs from hypothesis:`, latestHypothesis.experiment.targetUrls);
+      return latestHypothesis.experiment.targetUrls;
+    }
+
+    // Fallback: Get the most recent screenshot URL (same logic as variant generation)
+    const latestScreenshot = await prisma.screenshot.findFirst({
       where: { projectId },
-      select: { url: true, pageType: true },
+      select: { url: true },
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log(`[EXPERIMENT_TOOL] Found ${screenshots.length} screenshots for project ${projectId}`);
-
-    // Extract URLs from screenshots
-    const urls = screenshots.map(s => s.url);
-    console.log(`[EXPERIMENT_TOOL] Screenshot URLs:`, urls);
-
-    // Create smart patterns from URLs
-    for (const url of urls) {
-      try {
-        const urlObj = new globalThis.URL(url);
-        const pathname = urlObj.pathname;
-
-        // Smart pattern detection
-        if (pathname.includes('/products/') || pathname.includes('/product/')) {
-          // PDP pattern - match all product pages
-          patterns.push('/products/*');
-          patterns.push('/product/*');
-        } else if (pathname.includes('/collections/')) {
-          // Collection pattern
-          patterns.push('/collections/*');
-        } else if (pathname.includes('/categories/')) {
-          // Category pattern
-          patterns.push('/categories/*');
-        } else if (pathname === '/' || pathname === '/home') {
-          // Homepage pattern
-          patterns.push('/');
-          patterns.push('/home');
-        } else if (pathname.includes('/cart')) {
-          // Cart pattern
-          patterns.push('/cart');
-          patterns.push('/cart/*');
-        } else if (pathname.includes('/checkout')) {
-          // Checkout pattern
-          patterns.push('/checkout');
-          patterns.push('/checkout/*');
-        } else {
-          // Exact match for other pages
-          patterns.push(pathname);
-        }
-      } catch (error) {
-        console.warn(`[EXPERIMENT_TOOL] Invalid URL: ${url}`, error);
-      }
+    if (!latestScreenshot?.url) {
+      console.log(`[EXPERIMENT_TOOL] No screenshots found, using fallback pattern`);
+      return ['/*'];
     }
 
-    // Remove duplicates and return
-    const uniquePatterns = [...new Set(patterns)];
-    console.log(`[EXPERIMENT_TOOL] Generated URL patterns:`, uniquePatterns);
-    return uniquePatterns;
+    console.log(`[EXPERIMENT_TOOL] Using URL from most recent screenshot: ${latestScreenshot.url}`);
+
+    // Generate pattern from the specific URL used
+    const pattern = normalizeUrlToPattern(latestScreenshot.url);
+    console.log(`[EXPERIMENT_TOOL] Generated pattern: ${pattern}`);
+    
+    return [pattern];
 
   } catch (error) {
-    console.error(`[EXPERIMENT_TOOL] Error extracting URL patterns from screenshots:`, error);
+    console.error(`[EXPERIMENT_TOOL] Error extracting URL patterns:`, error);
     return ['/*']; // Fallback to all pages
   }
 }
+
 
 class CreateExperimentExecutor {
   private projectId: string;
