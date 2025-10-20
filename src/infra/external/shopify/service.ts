@@ -1,4 +1,4 @@
-import { shopifyConfig } from './config';
+import { getShopifyConfigForShop } from './config';
 import { decrypt, verifyHmac } from '../../encryption';
 import fetch from 'node-fetch';
 import { URLSearchParams } from 'url';
@@ -31,14 +31,15 @@ export class ShopifyService {
    * Exchange authorization code for access token
    */
   async exchangeCodeForToken(shop: string, code: string): Promise<ShopifyOAuthResponse> {
+    const appConfig = getShopifyConfigForShop(shop);
     const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        client_id: shopifyConfig.apiKey,
-        client_secret: shopifyConfig.apiSecret,
+        client_id: appConfig.apiKey,
+        client_secret: appConfig.apiSecret,
         code,
       }),
     });
@@ -86,10 +87,11 @@ export class ShopifyService {
    * Generate Shopify OAuth URL
    */
   generateOAuthUrl(shop: string, state: string): string {
+    const appConfig = getShopifyConfigForShop(shop);
     const params = new URLSearchParams({
-      client_id: shopifyConfig.apiKey,
-      scope: "read_themes, write_themes",
-      redirect_uri: shopifyConfig.redirectUri,
+      client_id: appConfig.apiKey,
+      scope: appConfig.scopes,
+      redirect_uri: appConfig.redirectUri,
       state,
     });
 
@@ -135,7 +137,9 @@ export class ShopifyService {
       .map(key => `${key}=${encodeURIComponent(queryWithoutHmac[key])}`)
       .join('&');
 
-    return verifyHmac(queryStringWithoutHmac, shopifyConfig.apiSecret, hmac);
+    const shop = queryParams.shop;
+    const appConfig = getShopifyConfigForShop(shop);
+    return verifyHmac(queryStringWithoutHmac, appConfig.apiSecret, hmac);
   }
 
   /**
