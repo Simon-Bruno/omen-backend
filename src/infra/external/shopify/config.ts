@@ -41,6 +41,7 @@ export function getShopifyConfigForShop(shopDomain: string): ShopifyAppConfig {
     const keyEnv = process.env[`SHOPIFY_API_KEY_${slug}`];
     const secretEnv = process.env[`SHOPIFY_API_SECRET_${slug}`];
     if (keyEnv && secretEnv) {
+      console.log(`[SHOPIFY_CONFIG] Using per-shop env credentials for slug: ${slug}`);
       return {
         apiKey: keyEnv,
         apiSecret: secretEnv,
@@ -48,8 +49,12 @@ export function getShopifyConfigForShop(shopDomain: string): ShopifyAppConfig {
         scopes: sharedShopifyDefaults.scopes,
       };
     }
+    console.log(`[SHOPIFY_CONFIG] No per-shop env credentials found for slug: ${slug}. Falling back...`);
   }
-  if (defaultShopifyConfig) return defaultShopifyConfig;
+  if (defaultShopifyConfig) {
+    console.log(`[SHOPIFY_CONFIG] Using default/global Shopify app credentials from env.`);
+    return defaultShopifyConfig;
+  }
   throw new Error(`No Shopify app configuration available for shop: ${shopDomain}`);
 }
 
