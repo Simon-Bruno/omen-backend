@@ -6,6 +6,10 @@ import { variantStateManager } from '../variant-state-manager';
 import { VariantJobDAL } from '@infra/dal';
 import { ExperimentDAL } from '@infra/dal';
 import { findConflicts, formatConflictError } from '@features/conflict_guard';
+import { createSignalGenerationOrchestrator } from '@features/signal_generation';
+import { detectPageType } from '@shared/page-types';
+import { prisma } from '@infra/prisma';
+import { signalStateManager } from '../signal-state-manager';
 
 const previewExperimentSchema = z.object({
   name: z.string().optional().describe('The name of the experiment to preview - if not provided, will be auto-generated from the hypothesis'),
@@ -60,6 +64,53 @@ class PreviewExperimentExecutor {
       // Use provided name or hypothesis title as fallback
       const experimentName = input.name || hypothesis.title || 'Experiment';
 
+      // Generate signal proposals (not persisted yet, just for preview)
+      console.log(`[PREVIEW_EXPERIMENT] Generating signal proposals...`);
+      let signalProposals = [];
+      try {
+        const screenshot = await prisma.screenshot.findFirst({
+          where: { projectId },
+          select: { url: true, htmlContent: true },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        if (screenshot?.url && screenshot.htmlContent && variants.length > 0) {
+          const signalService = createSignalGenerationOrchestrator();
+          const pageType = detectPageType(screenshot.url);
+          const signalIntent = `${hypothesis.description}. Primary goal: ${hypothesis.primary_outcome}`;
+          
+          const proposal = await signalService.generationService.generateSignals({
+            pageType,
+            url: screenshot.url,
+            intent: signalIntent,
+            dom: screenshot.htmlContent,
+            variant: {
+              changeType: 'modifyElement',
+              selector: variants[0].target_selector || 'body',
+              html: variants[0].html_code || '',
+              css: variants[0].css_code,
+              javascript_code: variants[0].javascript_code,
+            }
+          });
+          
+          if (proposal.primary) {
+            signalProposals.push({ name: proposal.primary.name, type: proposal.primary.type, role: 'primary' });
+            console.log(`[PREVIEW_EXPERIMENT] Primary signal: "${proposal.primary.name}" (selector: "${proposal.primary.selector}")`);
+          }
+          if (proposal.mechanisms) {
+            proposal.mechanisms.forEach((m) => {
+              signalProposals.push({ name: m.name, type: m.type, role: 'mechanism' });
+            });
+          }
+          
+          // Store in state manager for reuse during experiment creation
+          signalStateManager.setCurrentProposal(proposal);
+          console.log(`[PREVIEW_EXPERIMENT] Generated ${signalProposals.length} signal proposals and stored in state`);
+        }
+      } catch (error) {
+        console.warn(`[PREVIEW_EXPERIMENT] Could not generate signal proposals:`, error);
+      }
+
       // Create short variant summaries (just labels, no descriptions)
       const variantSummaries = variants.map(variant => ({
         label: variant.variant_label
@@ -97,7 +148,8 @@ class PreviewExperimentExecutor {
         trafficSplit,
         runningTime: 'Indefinite',
         conflictCheck,
-        variantStatus
+        variantStatus,
+        signalProposals
       };
     } catch (error) {
       console.error(`[PREVIEW_EXPERIMENT] Failed to create preview:`, error);

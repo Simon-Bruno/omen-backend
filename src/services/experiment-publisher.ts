@@ -1,6 +1,7 @@
 // Experiment Publisher Service
 import { CloudflarePublisher, PublishedExperiment, PublishedVariant } from '@infra/external/cloudflare';
 import { prisma } from '@infra/prisma';
+import { createSignalGenerationOrchestrator } from '@features/signal_generation';
 
 export interface ExperimentPublisherService {
   publishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }>;
@@ -35,6 +36,22 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         return { success: false, error: 'Experiment not found' };
       }
 
+      // ===== PRE-LAUNCH VALIDATION: Check signals =====
+      console.log(`[EXPERIMENT_PUBLISHER] Validating experiment signals...`);
+      const signalService = createSignalGenerationOrchestrator();
+      const validation = await signalService.validateForPublish(experimentId);
+
+      if (!validation.valid) {
+        console.error(`[EXPERIMENT_PUBLISHER] Signal validation failed:`, validation.errors);
+        return { success: false, error: validation.errors.join('; ') };
+      }
+
+      if (validation.warnings.length > 0) {
+        console.warn(`[EXPERIMENT_PUBLISHER] Validation warnings:`, validation.warnings);
+      }
+
+      console.log(`[EXPERIMENT_PUBLISHER] ✅ Signal validation passed`);
+
       console.log(`[EXPERIMENT_PUBLISHER] Found experiment:`, {
         id: experiment.id,
         name: experiment.name,
@@ -61,11 +78,16 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
         variants: this.buildVariants(experiment.variants),
         goals: experiment.goals?.map(goal => ({
           name: goal.name,
-          type: goal.type as 'conversion' | 'custom',
+          type: goal.type as 'conversion' | 'purchase' | 'custom',
+          role: (goal as any).role as 'primary' | 'mechanism' | 'guardrail',
           selector: goal.selector,
           eventType: goal.eventType,
           customJs: goal.customJs,
           value: goal.value ? Number(goal.value) : null,
+          targetUrls: Array.isArray((goal as any).targetUrls) ? (goal as any).targetUrls : null,
+          dataLayerEvent: (goal as any).dataLayerEvent || null,
+          valueSelector: goal.valueSelector || null,
+          currency: goal.currency || null,
         })),
         targetUrls: this.parseTargetUrls(experiment.targetUrls), // Include URL targeting data
         targeting: (experiment as any).targeting as any | undefined,

@@ -19,6 +19,9 @@
     "seed": "tsx -r tsconfig-paths/register scripts/seed.ts",
     "seed:reset": "tsx -r tsconfig-paths/register scripts/seed.ts --reset",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:signals": "tsx -r tsconfig-paths/register test-signal-generation.ts",
+    "test:signals:llm": "tsx -r tsconfig-paths/register test-signal-generation-llm.ts",
+    "test:signals:real": "tsx -r tsconfig-paths/register test-signal-generation-real.ts",
     "test:variants": "tsx -r tsconfig-paths/register tests/integration/variant-pipeline.test.ts",
     "test:variants:simple": "tsx -r tsconfig-paths/register tests/integration/variant-simple.test.ts"
   },

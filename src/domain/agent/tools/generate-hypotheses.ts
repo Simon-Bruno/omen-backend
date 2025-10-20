@@ -123,8 +123,8 @@ class GenerateHypothesesExecutor {
         // Store the first hypothesis in state manager for use by other tools
         if (hypotheses && hypotheses.length > 0) {
             console.log(`[HYPOTHESES_TOOL] Storing hypothesis: "${hypotheses[0].title}"`);
-            hypothesisStateManager.setCurrentHypothesis(hypotheses[0]);
-            console.log(`[HYPOTHESES_TOOL] Hypothesis stored successfully`);
+            hypothesisStateManager.setCurrentHypothesis(hypotheses[0], url);
+            console.log(`[HYPOTHESES_TOOL] Hypothesis stored successfully with URL: ${url}`);
         } else {
             console.log(`[HYPOTHESES_TOOL] No hypotheses to store`);
         }
