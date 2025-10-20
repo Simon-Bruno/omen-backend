@@ -24,7 +24,7 @@ export async function analyzeProject(projectId: string, shopDomain: string): Pro
 
     // Step 1: Analyze the homepage
     console.log(`[BRAND_ANALYSIS] Step 1: Analyzing homepage: ${baseUrl}`);
-    const homeResult = await firecrawlService.analyzePage(baseUrl, 'home');
+    const homeResult = await firecrawlService.analyzePage(baseUrl, PageType.HOME);
 
     if (homeResult.error || !homeResult.data) {
       console.error(`[BRAND_ANALYSIS] Homepage analysis failed: ${homeResult.error}`);
