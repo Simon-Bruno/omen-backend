@@ -39,6 +39,12 @@ export interface ServiceConfig {
     apiToken: string;
     namespaceId: string;
   };
+  clarity: {
+    projectId: string;
+    apiKey: string;
+    baseUrl?: string;
+    timeoutMs?: number;
+  };
   sqs: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -90,6 +96,12 @@ export function getServiceConfig(): ServiceConfig {
       accountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
       apiToken: process.env.CLOUDFLARE_API_TOKEN || '',
       namespaceId: process.env.CLOUDFLARE_NAMESPACE_ID || '',
+    },
+    clarity: {
+      projectId: process.env.CLARITY_PROJECT_ID || '',
+      apiKey: process.env.CLARITY_API_KEY || '',
+      baseUrl: process.env.CLARITY_BASE_URL || 'https://api.clarity.microsoft.com',
+      timeoutMs: parseInt(process.env.CLARITY_TIMEOUT_MS || '15000', 10),
     },
     sqs: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
