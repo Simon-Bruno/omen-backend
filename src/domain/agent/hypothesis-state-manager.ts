@@ -5,14 +5,19 @@ import { extractHypothesisFromHistory, ConversationMessage } from './conversatio
 class HypothesisStateManager {
   private currentHypothesis: Hypothesis | null = null;
   private hypothesisHistory: Hypothesis[] = [];
+  private currentHypothesisUrl: string | null = null; // Track the URL used for hypothesis generation
 
   /**
    * Set the current hypothesis (from generate_hypotheses tool)
    */
-  setCurrentHypothesis(hypothesis: Hypothesis): void {
+  setCurrentHypothesis(hypothesis: Hypothesis, url?: string): void {
     console.log(`[STATE_MANAGER] Setting hypothesis: "${hypothesis.title}"`);
     this.currentHypothesis = hypothesis;
     this.hypothesisHistory.push(hypothesis);
+    if (url) {
+      this.currentHypothesisUrl = url;
+      console.log(`[STATE_MANAGER] Hypothesis URL set: ${url}`);
+    }
     console.log(`[STATE_MANAGER] Hypothesis set: "${hypothesis.title}"`);
     console.log(`[STATE_MANAGER] Current hypothesis count: ${this.hypothesisHistory.length}`);
   }
@@ -54,11 +59,19 @@ class HypothesisStateManager {
   }
 
   /**
+   * Get the URL used for the current hypothesis
+   */
+  getCurrentHypothesisUrl(): string | null {
+    return this.currentHypothesisUrl;
+  }
+
+  /**
    * Clear the current hypothesis
    */
   clearCurrentHypothesis(): void {
     console.log(`[STATE_MANAGER] Clearing current hypothesis`);
     this.currentHypothesis = null;
+    this.currentHypothesisUrl = null;
   }
 
   /**
@@ -67,6 +80,7 @@ class HypothesisStateManager {
   clearAll(): void {
     console.log(`[STATE_MANAGER] Clearing all hypothesis data`);
     this.currentHypothesis = null;
+    this.currentHypothesisUrl = null;
     this.hypothesisHistory = [];
   }
 

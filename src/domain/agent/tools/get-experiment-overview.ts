@@ -33,6 +33,7 @@ class GetExperimentOverviewExecutor {
           hypothesis: true,
           traffic: true,
           variants: true,
+          goals: true,
         },
       });
 
@@ -57,6 +58,10 @@ class GetExperimentOverviewExecutor {
         `${t.variantId}: ${Math.round(t.percentage * 100)}%`
       ).join(', ');
 
+      const goalsSummary = experiment.goals && experiment.goals.length > 0
+        ? experiment.goals.map(g => `- ${g.name} (${g.role})`).join('\n')
+        : 'No goals defined yet';
+
       const summary = `**Experiment Overview: ${experiment.name}**
 
 **Status:** ${experiment.status}
@@ -70,6 +75,9 @@ ${experiment.hypothesis?.rationale || 'No rationale available'}
 
 **Success Metrics:**
 ${experiment.hypothesis?.primaryKpi || 'No metrics defined'}
+
+**Signals/Goals (${experiment.goals?.length || 0}):**
+${goalsSummary}
 
 **Variants (${experiment.variants.length}):**
 ${variantSummary}
@@ -85,6 +93,7 @@ This experiment is ready to be published. Once published, it will be live and th
         hypothesis: experiment.hypothesis,
         variants: experiment.variants,
         traffic: experiment.traffic,
+        goals: experiment.goals,
         summary
       };
     } catch (error) {

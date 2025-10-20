@@ -166,7 +166,6 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             customJs: z.string().optional(),
             value: z.number().optional(),
             valueSelector: z.string().optional(),
-            itemCountSelector: z.string().optional(),
             currency: z.string().optional(),
             targetUrls: z.array(z.string()).optional(),
             targeting: domTargetingSchema.optional()
@@ -295,10 +294,8 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                             customJs: goal.customJs || null,
                             value: goal.value || null,
                             valueSelector: goal.valueSelector || null,
-                            itemCountSelector: goal.itemCountSelector || null,
                             currency: goal.currency || null,
-                            targetUrls: goal.targetUrls || [],
-                            targeting: goal.targeting ? JSON.parse(JSON.stringify(goal.targeting)) : null
+                            targetUrls: goal.targetUrls || []
                         }
                     });
                     fastify.log.info({ createdGoal }, '[Backend] Goal created successfully');

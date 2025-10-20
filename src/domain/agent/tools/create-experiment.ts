@@ -12,6 +12,9 @@ import { getServiceConfig } from '@infra/config/services';
 import { findConflicts, ConflictError } from '@features/conflict_guard';
 import { getConversationHistory } from '../request-context';
 import { normalizeUrlToPattern } from '@shared/normalization/url';
+import { createSignalGenerationOrchestrator } from '@features/signal_generation';
+import { detectPageType } from '@shared/page-types';
+import { signalStateManager } from '../signal-state-manager';
 
 const createExperimentSchema = z.object({
   name: z.string().describe('A clear, descriptive name for the experiment that captures the essence of what is being tested (e.g., "Homepage Hero CTA Color Test", "PDP Add-to-Cart Button Size Optimization"). Generate this based on the hypothesis and variants.'),
@@ -66,24 +69,35 @@ async function extractURLPatternsFromScreenshots(projectId: string, _variants: a
       return latestHypothesis.experiment.targetUrls;
     }
 
-    // Fallback: Get the most recent screenshot URL (same logic as variant generation)
-    const latestScreenshot = await prisma.screenshot.findFirst({
-      where: { projectId },
-      select: { url: true },
-      orderBy: { createdAt: 'desc' }
+                  // Use the URL that was actually used for hypothesis generation
+    // This ensures perfect consistency between hypothesis and experiment
+    const { hypothesisStateManager } = await import('../hypothesis-state-manager');
+    const hypothesisUrl = hypothesisStateManager.getCurrentHypothesisUrl();
+    
+    if (hypothesisUrl) {
+      console.log(`[EXPERIMENT_TOOL] Using URL from hypothesis generation: ${hypothesisUrl}`);
+      const pattern = normalizeUrlToPattern(hypothesisUrl);
+      console.log(`[EXPERIMENT_TOOL] Generated pattern: ${pattern}`);
+      return [pattern];
+    }
+    
+    // Fallback: Use the same logic as hypothesis generation
+    console.log(`[EXPERIMENT_TOOL] No hypothesis URL found, using shop domain fallback`);
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { shopDomain: true }
     });
-
-    if (!latestScreenshot?.url) {
-      console.log(`[EXPERIMENT_TOOL] No screenshots found, using fallback pattern`);
+    
+    if (!project) {
+      console.log(`[EXPERIMENT_TOOL] Project not found, using fallback pattern`);
       return ['/*'];
     }
-
-    console.log(`[EXPERIMENT_TOOL] Using URL from most recent screenshot: ${latestScreenshot.url}`);
-
-    // Generate pattern from the specific URL used
-    const pattern = normalizeUrlToPattern(latestScreenshot.url);
-    console.log(`[EXPERIMENT_TOOL] Generated pattern: ${pattern}`);
     
+    const url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
+    console.log(`[EXPERIMENT_TOOL] Using shop domain URL: ${url}`);
+    
+    const pattern = normalizeUrlToPattern(url);
+    console.log(`[EXPERIMENT_TOOL] Generated pattern: ${pattern}`);
     return [pattern];
 
   } catch (error) {
@@ -326,7 +340,152 @@ class CreateExperimentExecutor {
       // Store experiment in state manager for future reference
       experimentStateManager.setCurrentExperiment(experiment);
 
-      // Automatically publish the experiment after creation
+        // ===== PERSIST SIGNALS (GOALS) =====
+      console.log(`[EXPERIMENT_TOOL] Persisting signals for experiment...`);
+      const signalService = createSignalGenerationOrchestrator();
+      let signalsGenerated = false;
+      let signalError: string | undefined;
+
+      try {
+        // Check if we have a cached proposal from preview
+        const cachedProposal = signalStateManager.getCurrentProposal();
+        
+        if (cachedProposal) {
+          console.log(`[EXPERIMENT_TOOL] ✅ Using cached signal proposal from preview (skipping LLM call)`);
+          
+          // Just validate and persist the cached proposal - NO LLM CALL
+            // Get screenshot for the correct page type based on experiment target URLs
+            const targetUrlPattern = experiment.targetUrls?.[0] || '/';
+            // Convert URL pattern to page type
+            const targetPageType = targetUrlPattern.includes('/products/') ? 'pdp' : 
+                                  targetUrlPattern === '/' || targetUrlPattern === '/*' ? 'home' : 
+                                  targetUrlPattern.includes('/collections/') ? 'collection' : 'other';
+            
+            console.log(`[EXPERIMENT_TOOL] Target URL pattern: ${targetUrlPattern} -> Page type: ${targetPageType}`);
+            
+            const screenshot = await prisma.screenshot.findFirst({
+              where: { 
+                projectId,
+                pageType: targetPageType
+              },
+              select: { url: true, htmlContent: true },
+              orderBy: { createdAt: 'desc' }
+            });
+
+            if (screenshot?.htmlContent) {
+              const pageType = detectPageType(screenshot.url);
+              console.log(`[EXPERIMENT_TOOL] Validating cached signals for page type: ${pageType}`);
+            
+            // Validate the cached proposal
+            const validationResult = await signalService.validator.validateProposal(cachedProposal, {
+              pageType,
+              controlDOM: screenshot.htmlContent,
+              purchaseTrackingActive: true,
+            });
+
+            if (validationResult.valid && validationResult.primary?.valid) {
+              // Persist valid signals from cached proposal
+              const signalsToCreate = [];
+              if (validationResult.primary?.valid) {
+                signalsToCreate.push({ ...validationResult.primary.signal, role: 'primary' });
+              }
+              validationResult.mechanisms.forEach(m => {
+                if (m.valid) signalsToCreate.push(m.signal);
+              });
+              validationResult.guardrails.forEach(g => {
+                if (g.valid) signalsToCreate.push(g.signal);
+              });
+
+              const { SignalDAL } = await import('@infra/dal/signal');
+              await SignalDAL.createSignals(
+                signalsToCreate.map(signal => SignalDAL.fromSignal(signal, experiment.id))
+              );
+
+              signalsGenerated = true;
+              console.log(`[EXPERIMENT_TOOL] ✅ Persisted ${signalsToCreate.length} cached signals`);
+            } else {
+              // Log detailed validation errors
+              console.error(`[EXPERIMENT_TOOL] ❌ Cached proposal validation failed`);
+              if (validationResult.primary?.errors?.length > 0) {
+                console.error(`[EXPERIMENT_TOOL] Primary errors:`, validationResult.primary.errors);
+              }
+              if (validationResult.overallErrors?.length > 0) {
+                console.error(`[EXPERIMENT_TOOL] Overall errors:`, validationResult.overallErrors);
+              }
+              signalError = `Validation failed: ${validationResult.primary?.errors?.join('; ') || 'Unknown error'}`;
+            }
+            
+            // Clear cached proposal after use
+            signalStateManager.clearCurrentProposal();
+          }
+        } else {
+          // Fallback: generate fresh if no cached proposal
+          console.log(`[EXPERIMENT_TOOL] No cached proposal, generating signals...`);
+          
+          // Get screenshot for the correct page type based on experiment target URLs
+          const targetUrlPattern = experiment.targetUrls?.[0] || '/';
+          // Convert URL pattern to page type
+          const targetPageType = targetUrlPattern.includes('/products/') ? 'pdp' : 
+                                targetUrlPattern === '/' || targetUrlPattern === '/*' ? 'home' : 
+                                targetUrlPattern.includes('/collections/') ? 'collection' : 'other';
+          
+          console.log(`[EXPERIMENT_TOOL] Target URL pattern: ${targetUrlPattern} -> Page type: ${targetPageType}`);
+          const screenshot = await prisma.screenshot.findFirst({
+            where: { 
+              projectId,
+              pageType: targetPageType
+            },
+            select: { url: true, htmlContent: true },
+            orderBy: { createdAt: 'desc' }
+          });
+
+          if (screenshot?.url && screenshot.htmlContent) {
+            const variantsForValidation = variants.map(v => ({
+              selector: v.target_selector || 'body',
+              html: v.html_code || '',
+              css: v.css_code,
+              js: v.javascript_code,
+              position: 'INNER',
+            }));
+
+            const signalIntent = `${hypothesis.description}. Primary goal: ${hypothesis.primary_outcome}`;
+            
+            const result = await signalService.tryAutoGenerateForAllVariants(
+              experiment.id,
+              screenshot.url,
+              signalIntent,
+              screenshot.htmlContent,
+              variantsForValidation,
+              true
+            );
+
+            signalsGenerated = result.success;
+            signalError = result.error;
+          } else {
+            signalError = 'No screenshot data available';
+          }
+        }
+
+        if (signalsGenerated) {
+          console.log(`[EXPERIMENT_TOOL] ✅ Signals persisted successfully`);
+        } else {
+          console.log(`[EXPERIMENT_TOOL] ⚠️ Signal persistence failed: ${signalError}`);
+        }
+      } catch (err) {
+        console.error(`[EXPERIMENT_TOOL] Signal persistence error:`, err);
+        signalError = err instanceof Error ? err.message : 'Unknown error';
+      }
+
+      // Automatically publish the experiment after creation (only if signals were successfully generated)
+      if (!signalsGenerated) {
+        console.log(`[EXPERIMENT_TOOL] ⚠️ Skipping auto-publish because signal generation failed`);
+        return {
+          experimentId: experiment.id,
+          status: 'DRAFT',
+          message: `Experiment "${experimentName}" has been created but cannot be published yet. Signal auto-generation failed: ${signalError}. Please add signals manually before publishing.`
+        };
+      }
+
       console.log(`[EXPERIMENT_TOOL] Auto-publishing experiment: ${experiment.id}`);
       try {
         const config = getServiceConfig();
@@ -336,18 +495,18 @@ class CreateExperimentExecutor {
         const publishResult = await experimentPublisher.publishExperiment(experiment.id);
 
         if (publishResult.success) {
-          console.log(`[EXPERIMENT_TOOL] Experiment published successfully`);
+          console.log(`[EXPERIMENT_TOOL] Experiment published successfully with auto-generated signals`);
           return {
             experimentId: experiment.id,
             status: 'RUNNING',
-            message: `Experiment "${experimentName}" has been created and published to Cloudflare! It's now live and the SDK can load the variants for testing.`
+            message: `Experiment "${experimentName}" has been created with auto-generated signals and published to Cloudflare! It's now live and tracking user interactions.`
           };
         } else {
           console.error(`[EXPERIMENT_TOOL] Failed to publish:`, publishResult.error);
           return {
             experimentId: experiment.id,
             status: 'DRAFT',
-            message: `Experiment "${experimentName}" has been created but failed to publish to Cloudflare: ${publishResult.error}. The experiment remains in DRAFT status.`
+            message: `Experiment "${experimentName}" has been created with signals but failed to publish to Cloudflare: ${publishResult.error}. The experiment remains in DRAFT status.`
           };
         }
       } catch (publishError) {
@@ -355,7 +514,7 @@ class CreateExperimentExecutor {
         return {
           experimentId: experiment.id,
           status: 'DRAFT',
-          message: `Experiment "${experimentName}" has been created but failed to publish: ${publishError instanceof Error ? publishError.message : 'Unknown error'}. The experiment remains in DRAFT status.`
+          message: `Experiment "${experimentName}" has been created with signals but failed to publish: ${publishError instanceof Error ? publishError.message : 'Unknown error'}. The experiment remains in DRAFT status.`
         };
       }
     } catch (error) {
@@ -382,3 +541,4 @@ export function createExperiment(projectId: string) {
     },
   });
 }
+  

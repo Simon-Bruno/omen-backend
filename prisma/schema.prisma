@@ -157,23 +157,26 @@ model ExperimentVariant {
 }
 
 model ExperimentGoal {
-  id                String     @id @default(cuid())
-  experimentId      String
-  name              String
-  type              String
-  selector          String?
-  eventType         String?
-  customJs          String?
-  value             Float?
-  valueSelector     String?
-  itemCountSelector String?
-  currency          String?
-  createdAt         DateTime   @default(now())
-  targetUrls        String[]
-  targeting         Json?
-  experiment        Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  id              String     @id @default(cuid())
+  experimentId    String
+  name            String
+  type            String     // conversion | purchase | custom
+  role            String     @default("primary") // primary | mechanism | guardrail
+  selector        String?
+  eventType       String?
+  customJs        String?
+  value           Float?
+  valueSelector   String?
+  currency        String?
+  createdAt       DateTime   @default(now())
+  targetUrls      Json?      // Array of regex patterns for URL transitions
+  dataLayerEvent  String?    // Analytics event name if applicable
+  existsInControl Boolean    @default(true)
+  existsInVariant Boolean    @default(true)
+  experiment      Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
   @@index([experimentId])
+  @@index([experimentId, role])
   @@map("experiment_goals")
 }
 

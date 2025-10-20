@@ -9,11 +9,16 @@ export interface CloudflareConfig {
 
 export interface PublishedGoal {
   name: string;
-  type: 'conversion' | 'custom';
+  type: 'conversion' | 'purchase' | 'custom';
+  role: 'primary' | 'mechanism' | 'guardrail';
   selector?: string | null;
   eventType?: string | null;
   customJs?: string | null;
   value?: number | null;
+  targetUrls?: string[] | null;
+  dataLayerEvent?: string | null;
+  valueSelector?: string | null;
+  currency?: string | null;
 }
 
 export interface PublishedExperiment {
