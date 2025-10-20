@@ -7,4 +7,4 @@ export type {
   BrandIntelligenceData
 } from './types';
 export { brandIntelligenceSchema, synthesisSchema } from './types';
-export type { PageType } from './prompts';
+export type { PageType } from '@shared/page-types';

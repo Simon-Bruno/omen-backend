@@ -99,7 +99,6 @@ PDP-SPECIFIC CONSIDERATIONS:
 - Ensure variants work with product variant selectors (size, color)`;
 
     case PageType.COLLECTION:
-    case PageType.CATEGORY:
       return `
 COLLECTION-SPECIFIC CONSIDERATIONS:
 - Apply changes consistently across all product cards

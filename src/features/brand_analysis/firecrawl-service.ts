@@ -1,5 +1,6 @@
 import Firecrawl from '@mendable/firecrawl-js';
-import { getPageSpecificPrompt, type PageType } from './prompts';
+import { getPageSpecificPrompt } from './prompts';
+import type { PageType } from '@shared/page-types';
 import { brandIntelligenceSchema, type BrandIntelligenceData } from './types';
 import { z } from 'zod';
 

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { shopifyConfig } from './external/shopify/config';
+import { encryptionKey } from './external/shopify/config';
 
 /**
  * Encryption utilities for sensitive data like Shopify access tokens
@@ -18,7 +18,7 @@ export function encrypt(text: string): string {
   const salt = crypto.randomBytes(SALT_LENGTH);
   
   // Derive key from password and salt
-  const key = crypto.pbkdf2Sync(shopifyConfig.encryptionKey, salt, 100000, 32, 'sha512');
+  const key = crypto.pbkdf2Sync(encryptionKey, salt, 100000, 32, 'sha512');
   
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
   cipher.setAAD(salt);
@@ -47,7 +47,7 @@ export function decrypt(encryptedData: string): string {
   const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
   
   // Derive key from password and salt
-  const key = crypto.pbkdf2Sync(shopifyConfig.encryptionKey, salt, 100000, 32, 'sha512');
+  const key = crypto.pbkdf2Sync(encryptionKey, salt, 100000, 32, 'sha512');
   
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAAD(salt);
