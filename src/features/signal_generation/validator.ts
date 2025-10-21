@@ -111,14 +111,14 @@ export class SignalValidator {
       warnings: [],
     };
 
-    // Check if signal is valid for page type
-    if (!isValidSignalForPageType(signal.name, context.pageType, signal.role)) {
+    // Get signal definition from catalog (null for custom signals)
+    const catalogSignal = getSignalDefinition(signal.name, context.pageType);
+    
+    // Check if signal is valid for page type (only for catalog signals)
+    if (catalogSignal && !isValidSignalForPageType(signal.name, context.pageType, signal.role)) {
       result.errors.push(`Signal ${signal.name} is not valid for page type ${context.pageType} with role ${signal.role}`);
       result.valid = false;
     }
-
-    // Get signal definition from catalog
-    const catalogSignal = getSignalDefinition(signal.name, context.pageType);
     
     // Validate based on signal type
     if (signal.type === 'purchase') {
