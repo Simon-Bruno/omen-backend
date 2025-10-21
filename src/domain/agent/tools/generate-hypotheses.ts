@@ -73,28 +73,18 @@ class GenerateHypothesesExecutor {
     }
 
     async execute(input: { projectId?: string; url?: string; userInput?: string; pageType?: string }): Promise<HypothesesGenerationResult> {
-        // Get the project's URL if not provided
+        // Use provided URL or fallback to homepage
         let url = input.url;
         if (!url) {
-            // Check if user specified a page type
-            if (input.pageType) {
-                url = await this.getUrlForPageType(input.pageType);
-                if (!url) {
-                    console.log(`[HYPOTHESES_TOOL] No ${input.pageType} URL found, falling back to homepage`);
-                }
+            const project = await prisma.project.findUnique({
+                where: { id: this.projectId },
+                select: { shopDomain: true }
+            });
+            if (!project) {
+                throw new Error(`Project ${this.projectId} not found`);
             }
-            
-            // Fallback to homepage if no URL found
-            if (!url) {
-                const project = await prisma.project.findUnique({
-                    where: { id: this.projectId },
-                    select: { shopDomain: true }
-                });
-                if (!project) {
-                    throw new Error(`Project ${this.projectId} not found`);
-                }
-                url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
-            }
+            url = project.shopDomain.startsWith('http') ? project.shopDomain : `https://${project.shopDomain}`;
+            console.log(`[HYPOTHESES_TOOL] No URL provided, using homepage: ${url}`);
         }
         console.log(`[HYPOTHESES_TOOL] Generating hypotheses for ${url} with project ${this.projectId}`);
 
@@ -129,7 +119,13 @@ class GenerateHypothesesExecutor {
             console.log(`[HYPOTHESES_TOOL] No hypotheses to store`);
         }
         
-        return result;
+        // Include URL in the result for conversation history fallback
+        const resultWithUrl = {
+            ...result,
+            hypothesisUrl: url
+        };
+        
+        return resultWithUrl;
     }
 }
 

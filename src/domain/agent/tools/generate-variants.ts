@@ -80,7 +80,7 @@ class GenerateVariantsExecutor {
         console.log(`[VARIANTS_TOOL] Conversation history available: ${conversationHistory ? `${conversationHistory.length} messages` : 'NO'}`);
 
         // Get hypothesis from state manager (with conversation history fallback) or input
-        let hypothesis = hypothesisStateManager.getCurrentHypothesis(conversationHistory);
+        let hypothesis = await hypothesisStateManager.getCurrentHypothesis(conversationHistory);
 
         if (hypothesis) {
             console.log(`[VARIANTS_TOOL] Using hypothesis: "${hypothesis.title}"`);

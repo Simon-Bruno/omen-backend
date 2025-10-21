@@ -26,7 +26,7 @@ class HypothesisStateManager {
    * Get the current hypothesis (for generate_variants and create_experiment tools)
    * Now supports extracting from conversation history as a fallback
    */
-  getCurrentHypothesis(conversationHistory?: ConversationMessage[]): Hypothesis | null {
+  async getCurrentHypothesis(conversationHistory?: ConversationMessage[]): Promise<Hypothesis | null> {
     // First try in-memory state (fast path for same-request calls)
     if (this.currentHypothesis) {
       console.log(`[STATE_MANAGER] Getting current hypothesis from memory: FOUND`);
@@ -36,7 +36,7 @@ class HypothesisStateManager {
     // Fallback to conversation history (for cross-request state)
     if (conversationHistory) {
       console.log(`[STATE_MANAGER] Memory empty, checking conversation history...`);
-      const hypothesis = extractHypothesisFromHistory(conversationHistory);
+      const hypothesis = await extractHypothesisFromHistory(conversationHistory);
       if (hypothesis) {
         console.log(`[STATE_MANAGER] Found hypothesis in conversation history: "${hypothesis.title}"`);
         // Cache it in memory for performance

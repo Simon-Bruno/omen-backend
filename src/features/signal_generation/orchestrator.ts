@@ -244,6 +244,8 @@ export class SignalGenerationOrchestrator {
       css?: string;
       js?: string;
       position: string;
+      description?: string;
+      rationale?: string;
     }>,
     _purchaseTrackingActive: boolean = true
   ): Promise<SignalGenerationResult> {
@@ -404,6 +406,8 @@ export class SignalGenerationOrchestrator {
     css?: string;
     js?: string;
     position: string;
+    description?: string;
+    rationale?: string;
   }) {
     return {
       changeType: this.mapPositionToChangeType(variant.position),
@@ -411,6 +415,8 @@ export class SignalGenerationOrchestrator {
       html: variant.html,
       css: variant.css,
       javascript_code: variant.js,
+      description: variant.description,
+      rationale: variant.rationale,
     };
   }
 }
@@ -421,4 +427,3 @@ export class SignalGenerationOrchestrator {
 export function createSignalGenerationOrchestrator(): SignalGenerationOrchestrator {
   return new SignalGenerationOrchestrator();
 }
-

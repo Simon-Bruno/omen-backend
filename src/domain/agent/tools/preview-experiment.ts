@@ -46,7 +46,7 @@ class PreviewExperimentExecutor {
     
     try {
       // Get hypothesis from state manager
-      const hypothesis = hypothesisStateManager.getCurrentHypothesis();
+      const hypothesis = await hypothesisStateManager.getCurrentHypothesis();
       if (!hypothesis) {
         throw new Error('No hypothesis available in state. Please generate hypotheses first.');
       }
@@ -68,13 +68,20 @@ class PreviewExperimentExecutor {
       console.log(`[PREVIEW_EXPERIMENT] Generating signal proposals...`);
       let signalProposals = [];
       try {
+        // Use hypothesis URL to get the correct screenshot
+        const hypothesisUrl = hypothesisStateManager.getCurrentHypothesisUrl();
+        console.log(`[PREVIEW_EXPERIMENT] Looking for screenshot matching hypothesis URL: ${hypothesisUrl}`);
+        
         const screenshot = await prisma.screenshot.findFirst({
-          where: { projectId },
+          where: { 
+            projectId,
+            url: hypothesisUrl
+          },
           select: { url: true, htmlContent: true },
           orderBy: { createdAt: 'desc' }
         });
 
-        if (screenshot?.url && screenshot.htmlContent && variants.length > 0) {
+        if (hypothesisUrl && screenshot?.url && screenshot.htmlContent && variants.length > 0) {
           const signalService = createSignalGenerationOrchestrator();
           const pageType = detectPageType(screenshot.url);
           const signalIntent = `${hypothesis.description}. Primary goal: ${hypothesis.primary_outcome}`;
