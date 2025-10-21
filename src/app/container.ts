@@ -79,6 +79,9 @@ class ServiceContainer {
     if (!this.services.has('analytics')) {
       const useSupabase = process.env.USE_SUPABASE_ANALYTICS === 'true';
       
+      console.log(`[CONTAINER] USE_SUPABASE_ANALYTICS env var: "${process.env.USE_SUPABASE_ANALYTICS}"`);
+      console.log(`[CONTAINER] useSupabase boolean: ${useSupabase}`);
+      
       if (useSupabase) {
         const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
