@@ -77,7 +77,7 @@ class ServiceContainer {
 
   getAnalyticsService(): AnalyticsService {
     if (!this.services.has('analytics')) {
-      const useSupabase = process.env.USE_SUPABASE_ANALYTICS === 'true';
+      const useSupabase = process.env.USE_SUPABASE_ANALYTICS?.replace(/['"]/g, '') === 'true';
       
       console.log(`[CONTAINER] USE_SUPABASE_ANALYTICS env var: "${process.env.USE_SUPABASE_ANALYTICS}"`);
       console.log(`[CONTAINER] useSupabase boolean: ${useSupabase}`);
