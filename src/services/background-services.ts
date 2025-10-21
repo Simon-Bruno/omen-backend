@@ -13,10 +13,17 @@ export class BackgroundServicesManager {
     console.log('Starting background services...');
 
     try {
-      // Start SQS Consumer
-      const sqsConsumer = serviceContainer.getSQSConsumerService();
-      await sqsConsumer.start();
-      this.services.set('sqsConsumer', sqsConsumer);
+      // Only start SQS Consumer if using Prisma (not Supabase)
+      const useSupabase = process.env.USE_SUPABASE_ANALYTICS?.replace(/['"]/g, '') === 'true';
+      
+      if (!useSupabase) {
+        console.log('Starting SQS Consumer (Prisma mode)...');
+        const sqsConsumer = serviceContainer.getSQSConsumerService();
+        await sqsConsumer.start();
+        this.services.set('sqsConsumer', sqsConsumer);
+      } else {
+        console.log('Skipping SQS Consumer (Supabase mode - events written directly from client)');
+      }
 
       this.isRunning = true;
       console.log('Background services started successfully');
