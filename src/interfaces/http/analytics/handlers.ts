@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AnalyticsService } from '@services/analytics';
+import { getShopifyAnalyticsMetrics } from '@services/shopify-analytics';
 
 export function getExposureStatsHandler(analyticsService: AnalyticsService) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
@@ -342,6 +343,42 @@ export function resetExperimentEventsHandler(analyticsService: AnalyticsService)
     } catch (error) {
       request.log.error(error, 'Failed to reset experiment events');
       return reply.status(500).send({ error: 'Failed to reset experiment events' });
+    }
+  };
+}
+
+export function getShopifyStoreAnalyticsHandler() {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const projectId = request.projectId;
+
+    if (!projectId) {
+      return reply.status(400).send({
+        error: 'Project ID is required',
+        message: 'User must have a project associated with their account to fetch Shopify analytics'
+      });
+    }
+
+    try {
+      const metrics = await getShopifyAnalyticsMetrics(projectId);
+      return reply.send(metrics);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to fetch Shopify analytics metrics');
+
+      if (error instanceof Error) {
+        if (error.message === 'Project not found') {
+          return reply.status(404).send({ error: 'Project not found' });
+        }
+
+        if (
+          error.message === 'Project is not connected to Shopify' ||
+          error.message === 'Project is missing Shopify access token' ||
+          error.message === 'Project is missing Shopify shop domain'
+        ) {
+          return reply.status(400).send({ error: error.message });
+        }
+      }
+
+      return reply.status(500).send({ error: 'Failed to fetch Shopify analytics metrics' });
     }
   };
 }
