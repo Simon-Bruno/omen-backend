@@ -123,14 +123,10 @@ export class VariantJobProcessor {
                 throw new Error(`Project not found: ${projectId}`);
             }
 
-            // Use the same URL selection logic as hypothesis generation
-            // Try to find a PDP URL first, fallback to homepage
-            let url = await this.getUrlForPageType(projectId, 'pdp');
-            if (!url) {
-                url = project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
-                    ? project.shopDomain
-                    : `https://${project.shopDomain}`;
-            }
+            // Use the hypothesis URL as the primary source, fallback to project domain
+            let url = hypothesis.url || (project.shopDomain.startsWith('http://') || project.shopDomain.startsWith('https://')
+                ? project.shopDomain
+                : `https://${project.shopDomain}`);
 
             console.log(`[VARIANT_JOB] Using URL: ${url}`);
 

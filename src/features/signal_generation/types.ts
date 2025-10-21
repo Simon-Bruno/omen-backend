@@ -43,6 +43,8 @@ export interface VariantDefinition {
   html?: string;
   css?: string;
   javascript_code?: string;
+  description?: string;
+  rationale?: string;
 }
 
 // LLM output schema
@@ -123,4 +125,3 @@ export interface PublishedGoal {
   valueSelector?: string;
   currency?: string;
 }
-

@@ -28,7 +28,7 @@ export interface ConversationMessage {
 /**
  * Extract the most recent hypothesis from conversation history
  */
-export function extractHypothesisFromHistory(conversationHistory?: ConversationMessage[]): Hypothesis | null {
+export async function extractHypothesisFromHistory(conversationHistory?: ConversationMessage[]): Promise<Hypothesis | null> {
   if (!conversationHistory) {
     console.log('[CONVERSATION_STATE] No conversation history provided');
     return null;
@@ -46,7 +46,14 @@ export function extractHypothesisFromHistory(conversationHistory?: ConversationM
           // Check if this is a hypothesis generation result
           if (content.hypotheses && Array.isArray(content.hypotheses) && content.hypotheses.length > 0) {
             console.log('[CONVERSATION_STATE] Found hypothesis in conversation history');
-            return content.hypotheses[0];
+            const hypothesis = content.hypotheses[0];
+            // Store the URL in state manager if available
+            if (content.hypothesisUrl) {
+              console.log(`[CONVERSATION_STATE] Found hypothesis URL in conversation history: ${content.hypothesisUrl}`);
+              const { hypothesisStateManager } = await import('./hypothesis-state-manager');
+              hypothesisStateManager.setCurrentHypothesis(hypothesis, content.hypothesisUrl);
+            }
+            return hypothesis;
           }
           
           // Also check for hypothesesSchema format

@@ -129,7 +129,7 @@ class CreateExperimentExecutor {
     console.log(`[EXPERIMENT_TOOL] Conversation history available: ${conversationHistory ? `${conversationHistory.length} messages` : 'NO'}`);
 
     // Get hypothesis from state manager (with conversation history fallback) or input
-    let hypothesis = hypothesisStateManager.getCurrentHypothesis(conversationHistory);
+    let hypothesis = await hypothesisStateManager.getCurrentHypothesis(conversationHistory);
 
     if (hypothesis) {
       console.log(`[EXPERIMENT_TOOL] Using hypothesis: "${hypothesis.title}"`);
@@ -354,25 +354,20 @@ class CreateExperimentExecutor {
           console.log(`[EXPERIMENT_TOOL] ✅ Using cached signal proposal from preview (skipping LLM call)`);
           
           // Just validate and persist the cached proposal - NO LLM CALL
-            // Get screenshot for the correct page type based on experiment target URLs
-            const targetUrlPattern = experiment.targetUrls?.[0] || '/';
-            // Convert URL pattern to page type
-            const targetPageType = targetUrlPattern.includes('/products/') ? 'pdp' : 
-                                  targetUrlPattern === '/' || targetUrlPattern === '/*' ? 'home' : 
-                                  targetUrlPattern.includes('/collections/') ? 'collection' : 'other';
-            
-            console.log(`[EXPERIMENT_TOOL] Target URL pattern: ${targetUrlPattern} -> Page type: ${targetPageType}`);
+            // Use hypothesis URL to get the correct screenshot
+            const hypothesisUrl = hypothesisStateManager.getCurrentHypothesisUrl();
+            console.log(`[EXPERIMENT_TOOL] Looking for screenshot matching hypothesis URL: ${hypothesisUrl}`);
             
             const screenshot = await prisma.screenshot.findFirst({
               where: { 
                 projectId,
-                pageType: targetPageType
+                url: hypothesisUrl
               },
               select: { url: true, htmlContent: true },
               orderBy: { createdAt: 'desc' }
             });
 
-            if (screenshot?.htmlContent) {
+            if (hypothesisUrl && screenshot?.htmlContent) {
               const pageType = detectPageType(screenshot.url);
               console.log(`[EXPERIMENT_TOOL] Validating cached signals for page type: ${pageType}`);
             
@@ -422,29 +417,27 @@ class CreateExperimentExecutor {
           // Fallback: generate fresh if no cached proposal
           console.log(`[EXPERIMENT_TOOL] No cached proposal, generating signals...`);
           
-          // Get screenshot for the correct page type based on experiment target URLs
-          const targetUrlPattern = experiment.targetUrls?.[0] || '/';
-          // Convert URL pattern to page type
-          const targetPageType = targetUrlPattern.includes('/products/') ? 'pdp' : 
-                                targetUrlPattern === '/' || targetUrlPattern === '/*' ? 'home' : 
-                                targetUrlPattern.includes('/collections/') ? 'collection' : 'other';
+          // Use hypothesis URL to get the correct screenshot
+          const hypothesisUrl = hypothesisStateManager.getCurrentHypothesisUrl();
+          console.log(`[EXPERIMENT_TOOL] Looking for screenshot matching hypothesis URL: ${hypothesisUrl}`);
           
-          console.log(`[EXPERIMENT_TOOL] Target URL pattern: ${targetUrlPattern} -> Page type: ${targetPageType}`);
           const screenshot = await prisma.screenshot.findFirst({
             where: { 
               projectId,
-              pageType: targetPageType
+              url: hypothesisUrl
             },
             select: { url: true, htmlContent: true },
             orderBy: { createdAt: 'desc' }
           });
 
-          if (screenshot?.url && screenshot.htmlContent) {
+          if (hypothesisUrl && screenshot?.url && screenshot.htmlContent) {
             const variantsForValidation = variants.map(v => ({
               selector: v.target_selector || 'body',
               html: v.html_code || '',
               css: v.css_code,
               js: v.javascript_code,
+              description: v.description,
+              rationale: v.rationale,
               position: 'INNER',
             }));
 
