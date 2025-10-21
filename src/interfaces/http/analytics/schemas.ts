@@ -314,3 +314,40 @@ export const resetExperimentEventsSchema: FastifySchema = {
     }
   }
 };
+
+export const getShopifyStoreAnalyticsSchema: FastifySchema = {
+  response: {
+    200: {
+      type: 'object',
+      required: ['visitorsLast30Days', 'purchaseRate', 'revenuePerSession', 'totals', 'raw'],
+      properties: {
+        visitorsLast30Days: { type: 'number' },
+        purchaseRate: { type: 'number' },
+        revenuePerSession: { type: 'number' },
+        totals: {
+          type: 'object',
+          required: ['sessions', 'orders', 'sales'],
+          properties: {
+            sessions: { type: 'number' },
+            orders: { type: 'number' },
+            sales: { type: 'number' }
+          }
+        },
+        raw: {
+          type: 'object',
+          required: ['sessions', 'sales'],
+          properties: {
+            sessions: {
+              type: 'object',
+              additionalProperties: { type: 'number' }
+            },
+            sales: {
+              type: 'object',
+              additionalProperties: { type: 'number' }
+            }
+          }
+        }
+      }
+    }
+  }
+};

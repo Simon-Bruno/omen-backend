@@ -11,7 +11,8 @@ import {
   getConversionRatesHandler,
   getPurchaseStatsHandler,
   getExperimentSessionsHandler,
-  resetExperimentEventsHandler
+  resetExperimentEventsHandler,
+  getShopifyStoreAnalyticsHandler
 } from './handlers';
 import {
   getExposureStatsSchema,
@@ -22,7 +23,8 @@ import {
   getConversionRatesSchema,
   getPurchaseStatsSchema,
   getExperimentSessionsSchema,
-  resetExperimentEventsSchema
+  resetExperimentEventsSchema,
+  getShopifyStoreAnalyticsSchema
 } from './schemas';
 
 export async function analyticsRoutes(fastify: FastifyInstance) {
@@ -92,5 +94,11 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
     schema: resetExperimentEventsSchema,
     preHandler: [betterAuthMiddleware, requireProject],
     handler: resetExperimentEventsHandler(analyticsService)
+  });
+
+  fastify.get('/shopify/metrics', {
+    schema: getShopifyStoreAnalyticsSchema,
+    preHandler: [betterAuthMiddleware, requireProject],
+    handler: getShopifyStoreAnalyticsHandler()
   });
 }
