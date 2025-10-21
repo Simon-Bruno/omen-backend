@@ -161,7 +161,6 @@ model ExperimentGoal {
   experimentId    String
   name            String
   type            String     // conversion | purchase | custom
-  role            String     @default("primary") // primary | mechanism | guardrail
   selector        String?
   eventType       String?
   customJs        String?
@@ -176,7 +175,6 @@ model ExperimentGoal {
   experiment      Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
   @@index([experimentId])
-  @@index([experimentId, role])
   @@map("experiment_goals")
 }
 
