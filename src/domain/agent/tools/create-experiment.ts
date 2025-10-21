@@ -141,7 +141,31 @@ class CreateExperimentExecutor {
       throw new Error('No hypothesis available. Please generate hypotheses first using the generate_hypotheses tool.');
     }
 
-    // Get variants from state manager (preferred) or input
+    // CRITICAL FIX: Load variants from jobs first (same as preview does in checkVariantsStatus)
+    console.log(`[EXPERIMENT_TOOL] Loading variants from jobs (same as preview)...`);
+    try {
+      // Priority 1: Use jobIds from input (most explicit)
+      if (input.jobIds && input.jobIds.length > 0) {
+        console.log(`[EXPERIMENT_TOOL] Loading variants from input job IDs:`, input.jobIds);
+        await variantStateManager.loadVariantsFromJobIds(input.jobIds);
+      }
+      // Priority 2: Use jobIds from state manager (with conversation history fallback)
+      else {
+        const currentJobIds = variantStateManager.getCurrentJobIds(conversationHistory);
+        if (currentJobIds && currentJobIds.length > 0) {
+          console.log(`[EXPERIMENT_TOOL] Loading variants from job IDs (state manager or conversation history):`, currentJobIds);
+          await variantStateManager.loadVariantsFromJobIds(currentJobIds);
+        } else {
+          console.log(`[EXPERIMENT_TOOL] No specific job IDs found, falling back to all project jobs`);
+          await variantStateManager.loadVariantsFromJobs(this.projectId);
+        }
+      }
+    } catch (loadError) {
+      console.error(`[EXPERIMENT_TOOL] Failed to load variants from jobs:`, loadError);
+      // Continue - we'll check if variants are available below
+    }
+
+    // Now get variants from state manager (after loading)
     let variants = variantStateManager.getCurrentVariants();
 
     console.log(`[EXPERIMENT_TOOL] State manager variants:`, variants ? `${variants.length} variants` : 'null');
@@ -155,44 +179,8 @@ class CreateExperimentExecutor {
       console.log(`[EXPERIMENT_TOOL] Input variant labels:`, input.variants.map(v => v.variant_label || 'unnamed'));
       variants = input.variants;
     } else {
-      console.log(`[EXPERIMENT_TOOL] No variants available in state or input`);
-      console.log(`[EXPERIMENT_TOOL] State manager has variants:`, variantStateManager.hasCurrentVariants());
-      console.log(`[EXPERIMENT_TOOL] State manager variant count:`, variantStateManager.getCurrentVariantCount());
-
-      // Try to load variants from completed jobs
-      console.log(`[EXPERIMENT_TOOL] Attempting to load variants from completed jobs...`);
-      try {
-        let loadedVariants: any[] = [];
-
-        // Priority 1: Use jobIds from input (most explicit)
-        if (input.jobIds && input.jobIds.length > 0) {
-          console.log(`[EXPERIMENT_TOOL] Loading variants from input job IDs:`, input.jobIds);
-          loadedVariants = await variantStateManager.loadVariantsFromJobIds(input.jobIds);
-        }
-        // Priority 2: Use jobIds from state manager (with conversation history fallback)
-        else {
-          const currentJobIds = variantStateManager.getCurrentJobIds(conversationHistory);
-          if (currentJobIds && currentJobIds.length > 0) {
-            console.log(`[EXPERIMENT_TOOL] Loading variants from job IDs (state manager or conversation history):`, currentJobIds);
-            loadedVariants = await variantStateManager.loadVariantsFromJobIds(currentJobIds);
-          } else {
-            console.log(`[EXPERIMENT_TOOL] No specific job IDs found, falling back to all project jobs`);
-            loadedVariants = await variantStateManager.loadVariantsFromJobs(this.projectId);
-          }
-        }
-
-        if (loadedVariants && loadedVariants.length > 0) {
-          console.log(`[EXPERIMENT_TOOL] Successfully loaded ${loadedVariants.length} variants from completed jobs`);
-          console.log(`[EXPERIMENT_TOOL] Loaded variant labels:`, loadedVariants.map(v => v.variant_label));
-          variants = loadedVariants;
-        } else {
-          console.log(`[EXPERIMENT_TOOL] No completed variant jobs found`);
-          throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
-        }
-      } catch (loadError) {
-        console.error(`[EXPERIMENT_TOOL] Failed to load variants from jobs:`, loadError);
-        throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
-      }
+      console.log(`[EXPERIMENT_TOOL] No variants available in state, input, or jobs`);
+      throw new Error('No variants available. Please generate variants first using the generate_variants tool.');
     }
 
     console.log(`[EXPERIMENT_TOOL] ======================================`);
