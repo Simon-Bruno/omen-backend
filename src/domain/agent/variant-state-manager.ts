@@ -144,7 +144,10 @@ class VariantStateManager {
       rationale: variant.rationale,
       javascript_code: variant.javascript_code,
       target_selector: variant.target_selector,
-      execution_timing: variant.execution_timing
+      execution_timing: variant.execution_timing,
+      // CRITICAL: Keep variant_index and job_id for consistent ordering
+      variant_index: variant.variant_index,
+      job_id: variant.job_id
     }));
   }
 

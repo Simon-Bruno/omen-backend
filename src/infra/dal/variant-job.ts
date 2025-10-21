@@ -176,8 +176,8 @@ export class VariantJobDAL {
                 jobId
             );
 
-            // Process variants to strip heavy fields
-            return rows.map(row => {
+            // Process variants to strip heavy fields and ensure consistent ordering
+            const variants = rows.map(row => {
                 const variant = row.variant;
                 // Return only essential fields, excluding screenshots and other heavy data
                 return {
@@ -187,12 +187,18 @@ export class VariantJobDAL {
                     javascript_code: variant.javascript_code,
                     target_selector: variant.target_selector,
                     execution_timing: variant.execution_timing,
+                    // CRITICAL: Include variant index for consistent ordering
+                    variant_index: variant.variant_index || 0,
+                    job_id: variant.job_id || '',
                     // Explicitly exclude heavy fields:
                     // - screenshot (can be several MB)
                     // - html_code (can be large)
                     // - css_code (can be large)
                 };
             });
+
+            // CRITICAL FIX: Sort variants by variant_index to ensure consistent ordering
+            return variants.sort((a, b) => (a.variant_index || 0) - (b.variant_index || 0));
         } catch (error) {
             console.error(`[VariantJobDAL] Error extracting variants from job ${jobId}:`, error);
             return [];

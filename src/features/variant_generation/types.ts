@@ -8,7 +8,9 @@ export const variantSchema = z.object({
     rationale: z.string().describe('Why this will improve conversions'),
     javascript_code: z.string().describe('JavaScript code that implements the variant'),
     target_selector: z.string().describe('Main CSS selector this variant targets'),
-    execution_timing: z.enum(['immediate', 'dom_ready']).default('dom_ready').describe('When to run the JavaScript')
+    execution_timing: z.enum(['immediate', 'dom_ready']).default('dom_ready').describe('When to run the JavaScript'),
+    variant_index: z.number().describe('Index of this variant in the job'),
+    job_id: z.string().describe('ID of the job that generated this variant'),
 });
 
 // Basic variant schema for UX planning only (no implementation details)
