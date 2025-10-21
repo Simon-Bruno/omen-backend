@@ -11,6 +11,7 @@ import { createAnalyticsService, createSQSConsumerService, type AnalyticsService
 import { PrismaAnalyticsRepository } from '@infra/dal/analytics';
 import { SupabaseAnalyticsRepository } from '@infra/dal/supabase-analytics';
 import { getServiceConfig } from '@infra/config/services';
+import { ClarityClient } from '@infra/external/clarity/client';
 import { prisma } from '@infra/prisma';
 
 class ServiceContainer {
@@ -121,6 +122,15 @@ class ServiceContainer {
       this.services.set('sqsConsumer', sqsConsumerService);
     }
     return this.services.get('sqsConsumer') as SQSConsumerService;
+  }
+
+  getClarityClient(): ClarityClient {
+    if (!this.services.has('clarityClient')) {
+      const clarityClient = new ClarityClient(this.config.clarity);
+      this.services.set('clarityClient', clarityClient);
+    }
+
+    return this.services.get('clarityClient') as ClarityClient;
   }
 
   async cleanup(): Promise<void> {
