@@ -108,7 +108,7 @@ TASK: Propose at most 3 signals for this experiment:
 3. **Optional guardrail signals** - Prevent false wins (e.g., purchase_completed)
 
 ## Available Signals Catalog for ${pageType}
-*Note: These are suggested signals. Choose what makes sense for your variant, or propose custom ones.*
+*You can use predefined signals from this catalog OR create custom signal names that describe the specific action.*
 
 ### Primary Candidates (Must be shared between control and variant):
 ${primaryCandidatesText}
