@@ -23,7 +23,31 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
   private supabase: SupabaseClient;
 
   constructor(supabaseUrl: string, supabaseKey: string) {
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+    // Clean and validate the URL
+    const cleanUrl = supabaseUrl.trim().replace(/['"]/g, '');
+    
+    console.log(`[SUPABASE] Raw URL input: "${supabaseUrl}"`);
+    console.log(`[SUPABASE] Cleaned URL: "${cleanUrl}"`);
+    console.log(`[SUPABASE] Key present: ${supabaseKey ? 'YES' : 'NO'}`);
+    console.log(`[SUPABASE] Key length: ${supabaseKey ? supabaseKey.length : 0}`);
+    
+    if (!cleanUrl || !supabaseKey) {
+      throw new Error(`Invalid Supabase configuration: URL="${cleanUrl}", Key="${supabaseKey ? '[PRESENT]' : '[MISSING]'}"`);
+    }
+    
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      throw new Error(`Invalid Supabase URL format: "${cleanUrl}". Must start with http:// or https://`);
+    }
+    
+    console.log(`[SUPABASE] Initializing client with URL: ${cleanUrl}`);
+    
+    try {
+      this.supabase = createClient(cleanUrl, supabaseKey);
+      console.log('[SUPABASE] Client initialized successfully');
+    } catch (error) {
+      console.error('[SUPABASE] Failed to create client:', error);
+      throw new Error(`Failed to initialize Supabase client: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async create(_eventData: Omit<AnalyticsEventData, 'id' | 'createdAt'>): Promise<AnalyticsEventData> {

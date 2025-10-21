@@ -79,6 +79,23 @@ class ServiceContainer {
     if (!this.services.has('analytics')) {
       const useSupabase = process.env.USE_SUPABASE_ANALYTICS === 'true';
       
+      if (useSupabase) {
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        
+        console.log(`[CONTAINER] Raw SUPABASE_URL: "${supabaseUrl}"`);
+        console.log(`[CONTAINER] Raw SUPABASE_SERVICE_ROLE_KEY: "${supabaseKey ? '[PRESENT]' : '[MISSING]'}"`);
+        console.log(`[CONTAINER] Supabase config - URL: ${supabaseUrl ? '[PRESENT]' : '[MISSING]'}, Key: ${supabaseKey ? '[PRESENT]' : '[MISSING]'}`);
+        
+        if (!supabaseUrl || !supabaseKey) {
+          console.error('[CONTAINER] Missing Supabase configuration. Falling back to Prisma.');
+          const repository = new PrismaAnalyticsRepository(prisma);
+          const analyticsService = createAnalyticsService(repository);
+          this.services.set('analytics', analyticsService);
+          return analyticsService;
+        }
+      }
+      
       const repository = useSupabase
         ? new SupabaseAnalyticsRepository(
             process.env.SUPABASE_URL || '',
