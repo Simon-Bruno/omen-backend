@@ -67,9 +67,9 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .eq('project_id', query.projectId)
       .order('ts', { ascending: false });
 
-    // Filter by experimentId using assigned_variants JSONB
+    // Filter by experimentId using the new experiment_ids array column
     if (query.experimentId) {
-      supabaseQuery = supabaseQuery.contains('assigned_variants', [{ experimentId: query.experimentId }]);
+      supabaseQuery = supabaseQuery.contains('experiment_ids', [query.experimentId]);
     }
 
     if (query.sessionId) {
@@ -108,9 +108,9 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .select('*', { count: 'exact', head: true })
       .eq('project_id', query.projectId);
 
-    // Filter by experimentId using assigned_variants JSONB
+    // Filter by experimentId using the new experiment_ids array column
     if (query.experimentId) {
-      supabaseQuery = supabaseQuery.contains('assigned_variants', [{ experimentId: query.experimentId }]);
+      supabaseQuery = supabaseQuery.contains('experiment_ids', [query.experimentId]);
     }
 
     if (query.sessionId) {
@@ -167,7 +167,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .from('events')
       .select('session_id')
       .eq('project_id', projectId)
-      .contains('assigned_variants', [{ experimentId }])
+      .contains('experiment_ids', [experimentId])
       .not('session_id', 'is', null);
 
     if (sessionsError) {
@@ -202,7 +202,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     // Get all events for these sessions
     const { data: eventsData, error: eventsError } = await this.supabase
       .from('events')
-      .select('session_id, event_type, assigned_variants')
+      .select('session_id, event_type, experiment_ids, variant_keys')
       .eq('project_id', projectId)
       .in('session_id', sessionIds)
       .in('event_type', [0, 1, 2]); // EXPOSURE, PAGEVIEW, CONVERSION
@@ -230,8 +230,14 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     }>();
 
     for (const event of eventsData || []) {
-      const assignedVariants = event.assigned_variants as Array<{experimentId: string, variantId: string}> || [];
-      const experimentVariant = assignedVariants.find(av => av.experimentId === experimentId);
+      // Convert array columns back to assignedVariants format for processing
+      const assignedVariants = event.experiment_ids && event.variant_keys 
+        ? event.experiment_ids.map((expId: string, index: number) => ({
+            experimentId: expId,
+            variantId: event.variant_keys[index] || null
+          }))
+        : [];
+      const experimentVariant = assignedVariants.find((av: {experimentId: string, variantId: string}) => av.experimentId === experimentId);
       
       if (!experimentVariant) continue;
       
@@ -425,7 +431,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .from('events')
       .delete({ count: 'exact' })
       .eq('project_id', projectId)
-      .contains('assigned_variants', [{ experimentId }]);
+      .contains('experiment_ids', [experimentId]);
 
     if (error) {
       console.error('[SUPABASE] Error deleting experiment events:', error);
@@ -437,13 +443,21 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
   }
 
   private mapToAnalyticsEventData(event: any): AnalyticsEventData {
+    // Convert array columns back to assignedVariants format for compatibility
+    const assignedVariants = event.experiment_ids && event.variant_keys 
+      ? event.experiment_ids.map((expId: string, index: number) => ({
+          experimentId: expId,
+          variantId: event.variant_keys[index] || null
+        }))
+      : undefined;
+
     return {
       id: event.id.toString(),
       projectId: event.project_id,
       eventType: (EVENT_TYPE_MAP[event.event_type] || 'CUSTOM') as AnalyticsEventData['eventType'],
       sessionId: event.session_id,
       properties: event.props || {},
-      assignedVariants: event.assigned_variants || undefined,
+      assignedVariants: assignedVariants,
       url: event.url || undefined,
       userAgent: event.user_agent || undefined,
       timestamp: new Date(event.ts).getTime(),
