@@ -9,11 +9,12 @@ export type AnalyticsEventType =
 export interface AnalyticsEventData {
   id: string;
   projectId: string;
-  experimentId?: string;
   eventType: AnalyticsEventType;
   sessionId: string;
-  viewId?: string;
   properties: Record<string, any>; // Flexible properties for any event type
+  assignedVariants?: Array<{experimentId: string, variantId: string}>; // Experiment assignments
+  url?: string;
+  userAgent?: string;
   timestamp: number;
   createdAt: Date;
 }
@@ -130,11 +131,12 @@ export interface PurchaseStats {
 // SQS Message Types
 export interface SQSAnalyticsMessage {
   projectId: string;
-  experimentId?: string;
   eventType: AnalyticsEventType;
   sessionId: string;
-  viewId?: string;
   properties: Record<string, any>; // Flexible properties for any event type
+  assignedVariants?: Array<{experimentId: string, variantId: string}>; // Experiment assignments
+  url?: string;
+  userAgent?: string;
   timestamp: number;
 }
 

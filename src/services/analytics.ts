@@ -73,11 +73,12 @@ export class AnalyticsServiceImpl implements AnalyticsService {
     try {
       await this.createEvent({
         projectId: message.projectId,
-        experimentId: message.experimentId,
         eventType: message.eventType,
         sessionId: message.sessionId,
-        viewId: message.viewId,
         properties: message.properties,
+        assignedVariants: message.assignedVariants,
+        url: message.url,
+        userAgent: message.userAgent,
         timestamp: message.timestamp,
       });
     } catch (error) {
@@ -92,11 +93,12 @@ export class AnalyticsServiceImpl implements AnalyticsService {
       
       const events = messages.map(message => ({
         projectId: message.projectId,
-        experimentId: message.experimentId,
         eventType: message.eventType,
         sessionId: message.sessionId,
-        viewId: message.viewId,
         properties: message.properties,
+        assignedVariants: message.assignedVariants,
+        url: message.url,
+        userAgent: message.userAgent,
         timestamp: message.timestamp,
       }));
       
@@ -105,15 +107,6 @@ export class AnalyticsServiceImpl implements AnalyticsService {
       
     } catch (error) {
       console.error('Failed to process SQS batch:', error);
-      
-      // Don't throw error to prevent SQS message from being reprocessed indefinitely
-      // The analytics repository now handles invalid experiment IDs gracefully
-      if (error instanceof Error && error.message.includes('Foreign key constraint')) {
-        console.warn('[ANALYTICS] Foreign key constraint error - some events may have been filtered out');
-        return; // Continue processing other batches
-      }
-      
-      // For other errors, still throw to trigger retry mechanism
       throw error;
     }
   }
@@ -309,7 +302,9 @@ export class SQSConsumerServiceImpl implements SQSConsumerService {
       message.properties &&
       typeof message.properties === 'object' &&
       // Validate eventType is one of our supported types
-      ['EXPOSURE', 'PAGEVIEW', 'CONVERSION', 'PURCHASE', 'CUSTOM'].includes(message.eventType)
+      ['EXPOSURE', 'PAGEVIEW', 'CONVERSION', 'PURCHASE', 'CUSTOM'].includes(message.eventType) &&
+      // assignedVariants is optional but if present should be an array
+      (message.assignedVariants === undefined || Array.isArray(message.assignedVariants))
     );
   }
 

@@ -3,7 +3,7 @@ import type { User as PrismaUser, Project } from '@prisma/client';
 
 // Use Prisma-generated types as the source of truth
 export type User = PrismaUser & {
-  project?: Pick<Project, 'id' | 'shopDomain' | 'brandAnalysis'>;
+  project?: Pick<Project, 'id' | 'shopDomain' | 'brandAnalysis' | 'isShopify' | 'accessTokenEnc'>;
 };
 
 /**
@@ -194,6 +194,24 @@ export class UserService {
       },
       include: { project: true },
     });
+
+    // Automatically create web pixel for Shopify stores
+    if (user.project?.isShopify && accessTokenEnc) {
+      try {
+        const { createWebPixelWithEncryptedToken } = await import('@infra/external/shopify/web-pixel');
+        const webPixelResult = await createWebPixelWithEncryptedToken(shopDomain, accessTokenEnc);
+        
+        if (webPixelResult.success) {
+          console.log(`✅ Web pixel created successfully for store ${shopDomain}: ${webPixelResult.webPixelId}`);
+        } else {
+          console.error(`❌ Failed to create web pixel for store ${shopDomain}: ${webPixelResult.error}`);
+          // Don't throw error - web pixel creation failure shouldn't break registration
+        }
+      } catch (error) {
+        console.error(`❌ Error creating web pixel for store ${shopDomain}:`, error);
+        // Don't throw error - web pixel creation failure shouldn't break registration
+      }
+    }
 
     return user as User;
   }

@@ -67,8 +67,9 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .eq('project_id', query.projectId)
       .order('ts', { ascending: false });
 
+    // Filter by experimentId using assigned_variants JSONB
     if (query.experimentId) {
-      supabaseQuery = supabaseQuery.eq('experiment_id', query.experimentId);
+      supabaseQuery = supabaseQuery.contains('assigned_variants', [{ experimentId: query.experimentId }]);
     }
 
     if (query.sessionId) {
@@ -107,8 +108,9 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .select('*', { count: 'exact', head: true })
       .eq('project_id', query.projectId);
 
+    // Filter by experimentId using assigned_variants JSONB
     if (query.experimentId) {
-      supabaseQuery = supabaseQuery.eq('experiment_id', query.experimentId);
+      supabaseQuery = supabaseQuery.contains('assigned_variants', [{ experimentId: query.experimentId }]);
     }
 
     if (query.sessionId) {
@@ -133,12 +135,15 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     return count || 0;
   }
 
-  async getExposureStats(_projectId: string, experimentId: string): Promise<ExposureStats[]> {
-    const { data, error } = await this.supabase.rpc('get_experiment_conversion_rate', {
-      exp_id: experimentId,
-      start_time: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-      end_time: new Date().toISOString()
-    });
+  async getExposureStats(projectId: string, experimentId: string): Promise<ExposureStats[]> {
+    // Refresh materialized view to ensure latest data
+    await this.supabase.rpc('refresh_experiment_summary');
+    
+    const { data, error } = await this.supabase
+      .from('experiment_summary')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('experiment_id', experimentId);
 
     if (error) {
       console.error('[SUPABASE] Error fetching exposure stats:', error);
@@ -147,21 +152,26 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
 
     return (data || []).map((stat: any) => ({
       experimentId,
-      variantId: stat.variant_key,
-      exposures: Number(stat.exposures),
-      uniqueSessions: Number(stat.exposures), // Supabase doesn't track unique sessions separately
+      variantId: stat.variant_id,
+      exposures: Number(stat.exposure_count),
+      uniqueSessions: Number(stat.unique_sessions),
     }));
   }
 
   async getFunnelAnalysis(projectId: string, experimentId: string): Promise<FunnelAnalysis> {
-    // Use SQL aggregation for funnel analysis
-    const { data, error } = await this.supabase.rpc('get_funnel_analysis', {
-      p_project_id: projectId,
-      p_experiment_id: experimentId
-    });
+    // For funnel analysis, we need to query the raw events to understand user journeys
+    // The materialized view doesn't give us the sequential flow data we need
+    
+    // First, get all sessions that have events for this experiment
+    const { data: sessionsData, error: sessionsError } = await this.supabase
+      .from('events')
+      .select('session_id')
+      .eq('project_id', projectId)
+      .contains('assigned_variants', [{ experimentId }])
+      .not('session_id', 'is', null);
 
-    if (error) {
-      console.error('[SUPABASE] Error fetching funnel data:', error);
+    if (sessionsError) {
+      console.error('[SUPABASE] Error fetching experiment sessions:', sessionsError);
       return {
         experimentId,
         variants: [],
@@ -174,10 +184,84 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       };
     }
 
-    const variants = (data || []).map((row: any) => {
-      const pageviewCount = Number(row.pageview_sessions) || 0;
-      const exposureCount = Number(row.exposure_sessions) || 0;
-      const conversionCount = Number(row.conversion_sessions) || 0;
+    const sessionIds = [...new Set((sessionsData || []).map(s => s.session_id))];
+    
+    if (sessionIds.length === 0) {
+      return {
+        experimentId,
+        variants: [],
+        overallStats: {
+          totalSessions: 0,
+          totalExposures: 0,
+          totalConversions: 0,
+          overallConversionRate: 0,
+        },
+      };
+    }
+
+    // Get all events for these sessions
+    const { data: eventsData, error: eventsError } = await this.supabase
+      .from('events')
+      .select('session_id, event_type, assigned_variants')
+      .eq('project_id', projectId)
+      .in('session_id', sessionIds)
+      .in('event_type', [0, 1, 2]); // EXPOSURE, PAGEVIEW, CONVERSION
+
+    if (eventsError) {
+      console.error('[SUPABASE] Error fetching events for funnel analysis:', eventsError);
+      return {
+        experimentId,
+        variants: [],
+        overallStats: {
+          totalSessions: 0,
+          totalExposures: 0,
+          totalConversions: 0,
+          overallConversionRate: 0,
+        },
+      };
+    }
+
+    // Group events by variant and session
+    const variantStats = new Map<string, {
+      sessions: Set<string>;
+      pageviews: Set<string>;
+      exposures: Set<string>;
+      conversions: Set<string>;
+    }>();
+
+    for (const event of eventsData || []) {
+      const assignedVariants = event.assigned_variants as Array<{experimentId: string, variantId: string}> || [];
+      const experimentVariant = assignedVariants.find(av => av.experimentId === experimentId);
+      
+      if (!experimentVariant) continue;
+      
+      const variantId = experimentVariant.variantId;
+      if (!variantStats.has(variantId)) {
+        variantStats.set(variantId, {
+          sessions: new Set(),
+          pageviews: new Set(),
+          exposures: new Set(),
+          conversions: new Set(),
+        });
+      }
+
+      const stats = variantStats.get(variantId)!;
+      stats.sessions.add(event.session_id);
+
+      if (event.event_type === 0) { // EXPOSURE
+        stats.exposures.add(event.session_id);
+      } else if (event.event_type === 1) { // PAGEVIEW
+        stats.pageviews.add(event.session_id);
+      } else if (event.event_type === 2) { // CONVERSION
+        stats.conversions.add(event.session_id);
+      }
+    }
+
+    // Build funnel for each variant
+    const variants = Array.from(variantStats.entries()).map(([variantId, stats]) => {
+      const pageviewCount = stats.pageviews.size;
+      const exposureCount = stats.exposures.size;
+      const conversionCount = stats.conversions.size;
 
       const steps: FunnelStep[] = [
         {
@@ -204,16 +288,16 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       ];
 
       return {
-        variantId: row.variant_key,
+        variantId,
         steps,
         totalSessions: pageviewCount,
         conversionRate: exposureCount > 0 ? (conversionCount / exposureCount) * 100 : 0,
       };
     });
 
-    const totalSessions = variants.reduce((sum: number, v: any) => sum + v.totalSessions, 0);
-    const totalExposures = variants.reduce((sum: number, v: any) => sum + (v.steps.find((s: any) => s.eventType === 'EXPOSURE')?.count || 0), 0);
-    const totalConversions = variants.reduce((sum: number, v: any) => sum + (v.steps.find((s: any) => s.eventType === 'CONVERSION')?.count || 0), 0);
+    const totalSessions = variants.reduce((sum, v) => sum + v.totalSessions, 0);
+    const totalExposures = variants.reduce((sum, v) => sum + (v.steps.find(s => s.eventType === 'EXPOSURE')?.count || 0), 0);
+    const totalConversions = variants.reduce((sum, v) => sum + (v.steps.find(s => s.eventType === 'CONVERSION')?.count || 0), 0);
 
     return {
       experimentId,
@@ -227,12 +311,15 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     };
   }
 
-  async getConversionRates(_projectId: string, experimentId: string): Promise<ConversionRates[]> {
-    const { data, error } = await this.supabase.rpc('get_experiment_conversion_rate', {
-      exp_id: experimentId,
-      start_time: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      end_time: new Date().toISOString()
-    });
+  async getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]> {
+    // Refresh materialized view to ensure latest data
+    await this.supabase.rpc('refresh_experiment_summary');
+    
+    const { data, error } = await this.supabase
+      .from('experiment_summary')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('experiment_id', experimentId);
 
     if (error) {
       console.error('[SUPABASE] Error fetching conversion rates:', error);
@@ -241,41 +328,44 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
 
     return (data || []).map((stat: any) => ({
       experimentId,
-      variantId: stat.variant_key,
-      sessions: Number(stat.exposures),
-      conversions: Number(stat.conversions),
-      conversionRate: Number(stat.conversion_rate) || 0,
-      averageValue: 0, // Not tracked in Supabase
-      totalValue: 0, // Not tracked in Supabase
+      variantId: stat.variant_id,
+      sessions: Number(stat.unique_sessions),
+      conversions: Number(stat.conversion_count),
+      conversionRate: Number(stat.unique_sessions) > 0 ? (Number(stat.conversion_count) / Number(stat.unique_sessions)) * 100 : 0,
+      averageValue: Number(stat.avg_conversion_value) || 0,
+      totalValue: Number(stat.total_conversion_value) || 0,
     }));
   }
 
   async getPurchaseStats(projectId: string, experimentId: string): Promise<PurchaseStats[]> {
-    // Use SQL aggregation for purchase stats
-    const { data, error } = await this.supabase.rpc('get_purchase_stats', {
-      p_project_id: projectId,
-      p_experiment_id: experimentId
-    });
+    // Refresh materialized view to ensure latest data
+    await this.supabase.rpc('refresh_experiment_summary');
+    
+    const { data, error } = await this.supabase
+      .from('experiment_summary')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('experiment_id', experimentId);
 
     if (error) {
       console.error('[SUPABASE] Error fetching purchase stats:', error);
       return [];
     }
 
-    return (data || []).map((row: any) => {
-      const sessionCount = Number(row.exposure_sessions) || 0;
-      const purchaseCount = Number(row.purchase_sessions) || 0;
-      const totalRevenue = Number(row.total_revenue) || 0;
-      const purchaseEventCount = Number(row.purchase_count) || 0;
+    return (data || []).map((stat: any) => {
+      const sessionCount = Number(stat.unique_sessions) || 0;
+      const purchaseCount = Number(stat.purchase_count) || 0;
+      const totalRevenue = Number(stat.total_revenue) || 0;
+      const avgOrderValue = Number(stat.avg_order_value) || 0;
 
       return {
         experimentId,
-        variantId: row.variant_key,
+        variantId: stat.variant_id,
         sessions: sessionCount,
         purchases: purchaseCount,
         purchaseRate: sessionCount > 0 ? (purchaseCount / sessionCount) * 100 : 0,
         totalRevenue,
-        averageOrderValue: purchaseEventCount > 0 ? totalRevenue / purchaseEventCount : 0,
+        averageOrderValue: avgOrderValue,
         revenuePerSession: sessionCount > 0 ? totalRevenue / sessionCount : 0,
       };
     });
@@ -335,7 +425,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       .from('events')
       .delete({ count: 'exact' })
       .eq('project_id', projectId)
-      .eq('experiment_id', experimentId);
+      .contains('assigned_variants', [{ experimentId }]);
 
     if (error) {
       console.error('[SUPABASE] Error deleting experiment events:', error);
@@ -350,11 +440,12 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     return {
       id: event.id.toString(),
       projectId: event.project_id,
-      experimentId: event.experiment_id || undefined,
       eventType: (EVENT_TYPE_MAP[event.event_type] || 'CUSTOM') as AnalyticsEventData['eventType'],
       sessionId: event.session_id,
-      viewId: event.view_id || undefined,
       properties: event.props || {},
+      assignedVariants: event.assigned_variants || undefined,
+      url: event.url || undefined,
+      userAgent: event.user_agent || undefined,
       timestamp: new Date(event.ts).getTime(),
       createdAt: new Date(event.created_at || event.ts),
     };

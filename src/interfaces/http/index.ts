@@ -10,6 +10,7 @@ import { projectResetRoutes } from './project/reset';
 import { screenshotRoutes } from './screenshots';
 import { experimentRoutes } from './experiment/index';
 import { analyticsRoutes } from './analytics/index';
+import { webPixelRoutes } from './shopify/web-pixel';
 import betterAuthPlugin from './plugins/better-auth-plugin';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -27,4 +28,5 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     await fastify.register(screenshotRoutes);
     await fastify.register(experimentRoutes);
     await fastify.register(analyticsRoutes, { prefix: 'analytics' });
+    await fastify.register(webPixelRoutes, { prefix: 'api' });
 }

@@ -59,7 +59,6 @@ model Experiment {
   minSessionsPerVariant Int
   targetUrls            Json?
   targeting             Json?
-  analyticsEvents       AnalyticsEvent[]
   goals                 ExperimentGoal[]
   hypothesis            ExperimentHypothesis?
   traffic               ExperimentTraffic[]
@@ -209,25 +208,25 @@ model Screenshot {
 }
 
 model AnalyticsEvent {
-  id           String      @id @default(cuid())
-  projectId    String
-  experimentId String?
-  sessionId    String
-  viewId       String?
-  variantKey   String? // Extracted from properties for efficient querying
-  properties   Json
-  timestamp    BigInt
-  createdAt    DateTime    @default(now())
-  eventType    EventType   @default(EXPOSURE)
-  experiment   Experiment? @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String      @id @default(cuid())
+  projectId        String
+  sessionId        String
+  properties       Json
+  assignedVariants Json?       // JSONB array of {experimentId, variantId} objects
+  url              String?
+  userAgent        String?
+  timestamp        BigInt
+  createdAt        DateTime    @default(now())
+  eventType        EventType   @default(EXPOSURE)
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, eventType])
   @@index([eventType, timestamp])
   @@index([sessionId])
-  @@index([experimentId])
   @@index([sessionId, eventType])
-  @@index([experimentId, variantKey, eventType]) // For efficient variant analytics
+  @@index([url])
+  @@index([userAgent])
+  @@index([assignedVariants], type: Gin) // GIN index for JSONB queries
   @@map("analytics_events")
 }
 

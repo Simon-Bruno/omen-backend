@@ -14,20 +14,15 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
   constructor(private prisma: PrismaClient) { }
 
   async create(eventData: Omit<AnalyticsEventData, 'id' | 'createdAt'>): Promise<AnalyticsEventData> {
-    // Extract variantKey from properties for efficient querying
-    const variantKey = eventData.properties && typeof eventData.properties === 'object' 
-      ? (eventData.properties as any).variantKey 
-      : undefined;
-
     const event = await this.prisma.analyticsEvent.create({
       data: {
         projectId: eventData.projectId,
-        experimentId: eventData.experimentId,
         eventType: eventData.eventType,
         sessionId: eventData.sessionId,
-        viewId: eventData.viewId,
-        variantKey, // Store in dedicated column for fast queries
         properties: eventData.properties as any,
+        assignedVariants: eventData.assignedVariants as any,
+        url: eventData.url,
+        userAgent: eventData.userAgent,
         timestamp: BigInt(eventData.timestamp || Date.now()),
       },
     });
@@ -36,57 +31,21 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
   }
 
   async createMany(events: Omit<AnalyticsEventData, 'id' | 'createdAt'>[]): Promise<AnalyticsEventData[]> {
-    // Filter out events with invalid experiment IDs to prevent foreign key violations
-    const validEvents = [];
-    const invalidEvents = [];
-
-    for (const event of events) {
-      if (event.experimentId) {
-        // Check if experiment exists
-        const experimentExists = await this.prisma.experiment.findUnique({
-          where: { id: event.experimentId },
-          select: { id: true }
-        });
-
-        if (experimentExists) {
-          validEvents.push(event);
-        } else {
-          console.warn(`[ANALYTICS] Skipping event for non-existent experiment: ${event.experimentId}`);
-          invalidEvents.push(event);
-        }
-      } else {
-        // Events without experimentId are valid (e.g., general pageview events)
-        validEvents.push(event);
-      }
-    }
-
-    if (validEvents.length === 0) {
-      console.warn(`[ANALYTICS] No valid events to create after filtering`);
+    if (events.length === 0) {
       return [];
     }
 
-    if (invalidEvents.length > 0) {
-      console.warn(`[ANALYTICS] Filtered out ${invalidEvents.length} events with invalid experiment IDs`);
-    }
-
     const createdEvents = await this.prisma.analyticsEvent.createMany({
-      data: validEvents.map(event => {
-        // Extract variantKey from properties for efficient querying
-        const variantKey = event.properties && typeof event.properties === 'object'
-          ? (event.properties as any).variantKey
-          : undefined;
-
-        return {
-          projectId: event.projectId,
-          experimentId: event.experimentId,
-          eventType: event.eventType,
-          sessionId: event.sessionId,
-          viewId: event.viewId,
-          variantKey, // Store in dedicated column for fast queries
-          properties: event.properties as any,
-          timestamp: BigInt(event.timestamp || Date.now()),
-        };
-      }),
+      data: events.map(event => ({
+        projectId: event.projectId,
+        eventType: event.eventType,
+        sessionId: event.sessionId,
+        properties: event.properties as any,
+        assignedVariants: event.assignedVariants as any,
+        url: event.url,
+        userAgent: event.userAgent,
+        timestamp: BigInt(event.timestamp || Date.now()),
+      })),
     });
 
     // Fetch the created events to return them
@@ -111,10 +70,6 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       projectId: query.projectId,
     };
 
-    if (query.experimentId) {
-      where.experimentId = query.experimentId;
-    }
-
     if (query.sessionId) {
       where.sessionId = query.sessionId;
     }
@@ -127,6 +82,14 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       if (query.endDate) {
         where.timestamp.lte = BigInt(Math.floor(query.endDate.getTime() / 1000));
       }
+    }
+
+    // Filter by experimentId using assignedVariants JSONB
+    if (query.experimentId) {
+      where.assignedVariants = {
+        path: '$',
+        array_contains: [{ experimentId: query.experimentId }]
+      };
     }
 
     const events = await this.prisma.analyticsEvent.findMany({
@@ -144,10 +107,6 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       projectId: query.projectId,
     };
 
-    if (query.experimentId) {
-      where.experimentId = query.experimentId;
-    }
-
     if (query.sessionId) {
       where.sessionId = query.sessionId;
     }
@@ -160,6 +119,14 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
       if (query.endDate) {
         where.timestamp.lte = BigInt(Math.floor(query.endDate.getTime() / 1000));
       }
+    }
+
+    // Filter by experimentId using assignedVariants JSONB
+    if (query.experimentId) {
+      where.assignedVariants = {
+        path: '$',
+        array_contains: [{ experimentId: query.experimentId }]
+      };
     }
 
     return this.prisma.analyticsEvent.count({ where });
@@ -816,22 +783,26 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
     return {
       id: event.id,
       projectId: event.projectId,
-      experimentId: event.experimentId,
       eventType: event.eventType,
       sessionId: event.sessionId,
-      viewId: event.viewId,
       properties: event.properties ? JSON.parse(JSON.stringify(event.properties)) : {},
+      assignedVariants: event.assignedVariants ? JSON.parse(JSON.stringify(event.assignedVariants)) : undefined,
+      url: event.url,
+      userAgent: event.userAgent,
       timestamp: Number(event.timestamp),
       createdAt: event.createdAt,
     };
   }
 
   async deleteExperimentEvents(projectId: string, experimentId: string): Promise<number> {
-    // Delete all analytics events for the given experiment
+    // Delete all analytics events for the given experiment using assignedVariants JSONB
     const result = await this.prisma.analyticsEvent.deleteMany({
       where: {
         projectId,
-        experimentId,
+        assignedVariants: {
+          path: '$',
+          array_contains: [{ experimentId }]
+        }
       },
     });
 

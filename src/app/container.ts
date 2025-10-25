@@ -8,7 +8,6 @@ import { createScreenshotStorageService, type ScreenshotStorageService } from '@
 import { createScreenshotAnalyticsService, type ScreenshotAnalyticsService } from '@services/screenshot-analytics';
 import { createJobCleanupService, type JobCleanupService } from '@services/job-cleanup';
 import { createAnalyticsService, createSQSConsumerService, type AnalyticsService, type SQSConsumerService } from '@services/analytics';
-import { PrismaAnalyticsRepository } from '@infra/dal/analytics';
 import { SupabaseAnalyticsRepository } from '@infra/dal/supabase-analytics';
 import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
@@ -92,22 +91,16 @@ class ServiceContainer {
         console.log(`[CONTAINER] Supabase config - URL: ${supabaseUrl ? '[PRESENT]' : '[MISSING]'}, Key: ${supabaseKey ? '[PRESENT]' : '[MISSING]'}`);
         
         if (!supabaseUrl || !supabaseKey) {
-          console.error('[CONTAINER] Missing Supabase configuration. Falling back to Prisma.');
-          const repository = new PrismaAnalyticsRepository(prisma);
-          const analyticsService = createAnalyticsService(repository);
-          this.services.set('analytics', analyticsService);
-          return analyticsService;
+          throw new Error('Supabase configuration is required for analytics. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
         }
       }
       
-      const repository = useSupabase
-        ? new SupabaseAnalyticsRepository(
-            process.env.SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-          )
-        : new PrismaAnalyticsRepository(prisma);
+      const repository = new SupabaseAnalyticsRepository(
+        process.env.SUPABASE_URL || '',
+        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+      );
       
-      console.log(`[CONTAINER] Using ${useSupabase ? 'Supabase' : 'Prisma'} analytics repository`);
+      console.log(`[CONTAINER] Using Supabase analytics repository`);
       
       const analyticsService = createAnalyticsService(repository);
       this.services.set('analytics', analyticsService);
