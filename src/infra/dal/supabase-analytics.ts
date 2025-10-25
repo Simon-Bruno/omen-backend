@@ -237,7 +237,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
             variantId: event.variant_keys[index] || null
           }))
         : [];
-      const experimentVariant = assignedVariants.find((av: {experimentId: string, variantId: string}) => av.experimentId === experimentId);
+      const experimentVariant = assignedVariants.find((av: {experimentId: string, variantId: string | null}) => av.experimentId === experimentId);
       
       if (!experimentVariant) continue;
       
