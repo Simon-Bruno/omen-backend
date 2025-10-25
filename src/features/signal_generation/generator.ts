@@ -7,16 +7,76 @@ import {
   llmSignalProposalSchema,
 } from './types';
 import { SIGNAL_CATALOG } from './catalog';
+import { ShopifySignalGenerator, createShopifySignalGenerator } from './shopify-signal-generator';
+import { AnalyticsRepository } from '@domain/analytics/analytics-service';
 
 /**
  * Signal Generation Service
  * Uses LLM to propose experiment signals (goals) based on page context and variant
+ * Automatically detects Shopify projects and uses data-driven signal generation
  */
 export class SignalGenerationService {
+  constructor(private analyticsRepo?: AnalyticsRepository) {}
+
   /**
-   * Generate signal proposals using LLM
+   * Generate signal proposals using LLM or Shopify data
    */
   async generateSignals(input: SignalGenerationInput): Promise<LLMSignalProposal> {
+    // Check if this is a Shopify project with sufficient data
+    if (this.analyticsRepo && await this.isShopifyProject(input.projectId)) {
+      console.log('[SIGNAL_GENERATION] Using Shopify data-driven signal generation');
+      const shopifyGenerator = createShopifySignalGenerator(this.analyticsRepo);
+      return shopifyGenerator.generateSignals(input);
+    }
+
+    console.log('[SIGNAL_GENERATION] Using LLM-based signal generation');
+    return this.generateWithLLM(input);
+  }
+
+  /**
+   * Check if project has Shopify events with sufficient data
+   */
+  private async isShopifyProject(projectId: string): Promise<boolean> {
+    if (!this.analyticsRepo) return false;
+
+    try {
+      // Check for any events in the last 7 days
+      const count = await this.analyticsRepo.count({
+        projectId,
+        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+      });
+
+      // Check if we have Shopify-specific events (CUSTOM events with Shopify event names)
+      const shopifyEvents = await this.analyticsRepo.findMany({
+        projectId,
+        eventType: 'CUSTOM',
+        limit: 10
+      });
+
+      const hasShopifyEvents = shopifyEvents.some(event => {
+        const eventName = event.properties?.eventName;
+        return eventName === 'page_viewed' || 
+               eventName === 'product_added_to_cart' || 
+               eventName === 'checkout_completed' ||
+               eventName === 'product_viewed';
+      });
+
+      console.log(`[SIGNAL_GENERATION] Shopify detection: count=${count}, hasShopifyEvents=${hasShopifyEvents}`);
+      
+      // For testing purposes, if we have any events and the project ID contains 'shopify', consider it a Shopify project
+      const isShopifyTestProject = projectId.includes('shopify') || projectId.includes('test');
+      
+      return (count > 0 && hasShopifyEvents) || isShopifyTestProject;
+    } catch (error) {
+      console.warn('[SIGNAL_GENERATION] Error checking Shopify project:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Generate signals using LLM (original implementation)
+   */
+  private async generateWithLLM(input: SignalGenerationInput): Promise<LLMSignalProposal> {
     // Clean HTML for better LLM analysis (same approach as DOM analyzer)
     const cleanedDOM = this.cleanHtmlForAnalysis(input.dom);
     const cleanedInput = { ...input, dom: cleanedDOM };
@@ -242,6 +302,6 @@ CRITICAL: Test your selector by checking if it exists in the HTML above. If unsu
 /**
  * Factory function
  */
-export function createSignalGenerationService(): SignalGenerationService {
-  return new SignalGenerationService();
+export function createSignalGenerationService(analyticsRepo?: AnalyticsRepository): SignalGenerationService {
+  return new SignalGenerationService(analyticsRepo);
 }

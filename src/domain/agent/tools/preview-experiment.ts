@@ -6,7 +6,7 @@ import { variantStateManager } from '../variant-state-manager';
 import { VariantJobDAL } from '@infra/dal';
 import { ExperimentDAL } from '@infra/dal';
 import { findConflicts, formatConflictError } from '@features/conflict_guard';
-import { createSignalGenerationOrchestrator } from '@features/signal_generation';
+import { getContainer } from '@app/container';
 import { detectPageType } from '@shared/page-types';
 import { prisma } from '@infra/prisma';
 import { signalStateManager } from '../signal-state-manager';
@@ -82,7 +82,8 @@ class PreviewExperimentExecutor {
         });
 
         if (hypothesisUrl && screenshot?.url && screenshot.htmlContent && variants.length > 0) {
-          const signalService = createSignalGenerationOrchestrator();
+          const container = getContainer();
+          const signalService = container.getSignalGenerationOrchestrator();
           const pageType = detectPageType(screenshot.url);
           const signalIntent = `${hypothesis.description}. Primary goal: ${hypothesis.primary_outcome}`;
           

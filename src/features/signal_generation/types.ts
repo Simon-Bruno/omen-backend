@@ -29,6 +29,7 @@ export interface Signal extends BaseSignal {
 
 // LLM generation input
 export interface SignalGenerationInput {
+  projectId: string;
   pageType: PageType;
   url: string;
   intent: string;
@@ -125,3 +126,4 @@ export interface PublishedGoal {
   valueSelector?: string;
   currency?: string;
 }
+

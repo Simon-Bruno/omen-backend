@@ -12,7 +12,7 @@ import { getServiceConfig } from '@infra/config/services';
 import { findConflicts, ConflictError } from '@features/conflict_guard';
 import { getConversationHistory } from '../request-context';
 import { normalizeUrlToPattern } from '@shared/normalization/url';
-import { createSignalGenerationOrchestrator } from '@features/signal_generation';
+import { getContainer } from '@app/container';
 import { detectPageType } from '@shared/page-types';
 import { signalStateManager } from '../signal-state-manager';
 
@@ -330,7 +330,8 @@ class CreateExperimentExecutor {
 
         // ===== PERSIST SIGNALS (GOALS) =====
       console.log(`[EXPERIMENT_TOOL] Persisting signals for experiment...`);
-      const signalService = createSignalGenerationOrchestrator();
+      const container = getContainer();
+      const signalService = container.getSignalGenerationOrchestrator();
       let signalsGenerated = false;
       let signalError: string | undefined;
 

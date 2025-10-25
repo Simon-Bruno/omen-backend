@@ -3,6 +3,7 @@ import { SignalDAL } from '@infra/dal/signal';
 import { SignalGenerationService, createSignalGenerationService } from './generator';
 import { SignalValidator, createSignalValidator } from './validator';
 import { checkSelectorExists } from '@shared/utils/dom';
+import { AnalyticsRepository } from '@domain/analytics/analytics-service';
 import {
   SignalGenerationInput,
   SignalProposalValidationResult,
@@ -42,8 +43,8 @@ export class SignalGenerationOrchestrator {
   private generationService: SignalGenerationService;
   private validator: SignalValidator;
 
-  constructor() {
-    this.generationService = createSignalGenerationService();
+  constructor(analyticsRepo?: AnalyticsRepository) {
+    this.generationService = createSignalGenerationService(analyticsRepo);
     this.validator = createSignalValidator();
   }
 
@@ -424,6 +425,6 @@ export class SignalGenerationOrchestrator {
 /**
  * Factory function
  */
-export function createSignalGenerationOrchestrator(): SignalGenerationOrchestrator {
-  return new SignalGenerationOrchestrator();
+export function createSignalGenerationOrchestrator(analyticsRepo?: AnalyticsRepository): SignalGenerationOrchestrator {
+  return new SignalGenerationOrchestrator(analyticsRepo);
 }

@@ -12,6 +12,7 @@ import { PrismaAnalyticsRepository } from '@infra/dal/analytics';
 import { SupabaseAnalyticsRepository } from '@infra/dal/supabase-analytics';
 import { getServiceConfig } from '@infra/config/services';
 import { prisma } from '@infra/prisma';
+import { createSignalGenerationOrchestrator, type SignalGenerationOrchestrator } from '@features/signal_generation';
 
 class ServiceContainer {
   private services: Map<string, unknown> = new Map();
@@ -123,6 +124,18 @@ class ServiceContainer {
     return this.services.get('sqsConsumer') as SQSConsumerService;
   }
 
+  getSignalGenerationOrchestrator(): SignalGenerationOrchestrator {
+    if (!this.services.has('signalGeneration')) {
+      // Get the analytics repository from the analytics service
+      const analyticsService = this.getAnalyticsService();
+      const repository = (analyticsService as any).repository; // Access the repository from the service
+      
+      const signalOrchestrator = createSignalGenerationOrchestrator(repository);
+      this.services.set('signalGeneration', signalOrchestrator);
+    }
+    return this.services.get('signalGeneration') as SignalGenerationOrchestrator;
+  }
+
   async cleanup(): Promise<void> {
     // Cleanup any services that need it
     const crawler = this.services.get('crawler') as any;
@@ -139,3 +152,8 @@ class ServiceContainer {
 
 // Singleton instance
 export const serviceContainer = new ServiceContainer();
+
+// Convenience function to get the container
+export function getContainer(): ServiceContainer {
+  return serviceContainer;
+}

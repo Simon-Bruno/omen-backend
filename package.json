@@ -25,7 +25,10 @@
     "test:signals:llm": "tsx -r tsconfig-paths/register test-signal-generation-llm.ts",
     "test:signals:real": "tsx -r tsconfig-paths/register test-signal-generation-real.ts",
     "test:variants": "tsx -r tsconfig-paths/register tests/integration/variant-pipeline.test.ts",
-    "test:variants:simple": "tsx -r tsconfig-paths/register tests/integration/variant-simple.test.ts"
+    "test:variants:simple": "tsx -r tsconfig-paths/register tests/integration/variant-simple.test.ts",
+    "demo:shopify-llm": "tsx -r tsconfig-paths/register src/features/signal_generation/real-llm-demo.ts",
+    "demo:final-goals": "tsx -r tsconfig-paths/register src/features/signal_generation/final-goals-demo.ts",
+    "test:shopify-integration": "tsx -r tsconfig-paths/register src/features/signal_generation/integration-test.ts"
   },
   "keywords": [],
   "author": "",

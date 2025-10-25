@@ -1,7 +1,7 @@
 // Experiment Publisher Service
 import { CloudflarePublisher, PublishedExperiment, PublishedVariant } from '@infra/external/cloudflare';
 import { prisma } from '@infra/prisma';
-import { createSignalGenerationOrchestrator } from '@features/signal_generation';
+import { getContainer } from '@app/container';
 
 export interface ExperimentPublisherService {
   publishExperiment(experimentId: string): Promise<{ success: boolean; error?: string }>;
@@ -38,7 +38,8 @@ export class ExperimentPublisherServiceImpl implements ExperimentPublisherServic
 
       // ===== PRE-LAUNCH VALIDATION: Check signals =====
       console.log(`[EXPERIMENT_PUBLISHER] Validating experiment signals...`);
-      const signalService = createSignalGenerationOrchestrator();
+      const container = getContainer();
+      const signalService = container.getSignalGenerationOrchestrator();
       const validation = await signalService.validateForPublish(experimentId);
 
       if (!validation.valid) {
