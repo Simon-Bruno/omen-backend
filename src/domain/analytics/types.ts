@@ -70,6 +70,7 @@ export interface AnalyticsQuery {
   startDate?: Date;
   endDate?: Date;
   sessionId?: string;
+  eventType?: string;
   limit?: number;
   offset?: number;
 }

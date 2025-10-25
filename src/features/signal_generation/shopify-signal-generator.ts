@@ -1,5 +1,4 @@
 import { PageType } from '@shared/page-types';
-import { AnalyticsRepository } from '@domain/analytics/analytics-service';
 import { google } from '@ai-sdk/google';
 import { ai } from '@infra/config/langsmith';
 import {
@@ -25,7 +24,7 @@ type ShopifyEventSelection = z.infer<typeof shopifyEventSelectionSchema>;
  * Uses real user behavior data from Shopify web pixel events to generate deterministic signals
  */
 export class ShopifySignalGenerator {
-    constructor(private analyticsRepo: AnalyticsRepository) { }
+    constructor() { }
 
     /**
      * Generate signals using LLM to intelligently choose from Shopify events
@@ -356,25 +355,6 @@ Select events that will give the most meaningful insights for this specific expe
     }
 
 
-    /**
-     * Detect page type from URL (simplified version)
-     */
-    private detectPageTypeFromUrl(url: string): PageType {
-        try {
-            const urlObj = new URL(url);
-            const pathname = urlObj.pathname;
-
-            if (!pathname || pathname === '/') return PageType.HOME;
-            if (pathname.includes('/products/')) return PageType.PDP;
-            if (pathname.includes('/collections/')) return PageType.COLLECTION;
-            if (pathname.includes('/cart')) return PageType.CART;
-            if (pathname.includes('/checkout')) return PageType.CHECKOUT;
-
-            return PageType.OTHER;
-        } catch {
-            return PageType.OTHER;
-        }
-    }
 
     /**
      * Get a fallback primary signal for a page type
@@ -410,6 +390,6 @@ Select events that will give the most meaningful insights for this specific expe
 /**
  * Factory function
  */
-export function createShopifySignalGenerator(analyticsRepo: AnalyticsRepository): ShopifySignalGenerator {
-    return new ShopifySignalGenerator(analyticsRepo);
+export function createShopifySignalGenerator(): ShopifySignalGenerator {
+    return new ShopifySignalGenerator();
 }

@@ -438,7 +438,8 @@ class CreateExperimentExecutor {
               signalIntent,
               screenshot.htmlContent,
               variantsForValidation,
-              true
+              true,
+              projectId
             );
 
             signalsGenerated = result.success;

@@ -7,7 +7,7 @@ import {
   llmSignalProposalSchema,
 } from './types';
 import { SIGNAL_CATALOG } from './catalog';
-import { ShopifySignalGenerator, createShopifySignalGenerator } from './shopify-signal-generator';
+import { createShopifySignalGenerator } from './shopify-signal-generator';
 import { AnalyticsRepository } from '@domain/analytics/analytics-service';
 
 /**
@@ -25,7 +25,7 @@ export class SignalGenerationService {
     // Check if this is a Shopify project with sufficient data
     if (this.analyticsRepo && await this.isShopifyProject(input.projectId)) {
       console.log('[SIGNAL_GENERATION] Using Shopify data-driven signal generation');
-      const shopifyGenerator = createShopifySignalGenerator(this.analyticsRepo);
+      const shopifyGenerator = createShopifySignalGenerator();
       return shopifyGenerator.generateSignals(input);
     }
 

@@ -248,7 +248,8 @@ export class SignalGenerationOrchestrator {
       description?: string;
       rationale?: string;
     }>,
-    _purchaseTrackingActive: boolean = true
+    _purchaseTrackingActive: boolean = true,
+    projectId: string
   ): Promise<SignalGenerationResult> {
     console.log('[SIGNAL_SERVICE] Auto-generating signals for ALL variants...');
 
@@ -266,6 +267,7 @@ export class SignalGenerationOrchestrator {
     
     console.log('[SIGNAL_SERVICE] Generating proposal using first variant...');
     const proposal = await this.generationService.generateSignals({
+      projectId,
       pageType,
       url,
       intent,
