@@ -161,6 +161,7 @@ export async function experimentRoutes(fastify: FastifyInstance) {
         goals: z.array(z.object({
             name: z.string().min(1, 'Goal name is required'),
             type: z.enum(['conversion', 'custom', 'purchase']),
+            role: z.enum(['primary', 'mechanism', 'guardrail']).optional().default('primary'),
             selector: z.string().optional(),
             eventType: z.string().optional(),
             customJs: z.string().optional(),
@@ -298,6 +299,7 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                             experimentId: experiment.id,
                             name: goal.name,
                             type: goal.type,
+                            role: goal.role || 'primary',
                             selector: goal.selector || null,
                             eventType: goal.eventType || null,
                             customJs: goal.customJs || null,
