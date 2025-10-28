@@ -147,3 +147,21 @@ export interface SQSMessage {
   Attributes: Record<string, string>;
   MessageAttributes: Record<string, any>;
 }
+
+// Goal breakdown types
+export interface GoalVariantBreakdown {
+  variantId: string;
+  conversions: number; // unique sessions converted for this goal
+}
+
+export interface GoalBreakdownItem {
+  name: string;
+  type: string;
+  perVariant: GoalVariantBreakdown[];
+}
+
+export interface GoalsBreakdownResponse {
+  experimentId: string;
+  variants: string[];
+  goals: GoalBreakdownItem[];
+}

@@ -7,6 +7,7 @@ import {
   PurchaseStats,
   SQSAnalyticsMessage
 } from './types';
+import { GoalsBreakdownResponse } from './types';
 
 export interface AnalyticsService {
   // Event Management
@@ -24,6 +25,7 @@ export interface AnalyticsService {
   getConversionRates(projectId: string, experimentId: string): Promise<ConversionRates[]>;
   getPurchaseStats(projectId: string, experimentId: string): Promise<PurchaseStats[]>;
   getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]>;
+  getGoalsBreakdown(projectId: string, experimentId: string): Promise<GoalsBreakdownResponse>;
 
   // Session Management
   getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }>;
@@ -55,4 +57,5 @@ export interface AnalyticsRepository {
   getEventsWithAttribution(query: AnalyticsQuery): Promise<AnalyticsEventData[]>;
   getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }>;
   deleteExperimentEvents(projectId: string, experimentId: string): Promise<number>;
+  getGoalsBreakdown(projectId: string, experimentId: string): Promise<GoalsBreakdownResponse>;
 }

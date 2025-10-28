@@ -16,6 +16,7 @@ import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
 import { ServiceConfig } from '@infra/config/services';
+import { GoalsBreakdownResponse } from '@domain/analytics/types';
 
 export class AnalyticsServiceImpl implements AnalyticsService {
   constructor(private repository: AnalyticsRepository) {}
@@ -58,6 +59,10 @@ export class AnalyticsServiceImpl implements AnalyticsService {
 
   async getUserJourney(projectId: string, sessionId: string): Promise<AnalyticsEventData[]> {
     return this.repository.getUserJourney(projectId, sessionId);
+  }
+
+  async getGoalsBreakdown(projectId: string, experimentId: string): Promise<GoalsBreakdownResponse> {
+    return this.repository.getGoalsBreakdown(projectId, experimentId);
   }
 
   async getExperimentSessions(projectId: string, experimentId: string, limit?: number, offset?: number): Promise<{ sessions: { sessionId: string, eventCount: number }[], total: number }> {

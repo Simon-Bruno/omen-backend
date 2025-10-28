@@ -314,3 +314,40 @@ export const resetExperimentEventsSchema: FastifySchema = {
     }
   }
 };
+
+export const getGoalsBreakdownSchema: FastifySchema = {
+  params: {
+    type: 'object',
+    properties: { experimentId: { type: 'string' } },
+    required: ['experimentId']
+  },
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        experimentId: { type: 'string' },
+        variants: { type: 'array', items: { type: 'string' } },
+        goals: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              type: { type: 'string' },
+              perVariant: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    variantId: { type: 'string' },
+                    conversions: { type: 'number' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};

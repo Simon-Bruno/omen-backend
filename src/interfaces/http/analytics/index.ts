@@ -10,6 +10,7 @@ import {
   getFunnelAnalysisHandler,
   getConversionRatesHandler,
   getPurchaseStatsHandler,
+  getGoalsBreakdownHandler,
   getExperimentSessionsHandler,
   resetExperimentEventsHandler
 } from './handlers';
@@ -21,6 +22,7 @@ import {
   getFunnelAnalysisSchema,
   getConversionRatesSchema,
   getPurchaseStatsSchema,
+  getGoalsBreakdownSchema,
   getExperimentSessionsSchema,
   resetExperimentEventsSchema
 } from './schemas';
@@ -78,6 +80,13 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
     schema: getPurchaseStatsSchema,
     preHandler: [betterAuthMiddleware, requireProject],
     handler: getPurchaseStatsHandler(analyticsService)
+  });
+
+  // Goals breakdown
+  fastify.get('/goals-breakdown/:experimentId', {
+    schema: getGoalsBreakdownSchema,
+    preHandler: [betterAuthMiddleware, requireProject],
+    handler: getGoalsBreakdownHandler(analyticsService)
   });
 
   // Sessions for an experiment

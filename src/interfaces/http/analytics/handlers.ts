@@ -345,3 +345,25 @@ export function resetExperimentEventsHandler(analyticsService: AnalyticsService)
     }
   };
 }
+
+export function getGoalsBreakdownHandler(analyticsService: AnalyticsService) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const { experimentId } = request.params as { experimentId: string };
+    const projectId = request.projectId;
+
+    if (!projectId) {
+      return reply.status(400).send({ error: 'Project ID is required' });
+    }
+    if (!experimentId) {
+      return reply.status(400).send({ error: 'Experiment ID is required' });
+    }
+
+    try {
+      const result = await analyticsService.getGoalsBreakdown(projectId, experimentId);
+      return reply.send(result);
+    } catch (error) {
+      request.log.error(error, 'Failed to get goals breakdown');
+      return reply.status(500).send({ error: 'Failed to get goals breakdown' });
+    }
+  };
+}

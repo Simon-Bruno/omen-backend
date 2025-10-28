@@ -306,7 +306,9 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                             value: goal.value || null,
                             valueSelector: goal.valueSelector || null,
                             currency: goal.currency || null,
-                            targetUrls: goal.targetUrls || []
+                            targetUrls: goal.targetUrls || [],
+                            existsInControl: true,
+                            existsInVariant: true
                         }
                     });
                     fastify.log.info({ createdGoal }, '[Backend] Goal created successfully');

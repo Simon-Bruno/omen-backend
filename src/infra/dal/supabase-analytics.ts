@@ -9,6 +9,8 @@ import {
   FunnelStep
 } from '@domain/analytics/types';
 import { AnalyticsRepository } from '@domain/analytics/analytics-service';
+import { GoalsBreakdownResponse } from '@domain/analytics/types';
+import { SignalDAL } from '@infra/dal/signal';
 
 // Event type mapping from Supabase (numeric) to backend (string)
 const EVENT_TYPE_MAP: Record<number, string> = {
@@ -162,6 +164,22 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     // For funnel analysis, we need to query the raw events to understand user journeys
     // The materialized view doesn't give us the sequential flow data we need
     
+    // Fetch experiment goals (signals) to support URL-based conversion goals
+    const goals = await SignalDAL.getSignalsByExperiment(experimentId);
+    const urlPatterns: RegExp[] = [];
+    for (const goal of goals) {
+      if (goal.targetUrls && goal.targetUrls.length > 0) {
+        for (const pattern of goal.targetUrls) {
+          try {
+            // Treat stored strings as regex patterns
+            urlPatterns.push(new RegExp(pattern));
+          } catch {
+            // Ignore invalid patterns
+          }
+        }
+      }
+    }
+
     // First, get all sessions that have events for this experiment
     const { data: sessionsData, error: sessionsError } = await this.supabase
       .from('events')
@@ -202,7 +220,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
     // Get all events for these sessions
     const { data: eventsData, error: eventsError } = await this.supabase
       .from('events')
-      .select('session_id, event_type, experiment_ids, variant_keys')
+      .select('session_id, event_type, experiment_ids, variant_keys, url')
       .eq('project_id', projectId)
       .in('session_id', sessionIds)
       .in('event_type', [0, 1, 2]); // EXPOSURE, PAGEVIEW, CONVERSION
@@ -258,6 +276,15 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
         stats.exposures.add(event.session_id);
       } else if (event.event_type === 1) { // PAGEVIEW
         stats.pageviews.add(event.session_id);
+        // Treat pageviews that match any goal targetUrls as conversions for navigation goals
+        if (urlPatterns.length > 0 && typeof event.url === 'string') {
+          for (const regex of urlPatterns) {
+            if (regex.test(event.url)) {
+              stats.conversions.add(event.session_id);
+              break;
+            }
+          }
+        }
       } else if (event.event_type === 2) { // CONVERSION
         stats.conversions.add(event.session_id);
       }
@@ -463,6 +490,115 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       timestamp: new Date(event.ts).getTime(),
       createdAt: new Date(event.created_at || event.ts),
     };
+  }
+
+  async getGoalsBreakdown(projectId: string, experimentId: string): Promise<GoalsBreakdownResponse> {
+    // Load goals
+    const goals = await SignalDAL.getSignalsByExperiment(experimentId);
+
+    // Get sessions for this experiment
+    const { data: sessionsData, error: sessionsError } = await this.supabase
+      .from('events')
+      .select('session_id')
+      .eq('project_id', projectId)
+      .contains('experiment_ids', [experimentId])
+      .not('session_id', 'is', null);
+
+    if (sessionsError) {
+      console.error('[SUPABASE] Error fetching sessions for goals breakdown:', sessionsError);
+      return { experimentId, variants: [], goals: [] };
+    }
+
+    const sessionIds = [...new Set((sessionsData || []).map(s => s.session_id))];
+    if (sessionIds.length === 0) {
+      return { experimentId, variants: [], goals: [] };
+    }
+
+    // Fetch relevant events: PAGEVIEW and CONVERSION
+    const { data: eventsData, error: eventsError } = await this.supabase
+      .from('events')
+      .select('session_id, event_type, experiment_ids, variant_keys, url, props')
+      .eq('project_id', projectId)
+      .in('session_id', sessionIds)
+      .in('event_type', [1, 2]);
+
+    if (eventsError) {
+      console.error('[SUPABASE] Error fetching events for goals breakdown:', eventsError);
+      return { experimentId, variants: [], goals: [] };
+    }
+
+    // Determine variants present
+    const variantsSet = new Set<string>();
+
+    // Prepare matchers per goal
+    const matchers = goals.map(goal => {
+      const urlRegexes: RegExp[] = [];
+      if (goal.targetUrls && goal.targetUrls.length > 0) {
+        for (const pattern of goal.targetUrls) {
+          try { urlRegexes.push(new RegExp(pattern)); } catch {}
+        }
+      }
+      return { goal, urlRegexes };
+    });
+
+    // Count conversions per goal per variant by unique session
+    const counts = new Map<string, Map<string, Set<string>>>(); // goalName -> variantId -> Set(sessionId)
+
+    for (const event of eventsData || []) {
+      const assignedVariants = event.experiment_ids && event.variant_keys
+        ? event.experiment_ids.map((expId: string, index: number) => ({
+            experimentId: expId,
+            variantId: event.variant_keys[index] || null
+          }))
+        : [];
+
+      const experimentVariant = assignedVariants.find((av: {experimentId: string, variantId: string | null}) => av.experimentId === experimentId);
+      if (!experimentVariant) continue;
+      const variantId = experimentVariant.variantId;
+      variantsSet.add(variantId);
+
+      // Check each goal
+      for (const { goal, urlRegexes } of matchers) {
+        let isConversion = false;
+
+        if (event.event_type === 2) {
+          // Explicit conversion events: match by props.goal
+          const goalName = event.props?.goal || event.props?.properties?.goal;
+          if (goalName && typeof goalName === 'string' && goalName === goal.name) {
+            isConversion = true;
+          }
+        } else if (event.event_type === 1 && urlRegexes.length > 0 && typeof event.url === 'string') {
+          // Navigation goals: PAGEVIEW url matches any pattern
+          for (const r of urlRegexes) {
+            if (r.test(event.url)) { isConversion = true; break; }
+          }
+        }
+
+        if (isConversion) {
+          if (!counts.has(goal.name)) counts.set(goal.name, new Map());
+          const perVariant = counts.get(goal.name)!;
+          if (!perVariant.has(variantId)) perVariant.set(variantId, new Set());
+          perVariant.get(variantId)!.add(event.session_id);
+        }
+      }
+    }
+
+    // Build response
+    const variants = Array.from(variantsSet);
+    const goalsResponse = goals.map(g => {
+      const perVariantMap = counts.get(g.name) || new Map();
+      const perVariant = variants.map(variantId => ({
+        variantId,
+        conversions: (perVariantMap.get(variantId)?.size) || 0,
+      }));
+      return {
+        name: g.name,
+        type: g.type,
+        perVariant,
+      };
+    });
+
+    return { experimentId, variants, goals: goalsResponse };
   }
 }
 
