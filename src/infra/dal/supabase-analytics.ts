@@ -514,13 +514,13 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       return { experimentId, variants: [], goals: [] };
     }
 
-    // Fetch relevant events: PAGEVIEW and CONVERSION
+    // Fetch relevant events: PAGEVIEW, CONVERSION and CUSTOM (for explicit custom goals)
     const { data: eventsData, error: eventsError } = await this.supabase
       .from('events')
       .select('session_id, event_type, experiment_ids, variant_keys, url, props')
       .eq('project_id', projectId)
       .in('session_id', sessionIds)
-      .in('event_type', [1, 2]);
+      .in('event_type', [1, 2, 3]);
 
     if (eventsError) {
       console.error('[SUPABASE] Error fetching events for goals breakdown:', eventsError);
@@ -535,7 +535,11 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       const urlRegexes: RegExp[] = [];
       if (goal.targetUrls && goal.targetUrls.length > 0) {
         for (const pattern of goal.targetUrls) {
-          try { urlRegexes.push(new RegExp(pattern)); } catch {}
+          try {
+            // Escape regex special chars and create pattern that matches URL containing this path
+            const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            urlRegexes.push(new RegExp(escaped));
+          } catch {}
         }
       }
       return { goal, urlRegexes };
@@ -565,6 +569,12 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
           // Explicit conversion events: match by props.goal
           const goalName = event.props?.goal || event.props?.properties?.goal;
           if (goalName && typeof goalName === 'string' && goalName === goal.name) {
+            isConversion = true;
+          }
+        } else if (event.event_type === 3) {
+          // Custom events: match by props.eventName (SDK/web pixel set this)
+          const eventName = event.props?.eventName || event.props?.properties?.eventName;
+          if (eventName && typeof eventName === 'string' && eventName === goal.name) {
             isConversion = true;
           }
         } else if (event.event_type === 1 && urlRegexes.length > 0 && typeof event.url === 'string') {
