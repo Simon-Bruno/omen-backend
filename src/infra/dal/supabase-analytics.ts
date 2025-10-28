@@ -542,7 +542,8 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
           } catch {}
         }
       }
-      return { goal, urlRegexes };
+      const bodyClasses = (goal.bodyClasses as string[]) || [];
+      return { goal, urlRegexes, bodyClasses };
     });
 
     // Count conversions per goal per variant by unique session
@@ -562,7 +563,7 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
       variantsSet.add(variantId);
 
       // Check each goal
-      for (const { goal, urlRegexes } of matchers) {
+      for (const { goal, urlRegexes, bodyClasses } of matchers) {
         let isConversion = false;
 
         if (event.event_type === 2) {
@@ -577,10 +578,28 @@ export class SupabaseAnalyticsRepository implements AnalyticsRepository {
           if (eventName && typeof eventName === 'string' && eventName === goal.name) {
             isConversion = true;
           }
-        } else if (event.event_type === 1 && urlRegexes.length > 0 && typeof event.url === 'string') {
-          // Navigation goals: PAGEVIEW url matches any pattern
-          for (const r of urlRegexes) {
-            if (r.test(event.url)) { isConversion = true; break; }
+        } else if (event.event_type === 1) {
+          // Navigation goals: PAGEVIEW with URL or body class match
+          
+          // Check URL patterns
+          if (urlRegexes.length > 0 && typeof event.url === 'string') {
+            for (const r of urlRegexes) {
+              if (r.test(event.url)) { isConversion = true; break; }
+            }
+          }
+          
+          // Check body classes
+          if (!isConversion && bodyClasses.length > 0) {
+            const pageBodyClasses = event.props?.bodyClasses || '';
+            if (typeof pageBodyClasses === 'string') {
+              const pageClassList = pageBodyClasses.split(/\s+/).filter(Boolean);
+              for (const requiredClass of bodyClasses) {
+                if (pageClassList.includes(requiredClass)) {
+                  isConversion = true;
+                  break;
+                }
+              }
+            }
           }
         }
 

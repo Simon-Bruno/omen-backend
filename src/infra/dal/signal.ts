@@ -182,6 +182,7 @@ export class SignalDAL {
       selector: goal.selector || undefined,
       eventType: goal.eventType || undefined,
       targetUrls: goal.targetUrls as string[] | undefined,
+      bodyClasses: goal.bodyClasses as string[] | undefined,
       dataLayerEvent: goal.dataLayerEvent || undefined,
       customJs: goal.customJs || undefined,
       valueSelector: goal.valueSelector || undefined,

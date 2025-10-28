@@ -169,6 +169,7 @@ model ExperimentGoal {
   currency        String?
   createdAt       DateTime   @default(now())
   targetUrls      Json?      // Array of regex patterns for URL transitions
+  bodyClasses     Json?      // Array of body class names to match (e.g. ["catalog-category-view", "page-products"])
   dataLayerEvent  String?    // Analytics event name if applicable
   existsInControl Boolean    @default(true)
   existsInVariant Boolean    @default(true)

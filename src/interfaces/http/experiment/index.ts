@@ -169,16 +169,17 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             valueSelector: z.string().optional(),
             currency: z.string().optional(),
             targetUrls: z.array(z.string()).optional(),
+            bodyClasses: z.array(z.string()).optional(),
             targeting: domTargetingSchema.optional()
         }).refine((goal) => {
-            // A goal must have at least one way to track: selector+eventType, customJs, or targetUrls
+            // A goal must have at least one way to track: selector+eventType, customJs, targetUrls, or bodyClasses
             const hasDomTracking = goal.selector && goal.eventType;
             const hasCustomJs = goal.customJs;
-            const hasNavTracking = goal.targetUrls && goal.targetUrls.length > 0;
+            const hasNavTracking = (goal.targetUrls && goal.targetUrls.length > 0) || (goal.bodyClasses && goal.bodyClasses.length > 0);
             
             return hasDomTracking || hasCustomJs || hasNavTracking;
         }, {
-            message: 'Goal must have either selector+eventType, customJs, or targetUrls'
+            message: 'Goal must have either selector+eventType, customJs, targetUrls, or bodyClasses'
         })).optional(),
         trafficDistribution: z.record(z.string(), z.number().min(0).max(1))
             .optional()
@@ -307,6 +308,7 @@ export async function experimentRoutes(fastify: FastifyInstance) {
                             valueSelector: goal.valueSelector || null,
                             currency: goal.currency || null,
                             targetUrls: goal.targetUrls || [],
+                            bodyClasses: goal.bodyClasses || [],
                             existsInControl: true,
                             existsInVariant: true
                         }

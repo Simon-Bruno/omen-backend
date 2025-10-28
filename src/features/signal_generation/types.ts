@@ -104,6 +104,7 @@ export interface PersistedGoal {
   selector?: string;
   eventType?: string;
   targetUrls?: string[];
+  bodyClasses?: string[];
   dataLayerEvent?: string;
   customJs?: string;
   valueSelector?: string;
