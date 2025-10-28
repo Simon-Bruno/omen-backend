@@ -169,6 +169,15 @@ export async function experimentRoutes(fastify: FastifyInstance) {
             currency: z.string().optional(),
             targetUrls: z.array(z.string()).optional(),
             targeting: domTargetingSchema.optional()
+        }).refine((goal) => {
+            // A goal must have at least one way to track: selector+eventType, customJs, or targetUrls
+            const hasDomTracking = goal.selector && goal.eventType;
+            const hasCustomJs = goal.customJs;
+            const hasNavTracking = goal.targetUrls && goal.targetUrls.length > 0;
+            
+            return hasDomTracking || hasCustomJs || hasNavTracking;
+        }, {
+            message: 'Goal must have either selector+eventType, customJs, or targetUrls'
         })).optional(),
         trafficDistribution: z.record(z.string(), z.number().min(0).max(1))
             .optional()

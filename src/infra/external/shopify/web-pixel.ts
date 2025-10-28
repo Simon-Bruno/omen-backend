@@ -23,7 +23,7 @@ export interface WebPixelCreateResult {
 export async function createWebPixel(
     shopDomain: string,
     accessToken: string,
-    accountId: string = "cmgz50cje003u0b0wztg90pe0"
+    accountId: string = "cmgcio3xn0000vz0wa1cy3a3d"
 ): Promise<WebPixelCreateResult> {
     try {
         const session = new Session({
@@ -55,7 +55,7 @@ export async function createWebPixel(
         const variables = {
             webPixel: {
                 settings: {
-                    accountID: accountId
+                    projectId: accountId
                 }
             }
         };
@@ -96,7 +96,7 @@ export async function createWebPixel(
 export async function createWebPixelWithEncryptedToken(
     shopDomain: string,
     encryptedAccessToken: string,
-    accountId: string = "cmgz50cje003u0b0wztg90pe0"
+    accountId: string = "cmgcio3xn0000vz0wa1cy3a3d"
 ): Promise<WebPixelCreateResult> {
     try {
         const accessToken = decrypt(encryptedAccessToken);
